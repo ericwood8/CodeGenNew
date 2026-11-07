@@ -138,10 +138,10 @@ public class FormModelTests
     {
         Assert.AreEqual("Customer", Labels.Column("CustomerId"));
         Assert.AreEqual("Role", Labels.Column("SY_RoleId"));
-        Assert.AreEqual("Taxable?", Labels.Field(Sample.Column("IsTaxable", SqlDbType.Bit)));
-        Assert.AreEqual("Credit Limit", Labels.Field(Sample.Column("CreditLimit", SqlDbType.Decimal)));
-        Assert.AreEqual("Customer Item #", Labels.Field(Sample.Column("CustomerItemNumber", SqlDbType.VarChar, characters: 20)));
-        Assert.AreEqual("Number", Labels.Field(Sample.Column("Number", SqlDbType.VarChar, characters: 20)), "a lone Number keeps its word");
+        Assert.AreEqual("Taxable?", (Sample.Column("IsTaxable", SqlDbType.Bit)).Label);
+        Assert.AreEqual("Credit Limit", (Sample.Column("CreditLimit", SqlDbType.Decimal)).Label);
+        Assert.AreEqual("Customer Item #", (Sample.Column("CustomerItemNumber", SqlDbType.VarChar, characters: 20)).Label);
+        Assert.AreEqual("Number", (Sample.Column("Number", SqlDbType.VarChar, characters: 20)).Label, "a lone Number keeps its word");
         Assert.AreEqual("Enter credit limit", Labels.Placeholder(Sample.Column("CreditLimit", SqlDbType.Decimal)));
         Assert.AreEqual("sales-invoice", ScreenNames.Route("SalesInvoice"));
         Assert.AreEqual("salesinvoices", ScreenNames.ApiRoute("SalesInvoice"));
@@ -221,25 +221,25 @@ public class FormModelTests
             Sample.Column("IsOpen", SqlDbType.Bit, ordinal: 5),
             Sample.Column("Due", SqlDbType.DateTime, ordinal: 6),
             Sample.Column("Budget", SqlDbType.Decimal, precision: 18, scale: 2, currency: true, ordinal: 7),
-            Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month, ordinal: 8),
+            Sample.Column("MonthNumber", SqlDbType.Int, ordinal: 8),
             Sample.Column("Notes", SqlDbType.NVarChar, characters: 4000, ordinal: 9),
             Sample.Column("CreateDate", SqlDbType.DateTime, createDateColumn: true, ordinal: 10)
         ],
         [Sample.ForeignKey("RegionId", "Region", "RegionId", "Name")]);
         var form = FormModel.For(table, Project());
-        FieldKind Kind(string name) => form.KindOf(table.Columns.First(c => c.Name == name));
-        Assert.AreEqual(FieldKind.Text, Kind("Title"));
-        Assert.AreEqual(FieldKind.Lookup, Kind("RegionId"));
-        Assert.AreEqual(FieldKind.Choices, Kind("Status"));
-        Assert.AreEqual(FieldKind.Boolean, Kind("IsOpen"));
-        Assert.AreEqual(FieldKind.Date, Kind("Due"));
-        Assert.AreEqual(FieldKind.Money, Kind("Budget"));
-        Assert.AreEqual(FieldKind.Number, Kind("MonthNumber"));
-        Assert.AreEqual(FieldKind.Multiline, Kind("Notes"));
-        Assert.AreEqual(FieldKind.SystemStamp, Kind("CreateDate"));
+        FormColumn Field(string name) => form.Field(table.Columns.First(c => c.Name == name));
+        Assert.IsTrue(Field("Title").IsTextField);
+        Assert.IsTrue(Field("RegionId").IsLookupField);
+        Assert.IsTrue(Field("Status").IsChoicesField);
+        Assert.IsTrue(Field("IsOpen").IsBooleanField);
+        Assert.IsTrue(Field("Due").IsDateField);
+        Assert.IsTrue(Field("Budget").IsMoneyField);
+        Assert.IsTrue(Field("MonthNumber").IsNumberField);
+        Assert.IsTrue(Field("Notes").IsMultilineField);
+        Assert.IsTrue(Field("CreateDate").IsSystemStampField);
 
         var country = Sample.Table("Country", [Sample.Column("Alpha3Code", SqlDbType.Char, primaryKey: true, characters: 3, ordinal: 1), Text("Name", 2)]);
-        Assert.AreEqual(FieldKind.TypedKey, FormModel.For(country, Project()).KindOf(country.Columns[0]));
+        Assert.IsTrue(FormModel.For(country, Project()).Field(country.Columns[0]).IsTypedKeyField);
     }
 
     [TestMethod]
@@ -254,30 +254,29 @@ public class FormModelTests
             Sample.Column("Due", SqlDbType.DateTime, ordinal: 5),
             Sample.Column("Budget", SqlDbType.Decimal, precision: 18, scale: 2, currency: true, ordinal: 6),
             Sample.Column("Weight", SqlDbType.Decimal, precision: 9, scale: 3, ordinal: 7),
-            Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month, ordinal: 8),
+            Sample.Column("MonthNumber", SqlDbType.Int, ordinal: 8),
             Sample.Column("Ref", SqlDbType.UniqueIdentifier, ordinal: 9)
         ],
         [Sample.ForeignKey("RegionId", "Region", "RegionId", "Name")]);
         var form = FormModel.For(table, Project());
         ColumnModel Col(string name) => table.Columns.First(c => c.Name == name);
 
-        Assert.AreEqual(ValueKind.Text, form.ValueOf(Col("Title")));
-        Assert.AreEqual(ValueKind.Lookup, form.ValueOf(Col("RegionId")));
-        Assert.AreEqual(ValueKind.Boolean, form.ValueOf(Col("IsOpen")));
-        Assert.AreEqual(ValueKind.Date, form.ValueOf(Col("Due")));
-        Assert.AreEqual(ValueKind.Money, form.ValueOf(Col("Budget")));
-        Assert.AreEqual(ValueKind.Decimal, form.ValueOf(Col("Weight")));
-        Assert.AreEqual(ValueKind.WholeNumber, form.ValueOf(Col("MonthNumber")));
-        Assert.AreEqual(ValueKind.Guid, form.ValueOf(Col("Ref")));
+        Assert.IsTrue(form.Field(Col("Title")).IsTextValue);
+        Assert.IsTrue(form.Field(Col("RegionId")).IsLookupValue);
+        Assert.IsTrue(form.Field(Col("IsOpen")).IsBooleanValue);
+        Assert.IsTrue(form.Field(Col("Due")).IsDateValue);
+        Assert.IsTrue(form.Field(Col("Budget")).IsMoneyValue);
+        Assert.IsTrue(form.Field(Col("Weight")).IsDecimalValue);
+        Assert.IsTrue(form.Field(Col("MonthNumber")).IsWholeNumberValue);
+        Assert.IsTrue(form.Field(Col("Ref")).IsGuidValue);
 
-        Assert.AreEqual(CellKind.Lookup, form.CellOf(Col("RegionId")));
-        Assert.AreEqual(CellKind.Boolean, form.CellOf(Col("IsOpen")));
-        Assert.AreEqual(CellKind.Date, form.CellOf(Col("Due")));
-        Assert.AreEqual(CellKind.Money, form.CellOf(Col("Budget")));
-        Assert.AreEqual(CellKind.Decimal, form.CellOf(Col("Weight")));
-        Assert.AreEqual(CellKind.Plain, form.CellOf(Col("MonthNumber")));
-        Assert.AreEqual(CellKind.Plain, form.CellOf(Col("Title")));
-        Assert.AreEqual(CellKind.Lookup, GridCells.KindOf(Col("Title"), lookedUp: true), "a child grid names a foreign key the page does not edit");
+        Assert.IsTrue(form.Field(Col("RegionId")).IsLookupCell);
+        Assert.IsTrue(form.Field(Col("IsOpen")).IsBooleanCell);
+        Assert.IsTrue(form.Field(Col("Due")).IsDateCell);
+        Assert.IsTrue(form.Field(Col("Budget")).IsMoneyCell);
+        Assert.IsTrue(form.Field(Col("Weight")).IsDecimalCell);
+        Assert.IsTrue(form.Field(Col("MonthNumber")).IsPlainCell);
+        Assert.IsTrue(form.Field(Col("Title")).IsPlainCell);
     }
 
     [TestMethod]
@@ -298,7 +297,7 @@ public class FormModelTests
     [TestMethod]
     public void A_number_box_carries_the_same_limits_on_every_web_stack()
     {
-        var month = NumberBox.For("Job", Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month), Project());
+        var month = NumberBox.For("Job", Sample.Column("MonthNumber", SqlDbType.Int), Project());
         Assert.IsNull(month.Step);
         Assert.AreEqual("1", month.Min);
         Assert.AreEqual("12", month.Max);

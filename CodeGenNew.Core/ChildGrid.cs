@@ -165,7 +165,7 @@ public sealed partial class ChildGrid
 
     /// <summary> The child's long text columns by their JSON names: the grid puts them last. </summary>
     /// <summary> The JSON names of the child's stamped dates and times (created, modified): shown with the time of day. </summary>
-    public IReadOnlyList<string> DateTimeJson => Link.ReferencingTableColumns.Where(c => GridCells.KindOf(c, false) == CellKind.DateTime).Select(c => JsonNames.Camel(c.Name)).ToList();
+    public IReadOnlyList<string> DateTimeJson => Link.ReferencingTableColumns.Where(c => c.IsDateTimeCell).Select(c => JsonNames.Camel(c.Name)).ToList();
 
     public IReadOnlyList<string> LongTextJson => Link.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => JsonNames.Camel(c.Name)).ToList();
 

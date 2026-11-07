@@ -57,15 +57,12 @@ public static class ApiSampleValues
         }
         if (c.IsBooleanColumn)
             return "false";
-        switch (c.SqlType)
-        {
-            case SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime: return "\"2026-01-15T00:00:00\"";
-            case SqlDbType.DateTimeOffset: return "\"2026-01-15T00:00:00+00:00\"";
-            case SqlDbType.Time: return "\"08:00:00\"";
-            case SqlDbType.UniqueIdentifier: return "\"00000000-0000-0000-0000-000000000001\"";
-            case SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp: return "\"AA==\"";
-            default: return "null";
-        }
+        if (c.IsLocalDateColumn) return "\"2026-01-15T00:00:00\"";
+        if (c.IsDateTimeOffsetColumn) return "\"2026-01-15T00:00:00+00:00\"";
+        if (c.IsTimeColumn) return "\"08:00:00\"";
+        if (c.IsGuidColumn) return "\"00000000-0000-0000-0000-000000000001\"";
+        if (c.IsBinaryColumn || c.IsRowVersionColumn) return "\"AA==\"";
+        return "null";
     }
 
     /// <summary> The example of a text key: the sample words with no spaces (it goes into a route), cut to the column's length. </summary>

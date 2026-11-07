@@ -31,7 +31,7 @@ public static class ApiClientCode
                 "object" => " = new();",
                 _ => ""
             };
-            string propertyType = tinyIntAsShort && c.SqlType == System.Data.SqlDbType.TinyInt ? (c.IsNullable ? "short?" : "short") : c.CSharp();
+            string propertyType = tinyIntAsShort && c.IsTinyIntColumn ? (c.IsNullable ? "short?" : "short") : c.CSharp();
             // the columns a person fills in (not an audit column, not an identity key, not computed): the attributes CS_Validation writes on the entity's metadata class
             if (project.ApiAnnotations && !c.IsComputed && !c.IsAuditColumn && !(c.IsPrimaryKey && c.IsIdentity))
                 foreach (string attribute in ValidationAttributes.Of(c, project, table.TableName))

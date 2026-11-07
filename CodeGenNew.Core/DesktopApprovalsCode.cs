@@ -78,7 +78,7 @@ public static class DesktopApprovalsCode
 
     private static string PerTable(ApprovalTableShape t, string contextType, bool tenantOwned)
     {
-        string Now(ColumnModel c) => c.SqlType == System.Data.SqlDbType.DateTimeOffset ? "DateTimeOffset.Now" : "DateTime.Now";
+        string Now(ColumnModel c) => c.IsDateTimeOffsetColumn ? "DateTimeOffset.Now" : "DateTime.Now";
         return FillAll(TableText,
             ("§CYCLES", tenantOwned ? CyclesOfVisibleRows : ""), ("§SIDE", tenantOwned ? "Cycles(context)" : "context.Set<§A>()"),
             ("§CTX", contextType), ("§T", t.Table.TableName), ("§A", t.Side.TableName), ("§KT", t.Key.CSharpBase()), ("§K", t.Key.CSharpName()),

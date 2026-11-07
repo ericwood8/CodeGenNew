@@ -66,11 +66,11 @@ public class GuardsAndAttributesEverywhereTests
         var project = Project(Rules);
 
         string sqlServer = await Rendered("SP_Update_v1.tt", Stock(), project);
-        Expect.Contains(sqlServer, "TRY_CAST(@pQuantity AS decimal(38, 10)) < 0 AND NOT EXISTS (SELECT 1 FROM [dbo].[Stock] WHERE [StockId] = @pStockId AND [Quantity] = TRY_CAST(@pQuantity AS decimal(38, 10))))");
-        Expect.Contains(sqlServer, "AND NOT EXISTS (SELECT 1 FROM [dbo].[Stock] WHERE [StockId] = @pStockId AND CAST([ShippedOn] AS DATE) = TRY_CAST(@pShippedOn AS DATE))");
+        Expect.Contains(sqlServer, "TRY_CAST(@plngQuantity AS decimal(38, 10)) < 0 AND NOT EXISTS (SELECT 1 FROM [dbo].[Stock] WHERE [StockId] = @plngStockId AND [Quantity] = TRY_CAST(@plngQuantity AS decimal(38, 10))))");
+        Expect.Contains(sqlServer, "AND NOT EXISTS (SELECT 1 FROM [dbo].[Stock] WHERE [StockId] = @plngStockId AND CAST([ShippedOn] AS DATE) = TRY_CAST(@pdteShippedOn AS DATE))");
 
         string save = await Rendered("SP_Save_v1.tt", Stock(), project);
-        Expect.Contains(save, "@pQuantity < 0 AND NOT EXISTS (SELECT 1 FROM [dbo].[Stock] WHERE [StockId] = @pStockId AND [Quantity] = @pQuantity))");
+        Expect.Contains(save, "@plngQuantity < 0 AND NOT EXISTS (SELECT 1 FROM [dbo].[Stock] WHERE [StockId] = @plngStockId AND [Quantity] = @plngQuantity))");
         string insert = await Rendered("SP_Insert_v1.tt", Stock(), project);
         Expect.DoesNotContain(insert, "NOT EXISTS (SELECT 1 FROM [dbo].[Stock] WHERE [StockId]");
 

@@ -163,13 +163,13 @@ public class KeyTypeTests
     {
         // the statement is built as text, so a text key pasted in unquoted is "Invalid column name 'CAN'" (found by running it) and a quote in it would end the literal
         string text = await Render("SP_Update_v1.tt", CountryWithName());
-        Expect.Contains(text, "' WHERE ([Alpha3Code] = ''' + REPLACE(RTRIM(LTRIM(@pAlpha3Code)), '''', '''''') + ''')';");
+        Expect.Contains(text, "' WHERE ([Alpha3Code] = ''' + REPLACE(RTRIM(LTRIM(@pstrAlpha3Code)), '''', '''''') + ''')';");
 
         string guid = await Render("SP_Update_v1.tt", Sample.AccountRef());
         Expect.Contains(guid, "' WHERE ([AccountRefID] = ''' + REPLACE(RTRIM(LTRIM(");
 
         string number = await Render("SP_Update_v1.tt", Sample.Holiday());
-        Expect.Contains(number, "' WHERE ([HolidayId] = ' + @pHolidayId + ')';");
+        Expect.Contains(number, "' WHERE ([HolidayId] = ' + @plngHolidayId + ')';");
     }
 
     [TestMethod]

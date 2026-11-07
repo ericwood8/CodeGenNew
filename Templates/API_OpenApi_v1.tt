@@ -57,7 +57,7 @@
             if (c.IsNullable)
                 L(pad + "nullable: true");
 
-            if (type == "string" && format is null && c.SqlType != SqlDbType.Time)
+            if (type == "string" && format is null && !c.IsTimeColumn)
             {
                 int chars = c.CharacterLength;
                 if (chars > 0)
@@ -69,7 +69,7 @@
                         L(pad + "  - " + CSharpText.Quote(choice));
                 }
             }
-            else if (c.IsIntegerColumn && (c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
+            else if (c.HasNumericLimits && Project.RangeFor(c) is { } range)
             {
                 L(pad + "minimum: " + range.Min);
                 L(pad + "maximum: " + range.Max);

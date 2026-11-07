@@ -23,7 +23,7 @@
     string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
 
     var badTargets = targets.Where(t => t.Split('.').Length != 2 || t.Split('.').Any(p => p.Length == 0)).ToList();
-    if (Model.Dialect != SqlDialect.SqlServer)
+    if (!Model.IsSqlServer)
     {
         Error("SP_ReplicationTriggers writes T-SQL triggers: it is for a table read from SQL Server.");
     }
@@ -41,7 +41,7 @@
     }
     else
     {
-        bool Unreadable(ColumnModel c) => c.IsComputed || c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image || c.IsRowVersionColumn;
+        bool Unreadable(ColumnModel c) => c.IsComputed || c.IsLargeObjectColumn || c.IsRowVersionColumn;
         var columns = Model.Columns.Where(c => !Unreadable(c)).ToList();
         var key = Model.PrimaryKeyColumns.ToList();
         var nonKey = columns.Where(c => !key.Contains(c)).ToList();

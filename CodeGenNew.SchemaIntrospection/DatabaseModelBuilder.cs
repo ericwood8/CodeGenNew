@@ -26,7 +26,7 @@ public static class DatabaseModelBuilder
         {
             DatabaseName = databaseName,
             SchemaName = schemaName,
-            Dialect = tables.Length > 0 ? tables[0].Dialect : SqlDialect.SqlServer,
+            Dialect = provider.Dialect,
             Tables = [.. tables],
             Views = await provider.ListViewsAsync(schemaName, cancellationToken),
             ServerVersion = await provider.ReadServerVersionAsync(cancellationToken)

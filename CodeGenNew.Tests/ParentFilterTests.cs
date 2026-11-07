@@ -63,10 +63,10 @@ public class ParentFilterTests
     {
         string sql = await Render("SP_Search_v1.tt", Invoice(), Project());
 
-        Expect.Contains(sql, "@SortDescending BIT = 0,\n@pCustomerId int = NULL,\n@pInvoiceStatusId tinyint = NULL\n)");
-        Expect.Contains(sql, "(@pCustomerId IS NULL OR [CustomerId] = @pCustomerId)");
-        Expect.Contains(sql, "(@pInvoiceStatusId IS NULL OR [InvoiceStatusId] = @pInvoiceStatusId)");
-        Expect.Contains(sql, "[SalesInvoice_SearchCount]\n(\n@pCustomerPO nvarchar(30) = NULL,\n@pCustomerId int = NULL,\n@pInvoiceStatusId tinyint = NULL\n)");
+        Expect.Contains(sql, "@SortDescending BIT = 0,\n@plngCustomerId int = NULL,\n@plngInvoiceStatusId tinyint = NULL\n)");
+        Expect.Contains(sql, "(@plngCustomerId IS NULL OR [CustomerId] = @plngCustomerId)");
+        Expect.Contains(sql, "(@plngInvoiceStatusId IS NULL OR [InvoiceStatusId] = @plngInvoiceStatusId)");
+        Expect.Contains(sql, "[SalesInvoice_SearchCount]\n(\n@pstrCustomerPO nvarchar(30) = NULL,\n@plngCustomerId int = NULL,\n@plngInvoiceStatusId tinyint = NULL\n)");
     }
 
     [TestMethod]
@@ -75,11 +75,11 @@ public class ParentFilterTests
         string pg = await Render("SP_Search_v1.tt", Invoice(SqlDialect.PostgreSql), Project());
         string my = await Render("SP_Search_v1.tt", Invoice(SqlDialect.MySql), Project());
 
-        Expect.Contains(pg, "\"SortDescending\" boolean DEFAULT false,\n\"pCustomerId\" int DEFAULT NULL");
-        Expect.Contains(pg, "(\"pCustomerId\" IS NULL OR \"CustomerId\" = \"pCustomerId\")");
+        Expect.Contains(pg, "\"SortDescending\" boolean DEFAULT false,\n\"plngCustomerId\" int DEFAULT NULL");
+        Expect.Contains(pg, "(\"plngCustomerId\" IS NULL OR \"CustomerId\" = \"plngCustomerId\")");
         Expect.Contains(pg, "DROP FUNCTION IF EXISTS \"dbo\".\"SalesInvoice_SearchCount\"(");
-        Expect.Contains(my, "`pCustomerId`");
-        Expect.Contains(my, "(`pCustomerId` IS NULL OR `CustomerId` = `pCustomerId`)");
+        Expect.Contains(my, "`plngCustomerId`");
+        Expect.Contains(my, "(`plngCustomerId` IS NULL OR `CustomerId` = `plngCustomerId`)");
     }
 
     [TestMethod]
@@ -217,8 +217,8 @@ public class ParentFilterTests
         string query = await Render("CS_SearchQuery_v1.tt", table, Project(("AccessMode", "Ef")));
         string pg = await Render("API_Search_v1.tt", Shipment(SqlDialect.PostgreSql), Project());
 
-        Expect.Contains(sql, "@pCountryCode nvarchar(2) = NULL,\n@pRegionId uniqueidentifier = NULL");
-        Expect.Contains(sql, "(@pCountryCode IS NULL OR [CountryCode] = @pCountryCode)");
+        Expect.Contains(sql, "@pstrCountryCode nvarchar(2) = NULL,\n@pguidRegionId uniqueidentifier = NULL");
+        Expect.Contains(sql, "(@pstrCountryCode IS NULL OR [CountryCode] = @pstrCountryCode)");
         Expect.Contains(api, "[FromQuery] string? countryCode,");
         Expect.Contains(api, "[FromQuery] Guid? regionId,");
         Expect.Contains(api, "(object?)(string.IsNullOrEmpty(countryCode) ? null : countryCode) ?? DBNull.Value");

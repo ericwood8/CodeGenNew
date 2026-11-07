@@ -78,7 +78,7 @@
             if (chars > 0 && !c.IsLongTextColumn)
                 Add($"not (isNull {{v}}) && {{v}}.Length > {chars}", $"{label} must be at most {chars} characters.");
         }
-        else if (c.IsIntegerColumn && (c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
+        else if (c.HasNumericLimits && Project.RangeFor(c) is { } range)
         {
             Add($"{{v}} < {Literal(c, range.Min)} || {{v}} > {Literal(c, range.Max)}", $"{label} must be between {range.Min} and {range.Max}.");
         }

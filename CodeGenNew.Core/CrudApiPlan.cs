@@ -69,7 +69,7 @@ public sealed class CrudApiPlan
         SearchTerms = ListSearch ? SearchBox.For(model, project, searchNavigations) : [];
 
         // the column GetAll sorts by: the first date that is always there and that no one sets
-        SortColumn = log is { Timestamp: { IsNullable: false } stamp } && stamp.SqlType != System.Data.SqlDbType.DateTimeOffset ? log.Timestamp : NameActive ? null : model.Columns
+        SortColumn = log is { Timestamp: { IsNullable: false } stamp } && !stamp.IsDateTimeOffsetColumn ? log.Timestamp : NameActive ? null : model.Columns
             .Where(c => IsDate(c) && !c.IsNullable && !c.IsComputed && !c.IsAuditColumn && !c.IsAuditDateColumn)
             .OrderBy(c => c.OrdinalPosition)
             .FirstOrDefault();
@@ -111,7 +111,7 @@ public sealed class CrudApiPlan
 
     private readonly TableModel? _model;
 
-    private static bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+    private static bool IsDate(ColumnModel c) => c.IsLocalDateColumn;
 
     public static CrudApiPlan For(TableModel model, ProjectSettings project) => new(model, project);
 

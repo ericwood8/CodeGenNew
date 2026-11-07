@@ -20,8 +20,8 @@ public static class DesktopEditRows
             return grid.Lookups.Any(l => l.ColumnName.EqualsIgnoreCase(c.Name) && l.ColumnKeyType is not null) ? Cell.Lookup : null;
         if (c.HasChoices) return Cell.Choices;
         if (grid.IsMoneyInput(c)) return Cell.Money;
-        if (FormModel.IsDecimalBox(c)) return Cell.Decimal;
-        if (FormModel.IsWholeNumberBox(c)) return Cell.Whole;
+        if (c.IsDecimalBox) return Cell.Decimal;
+        if (c.IsWholeNumberBox) return Cell.Whole;
         if (c.IsBooleanColumn) return Cell.Boolean;
         if (TemplateHelpers.IsDate(c)) return Cell.Date;
         if (c.IsGuidColumn) return Cell.Guid;
@@ -83,7 +83,7 @@ public static class DesktopEditRows
             string row = RowClass(parent, child.Member), option = OptionClass(parent), entity = entityOf(child);
             var columns = grid.EditColumns;
             string P(ColumnModel c) => c.CSharpName();
-            string Label(ColumnModel c) => Labels.Field(c).Replace("\"", "'");
+            string Label(ColumnModel c) => c.Label.Replace("\"", "'");
             string Time(ColumnModel c) => "_" + TemplateHelpers.LowerFirst(P(c)) + "Time";
 
             var written = o;
@@ -308,7 +308,7 @@ public static class DesktopEditRows
             L("        }");
             L("        var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };");
             foreach (var c in columns)
-                L($"        {FlagIf(grid, c)}header.Children.Add(new TextBlock {{ Text = \"{(GridCaption.For(c, Labels.Field(c)) + (grid.IsMarked(c) ? " *" : "")).Replace("\"", "'")}\", Width = CellWidth, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }});");
+                L($"        {FlagIf(grid, c)}header.Children.Add(new TextBlock {{ Text = \"{(GridCaption.For(c, c.Label) + (grid.IsMarked(c) ? " *" : "")).Replace("\"", "'")}\", Width = CellWidth, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }});");
             L("        header.Children.Add(new TextBlock { Text = \"\", Width = 80 });");
             L("        _lines.Children.Add(header);");
             L("        foreach (var row in _rows.ToList())");
@@ -340,7 +340,7 @@ public static class DesktopEditRows
     private static void Cell1(StringBuilder o, ChildGrid grid, ColumnModel c, ProjectSettings project, string option)
     {
         void L(string s) => o.Append("            ").Append(s).Append('\n');
-        string p = c.CSharpName(), label = Labels.Field(c).Replace("\"", "'"), box = "box" + p;
+        string p = c.CSharpName(), label = c.Label.Replace("\"", "'"), box = "box" + p;
         L("{");
         void Name() => L($"    AutomationProperties.SetName({box}, \"{label}\");");
         switch (Kind(grid, c)!.Value)

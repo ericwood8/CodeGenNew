@@ -184,7 +184,7 @@ public static class EffectiveDatePlan
         }
         var from = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.From));
         var to = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.To));
-        if (from is not { IsDateColumn: true, IsNullable: false } || to is not { IsDateColumn: true } || from.SqlType != to.SqlType)
+        if (from is not { IsDateColumn: true, IsNullable: false } || to is not { IsDateColumn: true } || !from.HasSameTypeAs(to))
         {
             problem = $"{prefix}: {entry.From} (cannot be NULL) and {entry.To} must be date columns of the same type.";
             return null;

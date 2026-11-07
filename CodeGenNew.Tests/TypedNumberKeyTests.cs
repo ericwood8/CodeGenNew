@@ -25,7 +25,7 @@ public class TypedNumberKeyTests
         Assert.IsTrue(form.TypedKey);
         Assert.IsFalse(form.TextKey);
         Assert.AreEqual("TicketNo", form.Columns[0].Name);
-        Assert.AreEqual(FieldKind.TypedNumberKey, form.KindOf(form.Columns[0]));
+        Assert.IsTrue(form.Field(form.Columns[0]).IsTypedNumberKeyField);
         Assert.AreEqual("ticketNo: 0", form.NewRowTypeScript[0]);
     }
 
@@ -46,7 +46,7 @@ public class TypedNumberKeyTests
 
         Assert.IsTrue(form.TypedKey);
         Assert.IsTrue(form.TextKey);
-        Assert.AreEqual(FieldKind.TypedKey, form.KindOf(form.Columns[0]));
+        Assert.IsTrue(form.Field(form.Columns[0]).IsTypedKeyField);
     }
 
     [TestMethod]

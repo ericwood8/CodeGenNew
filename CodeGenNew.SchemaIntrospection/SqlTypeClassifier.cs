@@ -1,3 +1,4 @@
+using CodeGenNew.Core;
 using System.Data;
 
 namespace CodeGenNew.SchemaIntrospection;
@@ -41,22 +42,17 @@ public static class SqlTypeClassifier
         _ => SqlDbType.Variant
     };
 
-    public static bool IsIntegerColumn(SqlDbType t) =>
-        t is SqlDbType.BigInt or SqlDbType.Int or SqlDbType.SmallInt or SqlDbType.TinyInt;
+    public static bool IsIntegerColumn(SqlDbType t) => SqlTypeKinds.IsInteger(t);
 
-    public static bool IsNumericColumn(SqlDbType t) =>
-        t is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
+    public static bool IsNumericColumn(SqlDbType t) => SqlTypeKinds.IsNumeric(t);
 
-    public static bool IsMoneyColumn(SqlDbType t) =>
-        t is SqlDbType.Money or SqlDbType.SmallMoney;
+    public static bool IsMoneyColumn(SqlDbType t) => SqlTypeKinds.IsMoney(t);
 
-    public static bool IsStringColumn(SqlDbType t) =>
-        t is SqlDbType.Char or SqlDbType.NChar or SqlDbType.VarChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText;
+    public static bool IsStringColumn(SqlDbType t) => SqlTypeKinds.IsString(t);
 
-    public static bool IsDateColumn(SqlDbType t) =>
-        t is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime or SqlDbType.DateTimeOffset;
+    public static bool IsDateColumn(SqlDbType t) => SqlTypeKinds.IsDate(t);
 
-    public static bool IsBooleanColumn(SqlDbType t) => t == SqlDbType.Bit;
+    public static bool IsBooleanColumn(SqlDbType t) => SqlTypeKinds.IsBoolean(t);
 
     public static string BuildDeclaration(string sqlTypeName, SqlDbType type, int maxLength, int precision, int scale)
     {

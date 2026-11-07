@@ -87,7 +87,7 @@
         var parents = form.Parents;
         // a parent with too many rows for a drop-down is found by typing: an AutoSuggestBox that asks the context for the rows whose text contains what was typed
         var aheadParents = parents.Where(p => p.TypeAhead).ToList();
-        var aheadColumns = shown.Where(c => form.KindOf(c) == FieldKind.Lookup && form.ParentOf(c) is { TypeAhead: true }).ToList();
+        var aheadColumns = shown.Where(c => form.Field(c).IsLookupField && form.ParentOf(c) is { TypeAhead: true }).ToList();
 
         if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
             Error("UNO_DetailScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
@@ -193,7 +193,7 @@ using <#= modelsNamespace #>;
 using <#= servicesNamespace #>;
 using Microsoft.UI.Xaml.Controls;
 <#
-        var currencyColumns = shown.Where(c => form.ValueOf(c) == ValueKind.Money).ToList();
+        var currencyColumns = shown.Where(c => form.Field(c).IsMoneyValue).ToList();
         foreach (string u in usings)
         {
 #>
@@ -223,7 +223,7 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
         }
 #>
 <#
-        foreach (var c in shown.Where(c => form.ValueOf(c) == ValueKind.Decimal && c.SqlType == SqlDbType.Decimal))
+        foreach (var c in shown.Where(c => form.Field(c).IsDecimalValue && c.IsDecimalColumn))
         {
 #>
         <#= c.Name #>Box.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter
@@ -281,7 +281,7 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
         }
     }
 <#
-        foreach (var c in shown.Where(c => form.ValueOf(c) == ValueKind.Date && c.IsNullable))
+        foreach (var c in shown.Where(c => form.Field(c).IsDateValue && c.IsNullable))
         {
 #>
 
@@ -429,14 +429,14 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
 <#
         foreach (var c in shown)
         {
-            var value = form.ValueOf(c);
+            var formColumn = form.Field(c);
             string prop = c.Name;
             string fieldType = DesktopFormCode.FieldType(form, c);
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
 <#
-            if (value == ValueKind.Date)
+            if (formColumn.IsDateValue)
             {
 #>
     private TimeSpan _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #>Time; // the time of day a stored date-and-time had: the calendar edits only the date

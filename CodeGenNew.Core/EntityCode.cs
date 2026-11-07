@@ -11,7 +11,7 @@ public sealed record EntityMembers(string Body, bool UsesSchema);
 public static class EntityCode
 {
     /// <summary> A date shown and edited as a date, whatever time of day it holds. </summary>
-    private static bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+    private static bool IsDate(ColumnModel c) => c.IsLocalDateColumn;
 
     /// <summary> The members of the entity class of <paramref name="model"/> (a table with a primary key). </summary>
     public static EntityMembers Of(TableModel model, ProjectSettings project)
@@ -96,7 +96,7 @@ public static class EntityCode
             bool isBit = c.IsBooleanColumn;
             string words = CSharpText.Escape(c.FlagWords);
             int chars = c.CharacterLength;
-            bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+            bool isText = c.IsPlainTextColumn;
             bool multiline = isText && chars >= 100;
             string? columnType = null;
 
@@ -106,26 +106,26 @@ public static class EntityCode
                 B("    [DisplayFormat(DataFormatString = \"{0:MM/dd/yyyy}\")]");
                 B("    [DataType(DataType.Date)]");
                 // PostgreSQL: Npgsql maps a DateTime to "timestamp with time zone" (UTC only) unless the column type is said: timestamp (no zone) or date.
-                if (model.Dialect == SqlDialect.PostgreSql)
+                if (model.IsPostgreSql)
                     columnType = c.SqlTypeDeclaration;
             }
             else if (c.IsMoneyColumn)
             {
                 B("    [DisplayFormat(ApplyFormatInEditMode = true)]");
                 B("    [DataType(DataType.Currency)]");
-                columnType = c.SqlType == SqlDbType.Money ? "money" : "smallmoney";
+                columnType = c.IsSmallMoneyColumn ? "smallmoney" : "money";
             }
-            else if (c.SqlType == SqlDbType.Decimal)
+            else if (c.IsDecimalColumn)
             {
                 int scale = c.Scale ?? 0;
                 B($"    [DisplayFormat(ApplyFormatInEditMode = true, DataFormatString = \"#0{(scale > 0 ? "." + new string('0', scale) : "")}\")]");
-                if (!(model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration == "numeric")) // a bare PostgreSQL numeric has no precision to state
+                if (!(model.IsPostgreSql && c.SqlTypeDeclaration == "numeric")) // a bare PostgreSQL numeric has no precision to state
                     B($"    [Precision({c.Precision ?? 18}, {scale})]");
             }
             else if (isText)
             {
                 // PostgreSQL json / jsonb arrive as a string column; the column type has to be said or Npgsql sends text.
-                if (model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
+                if (model.IsPostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
                     columnType = c.SqlTypeDeclaration;
                 if (chars > 0)
                     B($"    [StringLength({chars})]");

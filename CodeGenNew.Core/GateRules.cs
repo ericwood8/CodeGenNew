@@ -184,8 +184,8 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
         .Where(t => !Tables.Any(g => g.Table == t)).Distinct().ToList();
 
     /// <summary> Whether a guard's stamp-on column is a date, or a date and time: what a Python file needs to import. </summary>
-    public bool StampsDate => Guards.Any(g => g.StampOn is { SqlType: System.Data.SqlDbType.Date });
-    public bool StampsDateTime => Guards.Any(g => g.StampOn is { } on && on.SqlType != System.Data.SqlDbType.Date);
+    public bool StampsDate => Guards.Any(g => g.StampOn is { IsDateOnlyColumn: true });
+    public bool StampsDateTime => Guards.Any(g => g.StampOn is { } on && !on.IsDateOnlyColumn);
 
     /// <summary> The rules that fit the schema, and a sentence for each one that does not. </summary>
     public static GatePlan Resolve(DatabaseModel database, ProjectSettings project)

@@ -12,7 +12,7 @@
     // CREATE CAST ... WITH INOUT AS ASSIGNMENT per enum type a column uses, from text and from character varying; a label the enum does not have
     // is still refused. Running it again changes nothing. codegen never applies it: review the script and run it yourself (psql -f EnumCasts.sql).
 
-    if (Database.Dialect != SqlDialect.PostgreSql)
+    if (!Database.IsPostgreSql)
     {
         Error("SP_EnumCasts is for PostgreSQL (native enum types); this database has none.");
     }

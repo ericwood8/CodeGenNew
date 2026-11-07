@@ -49,7 +49,7 @@
         // ==== assemble
         var headUsings = usings.ToList();
         // a table outside the database's default schema (Production.Product) needs its schema said, or EF looks for dbo.Product
-        bool outsideDefaultSchema = (Model.Dialect == SqlDialect.SqlServer && !Model.SchemaName.EqualsIgnoreCase("dbo")) || (Model.Dialect == SqlDialect.PostgreSql && !Model.SchemaName.EqualsIgnoreCase("public"));
+        bool outsideDefaultSchema = (Model.IsSqlServer && !Model.SchemaName.EqualsIgnoreCase("dbo")) || (Model.IsPostgreSql && !Model.SchemaName.EqualsIgnoreCase("public"));
         if (Model.DatabaseTableName is not null || outsideDefaultSchema) usesSchema = true; // [Table("customer_item")] below
         if (usesSchema && !headUsings.Contains("System.ComponentModel.DataAnnotations.Schema"))
             headUsings.Insert(0, "System.ComponentModel.DataAnnotations.Schema");

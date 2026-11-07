@@ -16,7 +16,7 @@ public class BlazorFieldLimitsTests
     [
         Sample.Column("PayId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
         Sample.Column("Title", SqlDbType.NVarChar, characters: 50, ordinal: 2),
-        Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month, ordinal: 3),
+        Sample.Column("MonthNumber", SqlDbType.Int, ordinal: 3),
         Sample.Column("Bonus", SqlDbType.Decimal, precision: 18, scale: 2, ordinal: 4, currency: true),
         Sample.Column("Hours", SqlDbType.Int, ordinal: 5),
         Sample.Column("BornOn", SqlDbType.Date, ordinal: 6)

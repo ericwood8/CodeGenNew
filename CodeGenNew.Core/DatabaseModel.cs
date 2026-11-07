@@ -7,6 +7,8 @@ public class DatabaseModel
     public required string DatabaseName { get; init; }
     public required string SchemaName { get; init; }
     public SqlDialect Dialect { get; init; } = SqlDialect.SqlServer;
+    /// <summary> The database is PostgreSQL. </summary>
+    public bool IsPostgreSql => Dialect == SqlDialect.PostgreSql;
     public required List<TableModel> Tables { get; init; }
 
     /// <summary> The server's own version text (<c>SELECT VERSION()</c>: <c>8.0.36</c>, <c>10.11.6-MariaDB-0ubuntu0.23.10.2</c>); null when the provider does not read it. </summary>

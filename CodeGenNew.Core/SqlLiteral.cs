@@ -27,7 +27,7 @@ public static class SqlLiteral
             case float f:
                 return TemplateHelpers.Num(f);
             case DateTime dt:
-                return "'" + dt.ToString(DateFormatFor(column.SqlType), CultureInfo.InvariantCulture) + "'";
+                return "'" + dt.ToString(DateFormatFor(column), CultureInfo.InvariantCulture) + "'";
             case DateTimeOffset dto:
                 return "'" + dto.ToString("yyyy-MM-ddTHH:mm:ss.fffffffzzz", CultureInfo.InvariantCulture) + "'";
             case TimeSpan ts:
@@ -45,7 +45,7 @@ public static class SqlLiteral
     {
         // N-prefix for Unicode columns, and for any string holding a non-ASCII character even in a (n)varchar
         // column, so the literal can never be mangled by the script file's / session's code page.
-        bool unicode = column.SqlType is SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.NText or SqlDbType.Xml
+        bool unicode = column.IsUnicodeTextColumn
                        || text.Any(ch => ch > 127);
         var sb = new StringBuilder(text.Length + 3);
         if (unicode)
@@ -55,11 +55,9 @@ public static class SqlLiteral
     }
 
     // The 'T' separator form is the ISO 8601 format SQL Server reads the same under every SET DATEFORMAT / language.
-    private static string DateFormatFor(SqlDbType type) => type switch
-    {
-        SqlDbType.Date => "yyyy-MM-dd",
-        SqlDbType.SmallDateTime => "yyyy-MM-ddTHH:mm:ss",
-        SqlDbType.DateTime2 => "yyyy-MM-ddTHH:mm:ss.fffffff",
-        _ => "yyyy-MM-ddTHH:mm:ss.fff" // datetime
-    };
+    private static string DateFormatFor(ColumnModel column) =>
+        column.IsDateOnlyColumn ? "yyyy-MM-dd"
+        : column.IsSmallDateTimeColumn ? "yyyy-MM-ddTHH:mm:ss"
+        : column.IsDateTime2Column ? "yyyy-MM-ddTHH:mm:ss.fffffff"
+        : "yyyy-MM-ddTHH:mm:ss.fff"; // datetime
 }

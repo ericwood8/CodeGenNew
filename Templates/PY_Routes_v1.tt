@@ -465,7 +465,7 @@
         if (log)
         {
             // SQLite keeps a date and time as text, and a value without a fraction sorts before the same value with one, so both sides go through datetime() there
-            bool sqlite = Model.Dialect == SqlDialect.Sqlite;
+            bool sqlite = Model.IsSqlite;
             string Side(string expression) => sqlite ? $"func.datetime({expression})" : expression;
             Line("    # the first and the last day, both included");
             Line("    if range_from is not None:");

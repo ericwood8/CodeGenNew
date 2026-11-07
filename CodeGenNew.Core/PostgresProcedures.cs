@@ -36,10 +36,10 @@ public static class PostgresProcedures
     /// Blank text is no value of those types, so it becomes NULL (an empty array for an array column that cannot be NULL). </summary>
     private static string NativeTyped(ColumnModel c, string expression)
     {
-        if (c.DbTextType is { } textType)
+        if (c.IsPgTextColumn)
             return c.PgText is { Family: PgTextFamily.Array } && !c.IsNullable
-                ? $"COALESCE(NULLIF({expression}, '')::{textType}, '{{}}')"
-                : $"NULLIF({expression}, '')::{textType}";
+                ? $"COALESCE(NULLIF({expression}, '')::{c.DbTextType}, '{{}}')"
+                : $"NULLIF({expression}, '')::{c.DbTextType}";
         if (c.DbEnumType is not { } type)
             return expression;
         int dot = type.IndexOf('.');

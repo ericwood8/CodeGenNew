@@ -43,7 +43,7 @@ public sealed record ApprovalTestSeed(ApprovalTableShape Table, IReadOnlyList<st
         string? Literal(ColumnModel c, TableModel t)
         {
             string json = c.ValidExample(project, t.TableName);
-            if (json == "null" || c.SqlType is System.Data.SqlDbType.Binary or System.Data.SqlDbType.VarBinary or System.Data.SqlDbType.Image)
+            if (json == "null" || c.IsBinaryColumn)
                 return null;
             if (json is "true" or "false")
                 return Bool(json == "true");

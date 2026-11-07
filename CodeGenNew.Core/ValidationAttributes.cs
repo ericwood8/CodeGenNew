@@ -12,7 +12,7 @@ public static class ValidationAttributes
         var attributes = new List<string>();
         string words = CSharpText.Escape(column.FlagWords);
         int chars = column.CharacterLength;
-        bool isText = column.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+        bool isText = column.IsPlainTextColumn;
         var rule = column.RuleOf(project, table);
 
         if (!column.IsNullable)
@@ -38,7 +38,7 @@ public static class ValidationAttributes
 
         // A whole-number column whose name says what it holds (a year, a month, a percentage, ...) gets that range; every other integer keeps the plain limits of its SQL type, which a [Range] would
         // only repeat. A decimal gets the bounds of its CHECK constraint, the project's NonNegativeColumns or the degrees of a latitude / longitude, and the side with no bound is the type's own.
-        if ((column.NumericKind != NumericKind.None || column.Check is not null) && project.RangeFor(column) is { } range)
+        if (column.HasNumericLimits && project.RangeFor(column) is { } range)
             attributes.Add($"[Range({range.Min}, {range.Max})]");
         else if ((column.IsNumericColumn || column.IsMoneyColumn) && rule is { HasRange: true })
             attributes.Add($"[Range({(rule.Min is { } lo ? Number(lo) : "double.MinValue")}, {(rule.Max is { } hi ? Number(hi) : "double.MaxValue")})]");

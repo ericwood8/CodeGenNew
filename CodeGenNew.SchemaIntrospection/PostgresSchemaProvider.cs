@@ -19,7 +19,7 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
         _connectionRequest = connectionRequest;
     }
 
-    protected override SqlDialect Dialect => SqlDialect.PostgreSql;
+    public override SqlDialect Dialect => SqlDialect.PostgreSql;
 
     protected override async Task<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {

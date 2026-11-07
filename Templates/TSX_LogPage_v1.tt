@@ -55,7 +55,7 @@
         var sortableColumns = columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
         string Shown(ColumnModel c, string jsx) => "{show('" + c.Name + "') && " + jsx + "}";
         // the parents whose names a cell shows: a drop-down parent's rows are read once (a parent with too many rows shows its key)
-        var cellParents = columnList.Where(c => form.CellOf(c.Column) == CellKind.Lookup && form.ParentOf(c.Column) is { TypeAhead: false }).Select(c => form.ParentOf(c.Column)!)
+        var cellParents = columnList.Where(c => form.Field(c.Column).IsLookupCell && form.ParentOf(c.Column) is { TypeAhead: false }).Select(c => form.ParentOf(c.Column)!)
             .Concat(keyFilters.Select(k => k.Parent)).GroupBy(p => p.NameMethod).Select(g => g.First()).ToList();
         string filterInit = string.Join(", ", textFields.Select(f => f.ParamName).Concat(keyFilters.Select(k => k.ParamName)).Concat(dateFields.Select(f => f.ParamName)).Select(n => $"{n}: ''"));
 
@@ -241,16 +241,16 @@
         {
             var c = column.Column;
             string prop = $"{row}.{JsonNames.Camel(c.Name)}";
-            var cellKind = form.CellOf(c);
+            var formColumn = form.Field(c);
             string q = c.IsNullable ? "?" : "";
             // A nullable column's value may be undefined: optional chaining keeps a strict build compiling.
-            if (cellKind == CellKind.Lookup && form.ParentOf(c)!.TypeAhead) return $"{{{prop}}}";
-            if (cellKind == CellKind.Lookup) return $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
-            if (cellKind == CellKind.Boolean) return $"{{{prop} ? 'Yes' : 'No'}}";
-            if (cellKind == CellKind.Date) return $"{{{prop}{q}.substring(0, 10)}}";
-            if (cellKind == CellKind.DateTime) return $"{{{prop}{q}.substring(0, 16).replace('T', ' ')}}";
-            if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); return $"{{{prop}{q}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
-            if (cellKind == CellKind.Decimal) return $"{{{prop}{q}.toFixed(2)}}";
+            if (formColumn.IsLookupCell && form.ParentOf(c)!.TypeAhead) return $"{{{prop}}}";
+            if (formColumn.IsLookupCell) return $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
+            if (formColumn.IsBooleanCell) return $"{{{prop} ? 'Yes' : 'No'}}";
+            if (formColumn.IsDateCell) return $"{{{prop}{q}.substring(0, 10)}}";
+            if (formColumn.IsDateTimeCell) return $"{{{prop}{q}.substring(0, 16).replace('T', ' ')}}";
+            if (formColumn.IsMoneyCell) { int d = NumericClassifier.CurrencyDigits(c); return $"{{{prop}{q}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
+            if (formColumn.IsDecimalCell) return $"{{{prop}{q}.toFixed(2)}}";
             return cut && column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
         }
         foreach (var column in columnList)
@@ -354,7 +354,7 @@
         S($"    expect({apiVar}.getPage).toHaveBeenLastCalledWith(1, 20, expect.objectContaining({{ {dateFields[0].ParamName}: '' }}), null);");
         S("  });");
         // a row to show: the long text of the first text column is what the grid cuts and the dialog must show whole
-        var longColumn = columnList.Select(c => c.Column).FirstOrDefault(c => c.IsStringColumn && c != queue?.Status && form.CellOf(c) == CellKind.Plain);
+        var longColumn = columnList.Select(c => c.Column).FirstOrDefault(c => c.IsStringColumn && c != queue?.Status && form.Field(c).IsPlainCell);
         if (longColumn is not null)
         {
             string viewRow = "{ " + string.Join(", ", Model.Columns.Select(c => c == form.KeyColumn ? $"{keyProp}: 7" : c == longColumn ? $"{JsonNames.Camel(c.Name)}: 'Long message. '.repeat(30)" : $"{JsonNames.Camel(c.Name)}: {c.ValidExample(Project, Model.TableName)}")) + " }";

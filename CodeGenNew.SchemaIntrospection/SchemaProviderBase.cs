@@ -8,6 +8,9 @@ namespace CodeGenNew.SchemaIntrospection;
 /// populated TableModel. One implementation per database (SQL Server, PostgreSQL, MySQL, SQLite). </summary>
 public interface ISchemaProvider
 {
+    /// <summary> The dialect of the database the provider reads. </summary>
+    SqlDialect Dialect { get; }
+
     Task<List<TableSummary>> ListTablesAsync(CancellationToken cancellationToken = default);
     Task<List<ColumnSummary>> ListColumnSummariesAsync(string schemaName, string tableName, CancellationToken cancellationToken = default);
     Task<TableModel> BuildTableModelAsync(string schemaName, string tableName, bool includeRowData = false,
@@ -154,7 +157,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
     protected string Named(string databaseName) => NameConverter.Apply(_naming, databaseName, _acronyms);
     private static string? WhenDifferent(string databaseName, string named) => databaseName == named ? null : databaseName;
 
-    protected abstract SqlDialect Dialect { get; }
+    public abstract SqlDialect Dialect { get; }
     protected abstract Task<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken);
     protected abstract string Quote(string name);
     /// <summary> What the database says about the table itself (its comment); null when nothing. A database without table comments need not override it. </summary>
@@ -524,8 +527,6 @@ public abstract class SchemaProviderBase : ISchemaProvider
             Name = name,
             DatabaseName = WhenDifferent(raw.Name, name),
             QuotedName = Quote(raw.Name),
-            IsReservedWordName = raw.Name.IsSqlReservedWord(),
-            IsCSharpReservedWordName = name.IsCSharpReservedWord(),
             SqlType = sqlType,
             SqlTypeDeclaration = raw.DeclarationOverride ?? SqlTypeClassifier.BuildDeclaration(raw.SqlTypeName, sqlType, raw.MaxLength, raw.Precision, raw.Scale),
             MaxLength = maxLength,
@@ -538,17 +539,10 @@ public abstract class SchemaProviderBase : ISchemaProvider
             IdentityIncrement = raw.IdentityIncrement,
             IsPrimaryKey = raw.IsPrimaryKey,
             IsInUniqueIndex = raw.IsInUniqueIndex,
-            IsComputed = raw.ComputedDefinition is not null,
             ComputedDefinition = raw.ComputedDefinition,
             DatabaseDefaultSql = raw.DefaultDefinition,
             SuggestedCSharpDefaultValueLiteral = ColumnDefaultResolver.Resolve(
                 raw.Name, sqlType, raw.DefaultForCSharp ?? raw.DefaultDefinition, isBoolean, isDate, isMoney, isNumeric, isInteger, isString),
-            IsIntegerColumn = isInteger,
-            IsNumericColumn = isNumeric,
-            IsMoneyColumn = isMoney,
-            IsStringColumn = isString,
-            IsDateColumn = isDate,
-            IsBooleanColumn = isBoolean,
             Choices = raw.Choices ?? ListFromChecks(raw, isString),
             DbEnumType = raw.EnumType,
             DbTextType = raw.TextType,
@@ -560,9 +554,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             CheckNotation = isString ? TextFromChecks(raw) : null,
             NotBeforeColumn = isDate && DateOrderFromChecks(raw) is { } startColumn ? Named(startColumn) : null,
             Description = raw.Description,
-            NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
             IsCurrencyColumn = isMoney || (sqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real && IsCurrency(raw, sqlType, name, tableName)),
-            IsAuditColumn = name.IsAuditColumn(),
             IsCreateDateColumn = isDate && MatchesCategory(rules, "CreateDateColumn", name),
             DisplayRank = IsDisplayEligibleType(sqlType) ? RankInCategory(rules, "DisplayColumn", name) : null,
             IsCreateUserColumn = MatchesCategory(rules, "CreateUserColumn", name),
@@ -571,8 +563,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             IsLastChangedDateColumn = isDate && MatchesCategory(rules, "LastChangedDateColumn", name),
             IsInactiveReasonColumn = MatchesCategory(rules, "InactiveReasonColumn", name),
             IsAdminFlagColumn = MatchesCategory(rules, "AdminFlagColumn", name),
-            IsFilePathColumn = MatchesCategory(rules, "FilePathColumn", name),
-            ParameterName = name.ToSqlParameterName(sqlType)
+            IsFilePathColumn = MatchesCategory(rules, "FilePathColumn", name)
         };
     }
 

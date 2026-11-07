@@ -99,9 +99,9 @@ public static class DesktopSingleRowPage
     public static string Formatters(FormModel form, ProjectSettings project)
     {
         var o = new StringBuilder();
-        foreach (var c in form.Columns.Where(c => form.ValueOf(c) == ValueKind.Money))
+        foreach (var c in form.Columns.Where(c => form.Field(c).IsMoneyValue))
             o.Append($"        {c.Name}Box.NumberFormatter = new CurrencyNumberFormatter(\"{project.CurrencyCode}\", {NumericClassifier.CurrencyDigits(c)});\n");
-        foreach (var c in form.Columns.Where(c => form.ValueOf(c) == ValueKind.Decimal && c.SqlType == SqlDbType.Decimal))
+        foreach (var c in form.Columns.Where(c => form.Field(c).IsDecimalValue && c.IsDecimalColumn))
         {
             o.Append($"        {c.Name}Box.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter\n");
             o.Append("        {\n");
@@ -130,7 +130,7 @@ public static class DesktopSingleRowPage
         L("        StatusText.Text = \"\";");
         L("        await ReloadAsync();");
         L("    }");
-        foreach (var c in form.Columns.Where(c => form.KindOf(c) == FieldKind.Lookup && form.ParentOf(c) is { TypeAhead: true }))
+        foreach (var c in form.Columns.Where(c => form.Field(c).IsLookupField && form.ParentOf(c) is { TypeAhead: true }))
         {
             var p = form.ParentOf(c)!;
             L();
@@ -149,7 +149,7 @@ public static class DesktopSingleRowPage
             L($"            ViewModel.{c.Name} = (({WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs)})args.SelectedItem).Id;");
             L("    }");
         }
-        foreach (var c in form.Columns.Where(c => form.ValueOf(c) == ValueKind.Date && c.IsNullable))
+        foreach (var c in form.Columns.Where(c => form.Field(c).IsDateValue && c.IsNullable))
         {
             L();
             L("    // CalendarDatePicker has no clear button of its own; a nullable date gets one beside it.");

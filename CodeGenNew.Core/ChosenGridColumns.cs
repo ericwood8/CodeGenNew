@@ -31,7 +31,7 @@ public sealed class ChosenGridColumns
         var initial = form.GridColumns.ToHashSet();
         return new ChosenGridColumns(form.Columns
             .Select(c => new ChosenColumn(
-                c, c.Name, JsonNames.Camel(c.Name), Labels.Field(c), GridCaption.For(c, Labels.Field(c)),
+                c, c.Name, JsonNames.Camel(c.Name), c.Label, GridCaption.For(c, c.Label),
                 initial.Contains(c), SearchSort.IsSortable(c), c.IsLongTextColumn || TemplateHelpers.IsMultiline(c), ODataFilterFields.Of(form, c)))
             .ToList());
     }

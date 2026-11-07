@@ -22,7 +22,7 @@
     string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
     string[] periodNames = ["SysStartTime", "SysEndTime"];
 
-    if (Model.Dialect != SqlDialect.SqlServer)
+    if (!Model.IsSqlServer)
     {
         Error("SP_TemporalTable writes SQL Server system-versioned tables: it is for a table read from SQL Server (SP_AuditTable works on every database).");
     }
@@ -34,7 +34,7 @@
     {
         Error($"{Model.TableName} has no primary key: a temporal table needs one.");
     }
-    else if (Model.Columns.FirstOrDefault(c => c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image) is { } unsupported)
+    else if (Model.Columns.FirstOrDefault(c => c.IsLargeObjectColumn) is { } unsupported)
     {
         Error($"{Model.TableName}.{unsupported.DbName} is {unsupported.SqlTypeDeclaration}: a temporal table cannot hold text, ntext or image columns.");
     }

@@ -1,7 +1,7 @@
 using System.Data;
 using System.Text;
 
-namespace CodeGenNew.SchemaIntrospection;
+namespace CodeGenNew.Core;
 
 /// <summary> Builds Hungarian-prefixed SQL parameter names matching the convention in the original
 /// ProductionUnitMaster_Update worked example (Docs/Reference.md section 7). </summary>

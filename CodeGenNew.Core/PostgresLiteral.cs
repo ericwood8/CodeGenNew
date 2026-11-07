@@ -25,7 +25,7 @@ public static class PostgresLiteral
             case float f:
                 return TemplateHelpers.Num(f);
             case DateTime dt:
-                return "'" + dt.ToString(column.SqlType == System.Data.SqlDbType.Date ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss.ffffff", CultureInfo.InvariantCulture) + "'";
+                return "'" + dt.ToString(column.IsDateOnlyColumn ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss.ffffff", CultureInfo.InvariantCulture) + "'";
             case DateOnly date:
                 return "'" + date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + "'";
             case DateTimeOffset dto:

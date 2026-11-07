@@ -51,20 +51,20 @@ public sealed class DesktopTestPlan
         var wholeDone = false;
         foreach (var c in form.Columns)
         {
-            var kind = form.ValueOf(c);
+            var formColumn = form.Field(c);
             string label = Labels.Column(c.Name);
-            if (required is null && !c.IsNullable && kind != ValueKind.Boolean)
+            if (required is null && !c.IsNullable && !formColumn.IsBooleanValue)
                 required = label + " is required.";
-            if (kind == ValueKind.Text && c.RuleOf(project, table.TableName) is { Shape: not TextShape.None } rule)
+            if (formColumn.IsTextValue && c.RuleOf(project, table.TableName) is { Shape: not TextShape.None } rule)
                 refusals.Add(new($"Refuses_a_{Name(c)}_that_is_not_{ColumnRules.NounOf(rule).Replace(' ', '_')}", $"model.{c.Name} = \"!?!\";", $"{label} is not {ColumnRules.NounOf(rule)}."));
-            if (kind == ValueKind.Date)
+            if (formColumn.IsDateValue)
             {
                 if (c.RuleOf(project, table.TableName) is { NotFuture: true })
                     refusals.Add(new($"Refuses_a_{Name(c)}_later_than_today", $"model.{c.Name} = DateTimeOffset.Now.AddYears(5);", $"{label} must not be later than today."));
-                if (DatePairs.EndingAt(table, project, c) is { } pair && form.Columns.Contains(pair.Start) && form.ValueOf(pair.Start) == ValueKind.Date)
+                if (DatePairs.EndingAt(table, project, c) is { } pair && form.Columns.Contains(pair.Start) && form.Field(pair.Start).IsDateValue)
                     refusals.Add(new($"Refuses_a_{Name(c)}_before_the_{Name(pair.Start)}", $"model.{c.Name} = model.{pair.Start.Name}!.Value.AddDays(-1);", pair.Message));
             }
-            if (kind == ValueKind.WholeNumber && !wholeDone && project.RangeFor(c) is not null)
+            if (formColumn.IsWholeNumberValue && !wholeDone && project.RangeFor(c) is not null)
             {
                 wholeDone = true;
                 refusals.Add(new($"Refuses_a_{Name(c)}_that_is_not_whole", $"model.{c.Name} = 1.5;", $"{label} must be a whole number."));

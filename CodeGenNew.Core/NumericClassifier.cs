@@ -65,21 +65,18 @@ public static class NumericClassifier
     public static int DecimalPlaces(ColumnModel column) => Math.Clamp(column.Scale ?? 2, 0, 8);
 
     /// <summary> The C# keyword for a numeric column's value (<c>int</c>, <c>long</c>, <c>decimal</c> ...); <c>int</c> for anything else. </summary>
-    public static string NumericCSharpType(ColumnModel column) => column.SqlType switch
-    {
-        SqlDbType.Int => "int", SqlDbType.BigInt => "long", SqlDbType.SmallInt => "short", SqlDbType.TinyInt => "byte",
-        SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Decimal => "decimal",
-        SqlDbType.Float => "double", SqlDbType.Real => "float", _ => "int"
-    };
+    public static string NumericCSharpType(ColumnModel column) =>
+        column.IsInt32Column ? "int" : column.IsBigIntColumn ? "long" : column.IsSmallIntColumn ? "short" : column.IsTinyIntColumn ? "byte"
+        : column.IsMoneyColumn || column.IsDecimalColumn ? "decimal" : column.IsFloatColumn ? "double" : column.IsRealColumn ? "float" : "int";
 
     /// <summary> How many decimal places a currency column is shown with: the column's own scale for a decimal, two for money / smallmoney
     /// (whose four stored places are never what people read). </summary>
     public static int CurrencyDigits(ColumnModel column) =>
-        column.SqlType is SqlDbType.Decimal && column.SqlTypeDeclaration != "numeric" ? Math.Clamp(column.Scale ?? 2, 0, 8) : 2;   // a bare PostgreSQL numeric has no scale to follow
+        column.IsDecimalColumn && column.SqlTypeDeclaration != "numeric" ? Math.Clamp(column.Scale ?? 2, 0, 8) : 2;   // a bare PostgreSQL numeric has no scale to follow
 
     /// <summary> The largest number a decimal column can hold (decimal(5,2) holds 999.99), or null for a column that is not a decimal with a precision. </summary>
     public static double? DecimalTypeLimit(ColumnModel column) =>
-        column.SqlType == SqlDbType.Decimal && column.Precision is { } precision && column.Scale is { } scale
+        column.IsDecimalColumn && column.Precision is { } precision && column.Scale is { } scale
             ? Math.Round(Math.Pow(10, precision - scale) - Math.Pow(10, -scale), scale)
             : null;
 
@@ -89,7 +86,7 @@ public static class NumericClassifier
     {
         double max = DecimalTypeLimit(column) ?? 1e15;
         double min = -max;
-        if (Classify(column.Name) == NumericKind.Percentage)
+        if (column.IsPercentage)
         {
             min = 0;
             max = Math.Min(max, 100);

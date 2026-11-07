@@ -139,7 +139,7 @@ public sealed class PythonTable
     public PythonField FieldOf(ColumnModel column) => Fields.First(f => f.Column.Name.EqualsIgnoreCase(column.Name));
 
     /// <summary> The Python expression for "now" in a date field's type. </summary>
-    public static string Now(PythonField field) => field.Column.SqlType == SqlDbType.Date ? "date.today()" : "datetime.now()";
+    public static string Now(PythonField field) => field.Column.IsDateOnlyColumn ? "date.today()" : "datetime.now()";
 
     public IReadOnlyList<PythonFilter> Filters { get; }
 
@@ -182,52 +182,50 @@ public sealed class PythonTable
         }
 
         // MySQL: a spatial column is read as well-known text and written from it; a bit(n) column is read as the number its bits make (the driver would hand over bytes)
-        if (dialect == SqlDialect.MySql && column.DbSpatialType is not null)
+        if (dialect == SqlDialect.MySql && column.IsSpatialColumn)
             return ("str", $"MySqlSpatial({column.DbSrid})");
-        if (dialect == SqlDialect.MySql && column.DbBitWidth is { } bits)
-            return bits < 64 ? ("int", "MySqlBit(False)") : ("Decimal", "MySqlBit(True)");
+        if (dialect == SqlDialect.MySql && column.IsBitColumn)
+            return column.DbBitWidth < 64 ? ("int", "MySqlBit(False)") : ("Decimal", "MySqlBit(True)");
 
-        if (dialect == SqlDialect.PostgreSql && column.DbTextType is { } textType)
-            return ("str", $"PgText({PythonNames.Str(textType)})");
+        if (dialect == SqlDialect.PostgreSql && column.IsPgTextColumn)
+            return ("str", $"PgText({PythonNames.Str(column.DbTextType!)})");
 
-        switch (column.SqlType)
+        if (column.IsInt32Column)
+            return ("int", declaration.Contains("unsigned") ? "BigInteger" : "Integer");
+        if (column.IsBigIntColumn)
+            return ("int", "BigInteger");
+        if (column.IsSmallIntColumn && declaration == "year")
+            return ("int", "YEAR");
+        if (column.IsSmallIntColumn || column.IsTinyIntColumn)
+            return ("int", "SmallInteger");
+        if (column.IsBooleanColumn)
+            return ("bool", "Boolean");
+        if (column.IsMoneyColumn && dialect == SqlDialect.PostgreSql)
+            return null;
+        if (column.IsMoneyColumn)
+            return ("Decimal", "Numeric(19, 4)");
+        if (column.IsDecimalColumn)
+            return ("Decimal", column.Precision is { } p && p > 0 ? $"Numeric({p}, {column.Scale ?? 0})" : "Numeric");
+        if (column.IsFloatColumn || column.IsRealColumn)
+            return ("float", "Float");
+        if (column.IsDateOnlyColumn)
+            return ("date", "Date");
+        if (column.IsDateTimeColumn)
+            return ("datetime", "DateTime");
+        if (column.IsDateTimeOffsetColumn)
+            return ("datetime", "DateTime(timezone=True)");
+        if (column.IsTimeColumn)
+            return ("time", "Time");
+        if (column.IsGuidColumn)
+            return ("UUID", "Uuid");
+        if (column.IsPlainTextColumn)
         {
-            case SqlDbType.Int:
-                return ("int", declaration.Contains("unsigned") ? "BigInteger" : "Integer");
-            case SqlDbType.BigInt:
-                return ("int", "BigInteger");
-            case SqlDbType.SmallInt when declaration == "year":
-                return ("int", "YEAR");
-            case SqlDbType.SmallInt or SqlDbType.TinyInt:
-                return ("int", "SmallInteger");
-            case SqlDbType.Bit:
-                return ("bool", "Boolean");
-            case SqlDbType.Money or SqlDbType.SmallMoney when dialect == SqlDialect.PostgreSql:
-                return null;
-            case SqlDbType.Money or SqlDbType.SmallMoney:
-                return ("Decimal", "Numeric(19, 4)");
-            case SqlDbType.Decimal:
-                return ("Decimal", column.Precision is { } p && p > 0 ? $"Numeric({p}, {column.Scale ?? 0})" : "Numeric");
-            case SqlDbType.Float or SqlDbType.Real:
-                return ("float", "Float");
-            case SqlDbType.Date:
-                return ("date", "Date");
-            case SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime:
-                return ("datetime", "DateTime");
-            case SqlDbType.DateTimeOffset:
-                return ("datetime", "DateTime(timezone=True)");
-            case SqlDbType.Time:
-                return ("time", "Time");
-            case SqlDbType.UniqueIdentifier:
-                return ("UUID", "Uuid");
-            case SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar:
-                int length = column.CharacterLength;
-                return ("str", length > 0 ? $"String({length})" : "Text");
-            case SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml:
-                return ("str", "Text");
-            default:
-                return null;
+            int length = column.CharacterLength;
+            return ("str", length > 0 ? $"String({length})" : "Text");
         }
+        if (column.IsLargeTextColumn || column.IsXmlColumn)
+            return ("str", "Text");
+        return null;
     }
 
     // The same rules as the other stacks' clone (RustTable.BuildClone): dates the row sets, audit and soft-delete columns cleared, the active flag reset, a unique text value made free.
@@ -249,7 +247,7 @@ public sealed class PythonTable
 
             string? value;
             if (column.IsInsertStampColumn)
-                value = column.IsDateColumn ? (column.SqlType == SqlDbType.Date ? "date.today()" : "datetime.now()") : null;
+                value = column.IsDateColumn ? (column.IsDateOnlyColumn ? "date.today()" : "datetime.now()") : null;
             else if (column.IsModifiedDateColumn || column.IsModifiedUserColumn || column.IsInactiveReasonColumn || column == inactiveDate || (m.HasSoftDelete && column == m.DeletedDateColumn))
                 value = "None";
             else if (column == active)

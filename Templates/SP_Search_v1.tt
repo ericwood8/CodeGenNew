@@ -5,7 +5,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // MySQL has real stored procedures with its own syntax: CodeGenNew.Core's MySqlProcedures writes this one for a table read from MySQL.
-    if (Model.Dialect == SqlDialect.MySql)
+    if (Model.IsMySql)
     {
         Write(MySqlProcedures.Search(Model));
         return GenerationEnvironment.ToString();
@@ -45,7 +45,7 @@
     foreach (var pk in Model.PrimaryKeyColumns.Where(pk => pk != sortColumn))
         orderBy.Add(Q(pk.Name) + " ASC");
 
-    if (Model.Dialect == SqlDialect.PostgreSql)
+    if (Model.IsPostgreSql)
     {
         // PostgreSQL has functions, not procedures with @parameters and OFFSET/FETCH: <Table>_Search returns SETOF the table's own row type
         // (so EF Core maps it exactly like the table, and "SELECT * FROM" it is composable) and <Table>_SearchCount returns an integer.

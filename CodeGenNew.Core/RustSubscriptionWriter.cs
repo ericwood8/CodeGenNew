@@ -11,13 +11,7 @@ public static class RustSubscriptionWriter
     /// <summary> Whether the project asks for subscriptions over a Rust API: <c>SubscriptionTable</c> with the tenants of the Rust API. </summary>
     public static bool Applies(ProjectSettings project) => SubscriptionFeature.IsEnabled(project) && RustTenantWriter.Applies(project);
 
-    private static string IntType(ColumnModel column) => column.SqlType switch
-    {
-        System.Data.SqlDbType.BigInt => "i64",
-        System.Data.SqlDbType.SmallInt => "i16",
-        System.Data.SqlDbType.TinyInt => "u8",
-        _ => "i32"
-    };
+    private static string IntType(ColumnModel column) => column.IsBigIntColumn ? "i64" : column.IsSmallIntColumn ? "i16" : column.IsTinyIntColumn ? "u8" : "i32";
 
     public static string File(DatabaseModel database, ProjectSettings project)
     {

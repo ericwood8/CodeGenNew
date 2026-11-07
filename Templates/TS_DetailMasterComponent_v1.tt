@@ -106,7 +106,7 @@
         string FormAhead(ColumnModel c) => JsonNames.Camel(c.Name) + "Ahead";
         string FilterAhead(SearchKeyField k) => k.ParamName + "FilterAhead";
         string NamesOf(FormParent p) => p.Variable + "NameCache";
-        var formAheads = shown.Where(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)).ToList();   // the form fields that are type-aheads
+        var formAheads = shown.Where(c => form.Field(c).IsLookupField && Ahead(form.ParentOf(c)!)).ToList();   // the form fields that are type-aheads
         var filterAheads = searchKeys.Where(k => Ahead(k.Parent)).ToList();                                          // the search keys that are type-aheads
         var columnAheads = (odataFilters ?? []).OfType<ODataFilterField>().Where(f => f.Kind == ODataFilterKind.Parent && Ahead(f.Parent!)).ToList();   // the filter-row parents that are type-aheads
 
@@ -253,9 +253,9 @@
             var c = column.Column;
             if (sortableColumns.Contains(c) && odata)
                 // Shift-click adds the column to the sort; the number says its place when there is more than one
-                H($"                <th{If(c)} [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" title=\"Click to sort by {Labels.Field(c)}. Shift-click to add it to the sort.\" (click)=\"sortBy('{c.Name}', $event)\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}<span class=\"sort-order\" *ngIf=\"sortOrder('{c.Name}')\">{{{{ sortOrder('{c.Name}') }}}}</span></button></th>");
+                H($"                <th{If(c)} [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" title=\"Click to sort by {c.Label}. Shift-click to add it to the sort.\" (click)=\"sortBy('{c.Name}', $event)\">{GridCaption.For(c, c.Label)}{{{{ sortMark('{c.Name}') }}}}<span class=\"sort-order\" *ngIf=\"sortOrder('{c.Name}')\">{{{{ sortOrder('{c.Name}') }}}}</span></button></th>");
             else if (sortableColumns.Contains(c))
-                H($"                <th{If(c)} [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" (click)=\"sortBy('{c.Name}')\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}</button></th>");
+                H($"                <th{If(c)} [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" (click)=\"sortBy('{c.Name}')\">{GridCaption.For(c, c.Label)}{{{{ sortMark('{c.Name}') }}}}</button></th>");
             else
                 H($"                <th{If(c)}>{column.Caption}</th>");
         }
@@ -278,7 +278,7 @@
                 var f = odataFilters![i];
                 if (f is null) { H($"                <td{If(c)}></td>"); continue; }
                 string typed = $"columnFilters['{f.Name}']";
-                string label = Labels.Field(c).Replace("\"", "&quot;");
+                string label = c.Label.Replace("\"", "&quot;");
                 string control = f.Kind switch
                 {
                     ODataFilterKind.Text => $"<input type=\"text\" class=\"form-control\" placeholder=\"contains\" aria-label=\"Filter by {label}\" [(ngModel)]=\"{typed}.text\" (keyup.enter)=\"search()\" />",
@@ -306,14 +306,14 @@
         {
             var c = column.Column;
             string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
-            var cellKind = form.CellOf(c);
+            var formColumn = form.Field(c);
             string cell;
-            if (cellKind == CellKind.Lookup) cell = $"{{{{ {form.ParentOf(c)!.NameMethod}({prop}) }}}}";
-            else if (cellKind == CellKind.Boolean) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
-            else if (cellKind == CellKind.Date) cell = $"{{{{ {prop} | date:'MM/dd/yyyy'{dateZone} }}}}";
-            else if (cellKind == CellKind.DateTime) cell = $"{{{{ {prop} | date:'MM/dd/yyyy HH:mm'{dateZone} }}}}";
-            else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
-            else if (cellKind == CellKind.Decimal) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
+            if (formColumn.IsLookupCell) cell = $"{{{{ {form.ParentOf(c)!.NameMethod}({prop}) }}}}";
+            else if (formColumn.IsBooleanCell) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
+            else if (formColumn.IsDateCell) cell = $"{{{{ {prop} | date:'MM/dd/yyyy'{dateZone} }}}}";
+            else if (formColumn.IsDateTimeCell) cell = $"{{{{ {prop} | date:'MM/dd/yyyy HH:mm'{dateZone} }}}}";
+            else if (formColumn.IsMoneyCell) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
+            else if (formColumn.IsDecimalCell) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
             else cell = column.Cut ? $"{{{{ cut({prop}) }}}}" : $"{{{{ {prop} }}}}";
             H($"                <td{If(c)}>{cell}</td>");
         }
@@ -367,8 +367,8 @@
             string id = form.FieldId(c);
             string model = $"selectedRow.{JsonNames.Camel(c.Name)}";
             string req = c.IsNullable ? "" : " required";
-            var kind = form.KindOf(c);
-            if (kind == FieldKind.SystemStamp)
+            var formColumn = form.Field(c);
+            if (formColumn.IsSystemStampField)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium'" + dateZone + " }}" : "{{ " + model + " }}";
@@ -376,7 +376,7 @@
                 if (form.IsGuardStamp(c))
                     stampValue = c.IsDateColumn ? "{{ " + model + " ? (" + model + " | date:'medium'" + dateZone + ") : '" + GuardStamp.NotRecorded + "' }}" : "{{ " + model + " || '" + GuardStamp.NotRecorded + "' }}";
                 H($"            <div class=\"form-group\" *ngIf=\"{(textKey ? "!adding" : "selectedRow." + keyProp)}\">");
-                H($"                <label for=\"{id}\">{Labels.Field(c)}</label>");
+                H($"                <label for=\"{id}\">{c.Label}</label>");
                 H($"                <span id=\"{id}\">{stampValue}</span>");
                 H("            </div>");
                 continue;
@@ -386,18 +386,18 @@
             if (userScreen?.IsAdminOnly(c) == true) shownWhen.Add("isAdmin");
             if (form.FeatureOf(c) is { } fieldFlag) shownWhen.Add($"features.enabled('{fieldFlag.Replace("\\", "\\\\").Replace("'", "\\'")}')");
             H("            <div class=\"form-group\"" + (shownWhen.Count > 0 ? $" *ngIf=\"{string.Join(" && ", shownWhen)}\"" : "") + ">");
-            H($"                <label for=\"{id}\">{Labels.Field(c)}{RequiredMark.Html(form.IsMarked(c))}</label>");
+            H($"                <label for=\"{id}\">{c.Label}{RequiredMark.Html(form.IsMarked(c))}</label>");
             // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
             var guard = form.GuardOf(c);
             if (guard is not null)
                 H($"                <ng-container *ngIf=\"guards['{guard.Json}']; else guarded{c.Name}\">");
-            if (kind == FieldKind.TypedKey)
+            if (formColumn.IsTypedKeyField)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 string max = Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
                 H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} [readonly]=\"!adding\" placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
-            else if (kind == FieldKind.Lookup)
+            else if (formColumn.IsLookupField)
             {
                 var p = form.ParentOf(c)!;
                 if (Ahead(p))
@@ -421,7 +421,7 @@
                     H("                </select>");
                 }
             }
-            else if (kind == FieldKind.Choices)
+            else if (formColumn.IsChoicesField)
             {
                 // A column whose values the database lists (a MySQL enum) is a drop-down of them.
                 H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
@@ -430,11 +430,11 @@
                     H($"                    <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 H("                </select>");
             }
-            else if (kind == FieldKind.Boolean)
+            else if (formColumn.IsBooleanField)
             {
                 H($"                <input type=\"checkbox\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\">");
             }
-            else if (kind == FieldKind.Date)
+            else if (formColumn.IsDateField)
             {
                 // A nullable date has a Clear button on the same line, like WinUI3's calendar.
                 if (c.IsNullable) H("                <div class=\"date-with-clear\">");
@@ -448,19 +448,19 @@
                     H("                </div>");
                 }
             }
-            else if (kind == FieldKind.Money)
+            else if (formColumn.IsMoneyField)
             {
                 // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
                 var money = MoneyBox.For(Model.TableName, c, Project);
                 string limits = (money.Min is { } lo ? $" [min]=\"{lo}\"" : "") + (money.Max is { } hi ? $" [max]=\"{hi}\"" : "");
                 H($"                <input type=\"text\" inputmode=\"decimal\" id=\"{id}\" name=\"{id}\" appCurrency currencyCode=\"{money.Currency}\" [digits]=\"{money.Digits}\"{limits} [(ngModel)]=\"{model}\"{req}>");
             }
-            else if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
+            else if (formColumn.IsNumberBoxField)
             {
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...); a typed key is read-only once the row exists.
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html}{(kind == FieldKind.TypedNumberKey ? " [readonly]=\"!adding\"" : "")} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html}{(formColumn.IsTypedNumberKeyField ? " [readonly]=\"!adding\"" : "")} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
-            else if (kind == FieldKind.Multiline)
+            else if (formColumn.IsMultilineField)
             {
                 H($"                <textarea id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\" maxlength=\"{Chars(c)}\" placeholder=\"{Labels.Placeholder(c)}\"{req}></textarea>");
             }
@@ -506,7 +506,7 @@
                 H("                    </div>");
                 H("                    <div class=\"child-card-fields\">");
                 foreach (var c in editColumns)
-                    H($"                        <label{EditIf(child, c)} class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>");
+                    H($"                        <label{EditIf(child, c)} class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, c.Label)}{RequiredMark.Html(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>");
                 H("                    </div>");
                 H("                </div>");
                 H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {child.Words}</button>");
@@ -515,7 +515,7 @@
             }
             H("                <table>");
             H("                    <thead>");
-            H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th{EditIf(child, c)}>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</th>")) + "<th></th></tr>");
+            H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th{EditIf(child, c)}>{GridCaption.For(c, c.Label)}{RequiredMark.Html(child.IsMarked(c))}</th>")) + "<th></th></tr>");
             H("                    </thead>");
             H("                    <tbody>");
             H($"                        <tr *ngFor=\"let row of {child.Variable}Rows\">");
@@ -868,8 +868,8 @@
             T("  readonly shapeColumns: ShapeColumn[] = [");
             T(string.Join(",\n", columnList.Select(c =>
             {
-                string show = form.CellOf(c.Column) == CellKind.Date ? ", show: (value) => String(value ?? '').substring(0, 10)"
-                    : form.CellOf(c.Column) == CellKind.Lookup ? $", show: (value) => this.{form.ParentOf(c.Column)!.NameMethod}(value as {form.ParentOf(c.Column)!.KeyTs})" : "";
+                string show = form.Field(c.Column).IsDateCell ? ", show: (value) => String(value ?? '').substring(0, 10)"
+                    : form.Field(c.Column).IsLookupCell ? $", show: (value) => this.{form.ParentOf(c.Column)!.NameMethod}(value as {form.ParentOf(c.Column)!.KeyTs})" : "";
                 return $"    {{ key: '{c.Property}', label: '{c.Label.Replace("\\", "\\\\").Replace("'", "\\'")}'{show} }}";
             })));
             T("  ];");

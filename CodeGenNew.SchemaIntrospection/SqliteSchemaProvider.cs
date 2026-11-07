@@ -24,7 +24,7 @@ public partial class SqliteSchemaProvider : SchemaProviderBase
         _connectionRequest = connectionRequest;
     }
 
-    protected override SqlDialect Dialect => SqlDialect.Sqlite;
+    public override SqlDialect Dialect => SqlDialect.Sqlite;
 
     protected override async Task<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {

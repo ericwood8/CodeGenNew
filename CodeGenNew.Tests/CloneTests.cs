@@ -78,8 +78,8 @@ public class CloneTests
         Expect.Contains(cs, "public async Task<int> CloneAsync(int id, string? createUser = null)");
         Expect.Contains(cs, "string? uniqueCode = source.Code is null ? null : await SuggestUniqueCode(source.Code.Length > 17 ? source.Code[..17] : source.Code);");
         Expect.Contains(cs, "{ Direction = System.Data.ParameterDirection.Output }");
-        Expect.Contains(cs, "\"EXEC [dbo].[Account_Clone] @CopyFromAccountId = @CopyFromAccountId, @NewAccountId = @NewAccountId OUTPUT, @pCreatedBy = @pCreatedBy, @pCode = @pCode\"");
-        Expect.Contains(cs, "(\"@pCreatedBy\", createUser ?? \"\")");
+        Expect.Contains(cs, "\"EXEC [dbo].[Account_Clone] @CopyFromAccountId = @CopyFromAccountId, @NewAccountId = @NewAccountId OUTPUT, @pstrCreatedBy = @pstrCreatedBy, @pstrCode = @pstrCode\"");
+        Expect.Contains(cs, "(\"@pstrCreatedBy\", createUser ?? \"\")");
         Expect.Contains(cs, "return (int)newKey.Value!;");
     }
 
@@ -88,9 +88,9 @@ public class CloneTests
     {
         string cs = string.Join("\n", CloneCall.RepoMethod(Account(SqlDialect.PostgreSql), "Account"));
 
-        Expect.Contains(cs, "SELECT \\\"public\\\".\\\"Account_Clone\\\"(\\\"CopyFromAccountId\\\" => @CopyFromAccountId, \\\"pCreatedBy\\\" => @pCreatedBy, \\\"pCode\\\" => @pCode) AS \\\"Value\\\"");
+        Expect.Contains(cs, "SELECT \\\"public\\\".\\\"Account_Clone\\\"(\\\"CopyFromAccountId\\\" => @CopyFromAccountId, \\\"pstrCreatedBy\\\" => @pstrCreatedBy, \\\"pstrCode\\\" => @pstrCode) AS \\\"Value\\\"");
         Expect.Contains(cs, "SqlQueryRaw<int>(");
-        Expect.Contains(cs, "new Npgsql.NpgsqlParameter(\"@pCode\", NpgsqlTypes.NpgsqlDbType.Text)");
+        Expect.Contains(cs, "new Npgsql.NpgsqlParameter(\"@pstrCode\", NpgsqlTypes.NpgsqlDbType.Text)");
         Expect.Contains(cs, "return rows.Single();");
     }
 

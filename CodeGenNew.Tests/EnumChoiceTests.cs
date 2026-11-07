@@ -178,11 +178,11 @@ public class EnumChoiceTests
 
         string update = PostgresProcedures.Update(pg), insert = PostgresProcedures.Insert(pg), save = PostgresProcedures.Save(pg);
 
-        Expect.Contains(update, "\"Status\" = COALESCE(btrim(\"pStatus\")::\"public\".\"ticket_status\", \"Status\")");
-        Expect.Contains(insert, "btrim(\"pStatus\")::\"public\".\"ticket_status\"");
-        Expect.Contains(insert, "\"pStatus\" nvarchar(11) DEFAULT NULL");   // '' is no label of an enum
-        Expect.Contains(save, "\"Status\" = \"pStatus\"::\"public\".\"ticket_status\"");
-        Expect.DoesNotContain(update, "btrim(\"pTitle\")::");
+        Expect.Contains(update, "\"Status\" = COALESCE(btrim(\"pstrStatus\")::\"public\".\"ticket_status\", \"Status\")");
+        Expect.Contains(insert, "btrim(\"pstrStatus\")::\"public\".\"ticket_status\"");
+        Expect.Contains(insert, "\"pstrStatus\" nvarchar(11) DEFAULT NULL");   // '' is no label of an enum
+        Expect.Contains(save, "\"Status\" = \"pstrStatus\"::\"public\".\"ticket_status\"");
+        Expect.DoesNotContain(update, "btrim(\"pstrTitle\")::");
     }
 
     [TestMethod]

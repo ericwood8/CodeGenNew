@@ -24,6 +24,7 @@ public sealed class DialectInfo
     };
 
     public SqlDialect Dialect { get; }
+    public bool IsPostgreSql => Dialect == SqlDialect.PostgreSql;
     public string Name { get; }
 
     /// <summary> False for SQLite: it has no stored procedures or functions, so everything the routine templates write has to be done in code (see <see cref="AccessMode"/>). </summary>

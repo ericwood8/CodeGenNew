@@ -21,7 +21,7 @@ public class EnforcedValidationTests
         Sample.Column("EmailTemplate", SqlDbType.NVarChar, nullable: true, characters: 200, ordinal: 6),
         Sample.Column("Latitude", SqlDbType.Decimal, nullable: true, precision: 9, scale: 6, ordinal: 7),
         Sample.Column("Balance", SqlDbType.Decimal, precision: 18, scale: 2, ordinal: 8, currency: true),
-        Sample.Column("Quantity", SqlDbType.Int, ordinal: 9),
+        Sample.Column("Stock", SqlDbType.Int, ordinal: 9),
         Sample.Column("Discount", SqlDbType.Decimal, precision: 5, scale: 2, ordinal: 10, check: new CheckRange(0, false, null, false)),
         Sample.Column("BirthDate", SqlDbType.Date, nullable: true, ordinal: 11)
     ], dialect: dialect);
@@ -34,7 +34,7 @@ public class EnforcedValidationTests
     }
 
     private static readonly (string Key, string Value)[] Guarded =
-        [("NonNegativeColumns", "Balance,Quantity,Discount"), ("NotFutureDateColumns", "Contact.BirthDate")];
+        [("NonNegativeColumns", "Balance,Stock,Discount"), ("NotFutureDateColumns", "Contact.BirthDate")];
 
     // ------------------------------------------------------------------ the classification
 
@@ -62,7 +62,7 @@ public class EnforcedValidationTests
         var balance = table.Columns.Single(c => c.Name == "Balance").RuleOf(project, "Contact")!;
         Assert.AreEqual(0, balance.Min);
         Assert.IsNull(balance.Max);
-        Assert.AreEqual(0, table.Columns.Single(c => c.Name == "Quantity").RuleOf(project, "Contact")!.Min);
+        Assert.AreEqual(0, table.Columns.Single(c => c.Name == "Stock").RuleOf(project, "Contact")!.Min);
         Assert.IsNull(table.Columns.Single(c => c.Name == "Balance").RuleOf(Project(), "Contact"), "without the list the schema says nothing");
     }
 
@@ -87,7 +87,7 @@ public class EnforcedValidationTests
         string validator = await Rendered("CS_Validator_v1.tt", Contact(), Project(Guarded));
 
         Expect.Contains(validator, "RuleFor(x => x.Balance).GreaterThanOrEqualTo(0m);");
-        Expect.Contains(validator, "RuleFor(x => x.Quantity).GreaterThanOrEqualTo(0);");
+        Expect.Contains(validator, "RuleFor(x => x.Stock).GreaterThanOrEqualTo(0);");
         Expect.Contains(validator, "RuleFor(x => x.BirthDate).Must(value => value is null || value.Value.Date <= DateTime.Today).WithMessage(\"Birth Date must not be later than today.\");");
         Expect.DoesNotContain(await Rendered("CS_Validator_v1.tt", Contact(), Project()), "RuleFor(x => x.Balance)");
     }
@@ -129,7 +129,7 @@ public class EnforcedValidationTests
     {
         var guards = ValueGuards.Of(Contact(), Project(Guarded));
 
-        CollectionAssert.AreEqual(new[] { "Balance", "Quantity", "BirthDate" }, guards.Select(g => g.Column.Name).ToArray(), "Discount has a CHECK of its own");
+        CollectionAssert.AreEqual(new[] { "Balance", "Stock", "BirthDate" }, guards.Select(g => g.Column.Name).ToArray(), "Discount has a CHECK of its own");
         Assert.AreEqual(ValueGuardKind.NotFuture, guards.Single(g => g.Column.Name == "BirthDate").Kind);
         Assert.IsEmpty(ValueGuards.Of(Contact(), Project()).ToList(), "no list, no guard");
         Assert.IsEmpty(ValueGuards.Of(Contact(), null).ToList());
@@ -142,20 +142,20 @@ public class EnforcedValidationTests
         var project = Project(Guarded);
 
         string insert = await Rendered("SP_Insert_v1.tt", Contact(), project);
-        Expect.Contains(insert, "IF (@pBalance IS NOT NULL AND @pBalance < 0)");
+        Expect.Contains(insert, "IF (@pdecBalance IS NOT NULL AND @pdecBalance < 0)");
         Expect.Contains(insert, "RAISERROR('[Balance] must not be negative.', 16, 1);");
-        Expect.Contains(insert, "IF (@pBirthDate IS NOT NULL AND CAST(@pBirthDate AS DATE) > CAST(GETDATE() AS DATE))");
+        Expect.Contains(insert, "IF (@pdteBirthDate IS NOT NULL AND CAST(@pdteBirthDate AS DATE) > CAST(GETDATE() AS DATE))");
         Expect.Contains(insert, "RAISERROR('[BirthDate] must not be later than today.', 16, 1);");
         Expect.DoesNotContain(insert, "[Discount] must not be negative");
         Assert.IsLessThan(insert.IndexOf("INSERT INTO", StringComparison.Ordinal), insert.IndexOf("[Balance] must not be negative", StringComparison.Ordinal), "the guard comes before the insert");
 
         string update = await Rendered("SP_Update_v1.tt", Contact(), project);
-        Expect.Contains(update, "IF (@pBalance IS NOT NULL AND TRY_CAST(@pBalance AS decimal(38, 10)) < 0 AND NOT EXISTS (");
-        Expect.Contains(update, "IF (@pBirthDate IS NOT NULL AND TRY_CAST(@pBirthDate AS DATE) > CAST(GETDATE() AS DATE) AND NOT EXISTS (");
+        Expect.Contains(update, "IF (@pdecBalance IS NOT NULL AND TRY_CAST(@pdecBalance AS decimal(38, 10)) < 0 AND NOT EXISTS (");
+        Expect.Contains(update, "IF (@pdteBirthDate IS NOT NULL AND TRY_CAST(@pdteBirthDate AS DATE) > CAST(GETDATE() AS DATE) AND NOT EXISTS (");
 
         string save = await Rendered("SP_Save_v1.tt", Contact(), project);
-        Expect.Contains(save, "IF (@pQuantity IS NOT NULL AND @pQuantity < 0 AND NOT EXISTS (");
-        Expect.Contains(save, "'[Quantity] must not be negative.', 1;");
+        Expect.Contains(save, "IF (@plngStock IS NOT NULL AND @plngStock < 0 AND NOT EXISTS (");
+        Expect.Contains(save, "'[Stock] must not be negative.', 1;");
 
         foreach (string template in new[] { "SP_Insert_v1.tt", "SP_Update_v1.tt", "SP_Save_v1.tt" })
             Expect.DoesNotContain(await Rendered(template, Contact(), Project()), "must not be negative");
@@ -167,20 +167,20 @@ public class EnforcedValidationTests
         var project = Project(Guarded);
 
         string pgInsert = await Rendered("SP_Insert_v1.tt", Contact(SqlDialect.PostgreSql), project);
-        Expect.Contains(pgInsert, "IF (\"pBalance\" IS NOT NULL AND \"pBalance\" < '0') THEN");
+        Expect.Contains(pgInsert, "IF (\"pdecBalance\" IS NOT NULL AND \"pdecBalance\" < '0') THEN");
         Expect.Contains(pgInsert, "RAISE EXCEPTION '\"Balance\" must not be negative.';");
-        Expect.Contains(pgInsert, "\"pBirthDate\"::date > current_date");
+        Expect.Contains(pgInsert, "\"pdteBirthDate\"::date > current_date");
 
         string pgUpdate = await Rendered("SP_Update_v1.tt", Contact(SqlDialect.PostgreSql), project);
-        Expect.Contains(pgUpdate, "RAISE EXCEPTION '\"Quantity\" must not be negative.';");
+        Expect.Contains(pgUpdate, "RAISE EXCEPTION '\"Stock\" must not be negative.';");
         string pgSave = await Rendered("SP_Save_v1.tt", Contact(SqlDialect.PostgreSql), project);
         Expect.Contains(pgSave, "RAISE EXCEPTION '\"BirthDate\" must not be later than today.';");
 
         string myInsert = await Rendered("SP_Insert_v1.tt", Contact(SqlDialect.MySql), project);
-        Expect.Contains(myInsert, "IF (`pBalance` IS NOT NULL AND `pBalance` < 0) THEN");
+        Expect.Contains(myInsert, "IF (`pdecBalance` IS NOT NULL AND `pdecBalance` < 0) THEN");
         Expect.Contains(myInsert, "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '`Balance` must not be negative.';");
-        Expect.Contains(myInsert, "DATE(`pBirthDate`) > CURDATE()");
-        Expect.Contains(await Rendered("SP_Update_v1.tt", Contact(SqlDialect.MySql), project), "`Quantity` must not be negative.");
+        Expect.Contains(myInsert, "DATE(`pdteBirthDate`) > CURDATE()");
+        Expect.Contains(await Rendered("SP_Update_v1.tt", Contact(SqlDialect.MySql), project), "`Stock` must not be negative.");
         Expect.Contains(await Rendered("SP_Save_v1.tt", Contact(SqlDialect.MySql), project), "`BirthDate` must not be later than today.");
 
         Expect.DoesNotContain(await Rendered("SP_Insert_v1.tt", Contact(SqlDialect.PostgreSql), Project()), "must not be negative");

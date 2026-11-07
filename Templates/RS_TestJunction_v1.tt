@@ -29,12 +29,9 @@
             var writeRoles = WriteRolePlan.WriteFor(Project, table);
             string anchorJson = Json(JsonNames.Camel(junction.AnchorForeignKey.ReferencedColumns[0]));
             string targetJson = Json(JsonNames.Camel(junction.TargetForeignKey.ReferencedColumns[0]));
-            string absentTarget = junction.TargetColumn.SqlType switch
-            {
-                SqlDbType.Int or SqlDbType.BigInt => "json!(2147483647)",
-                SqlDbType.UniqueIdentifier => "json!(uuid::Uuid::new_v4().to_string())",
-                _ => ""
-            };
+            string absentTarget = junction.TargetColumn.IsInt32Column || junction.TargetColumn.IsBigIntColumn ? "json!(2147483647)"
+                : junction.TargetColumn.IsGuidColumn ? "json!(uuid::Uuid::new_v4().to_string())"
+                : "";
             string[] shown = [.. junction.DisplayColumns.Select(c => Json(JsonNames.Camel(c)))];
 
             Line($"@@@FILE tests/api/{RustTestBodies.JunctionModule(table)}.rs@@@");

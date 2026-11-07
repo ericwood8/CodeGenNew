@@ -90,7 +90,7 @@ internal static class Sample
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
         int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
         bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false,
-        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null, string? textType = null, string? spatialType = null, int srid = 0, List<string>? setValues = null, int? bitWidth = null, TextNotation? checkNotation = null, string? sqlDeclaration = null, CheckRange? check = null, bool computed = false, bool modifiedDateColumn = false, string? description = null, string? notBefore = null)
+        bool inUniqueIndex = false, bool currency = false, List<string>? choices = null, string? enumType = null, string? textType = null, string? spatialType = null, int srid = 0, List<string>? setValues = null, int? bitWidth = null, TextNotation? checkNotation = null, string? sqlDeclaration = null, CheckRange? check = null, bool computed = false, bool modifiedDateColumn = false, string? description = null, string? notBefore = null)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -118,12 +118,7 @@ internal static class Sample
             IsPrimaryKey = primaryKey,
             IsInUniqueIndex = inUniqueIndex,
             DatabaseDefaultSql = defaultSql,
-            IsIntegerColumn = type is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt,
-            NumericKind = numericKind,
             IsCurrencyColumn = currency,
-            IsStringColumn = isText || type is SqlDbType.Text or SqlDbType.NText,
-            IsDateColumn = type is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime,
-            IsBooleanColumn = type == SqlDbType.Bit,
             Choices = choices,
             DbEnumType = enumType,
             DbTextType = textType,
@@ -133,18 +128,13 @@ internal static class Sample
             DbBitWidth = bitWidth,
             CheckNotation = checkNotation,
             Check = check,
-            IsComputed = computed,
+            ComputedDefinition = computed ? "(1)" : null,
             Description = description,
             NotBeforeColumn = notBefore,
-            IsCSharpReservedWordName = name.IsCSharpReservedWord(),
-            IsNumericColumn = type is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real,
-            IsMoneyColumn = type is SqlDbType.Money or SqlDbType.SmallMoney,
-            IsAuditColumn = name.IsAuditColumn(),
             IsModifiedUserColumn = modifiedUserColumn,
             IsCreateDateColumn = createDateColumn,
             IsModifiedDateColumn = modifiedDateColumn,
-            IsCreateUserColumn = createUserColumn,
-            ParameterName = "@p" + name
+            IsCreateUserColumn = createUserColumn
         };
     }
 

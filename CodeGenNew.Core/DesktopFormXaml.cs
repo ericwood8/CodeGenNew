@@ -11,7 +11,7 @@ public static class DesktopFormXaml
     /// under it when not (the Uno dialogs read the API's guards; the WinUI3 ones have none). </summary>
     public static string Field(FormModel form, ProjectSettings project, TableModel table, ColumnModel column, bool textKey, bool withGuards = false)
     {
-        var guard = withGuards && form.KindOf(column) != FieldKind.SystemStamp ? form.GuardOf(column) : null;
+        var guard = withGuards && !form.Field(column).IsSystemStampField ? form.GuardOf(column) : null;
         if (guard is null)
             return Control(form, project, table, column, textKey);
         // a guarded column is a control only for a person who may change it (the API's guards answer); everyone else sees it disabled and why
@@ -23,16 +23,15 @@ public static class DesktopFormXaml
 
     private static string Control(FormModel form, ProjectSettings project, TableModel table, ColumnModel column, bool textKey)
     {
-        var kind = form.KindOf(column);
-        var value = form.ValueOf(column);
+        var formColumn = form.Field(column);
         string prop = column.Name;
-        string label = Labels.Field(column);
+        string label = column.Label;
         string required = RequiredMark.XamlAttributes(form.IsRequired(column), form.IsMarked(column));
         var o = new StringBuilder();
         void L(string s) => o.Append(s).Append('\n');
         const string I = "            ";
 
-        if (kind == FieldKind.SystemStamp)
+        if (formColumn.IsSystemStampField)
         {
             // who made the row and when it changed: the system writes it, so it is text, not a box
             L(I + "<StackPanel Spacing=\"2\">");
@@ -42,7 +41,7 @@ public static class DesktopFormXaml
             return o.ToString();
         }
 
-        if (kind == FieldKind.Lookup)
+        if (formColumn.IsLookupField)
         {
             var p = form.ParentOf(column)!;
             if (p.TypeAhead)
@@ -66,53 +65,53 @@ public static class DesktopFormXaml
                 L(I + $"          SelectedValue=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\" />");
             }
         }
-        else if (kind == FieldKind.Choices)
+        else if (formColumn.IsChoicesField)
         {
             L(I + $"<ComboBox Header=\"{label}\"{required} ItemsSource=\"{{x:Bind ViewModel.{prop}Choices}}\"");
             L(I + $"          SelectedItem=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\" />");
         }
-        else if (kind == FieldKind.Money)
+        else if (formColumn.IsMoneyField)
         {
             L(I + $"<NumberBox x:Name=\"{prop}Box\" Header=\"{label}\"{required} Value=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
             L(I + $"           {project.MoneyLimitAttributes(table.TableName, column)}ValidationMode=\"InvalidInputOverwritten\" Width=\"180\" HorizontalAlignment=\"Left\" />");
         }
-        else if (value == ValueKind.Decimal)
+        else if (formColumn.IsDecimalValue)
         {
             var (decMin, decMax) = NumericClassifier.DecimalRange(column);
-            int decDigits = TemplateHelpers.Inv(decMax).Length + (column.SqlType == SqlDbType.Decimal ? NumericClassifier.DecimalPlaces(column) : 4);
+            int decDigits = TemplateHelpers.Inv(decMax).Length + (column.IsDecimalColumn ? NumericClassifier.DecimalPlaces(column) : 4);
             string decWidth = $" Width=\"{Math.Max(Math.Min(decDigits, 12) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
             L(I + $"<NumberBox x:Name=\"{prop}Box\" Header=\"{label}\"{required} Value=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
             L(I + $"           Minimum=\"{TemplateHelpers.Inv(decMin)}\" Maximum=\"{TemplateHelpers.Inv(decMax)}\" SmallChange=\"1\" LargeChange=\"10\"");
             L(I + $"           SpinButtonPlacementMode=\"Inline\" ValidationMode=\"InvalidInputOverwritten\"{decWidth} />");
         }
-        else if (value == ValueKind.WholeNumber)
+        else if (formColumn.IsWholeNumberValue)
         {
             var range = project.RangeFor(column)!.Value;
             // As wide as the range's widest number (at most nine digits) plus about 150 pixels for the spin buttons, clear button and padding, and never narrower than the header text.
             int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
             string width = $" Width=\"{Math.Max(Math.Min(digits, 9) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
             // the key of a new row is typed; once the row exists it cannot change, and a NumberBox has no read-only state
-            string enabled = kind == FieldKind.TypedNumberKey ? " IsEnabled=\"{x:Bind ViewModel.IsNewRow}\"" : "";
+            string enabled = formColumn.IsTypedNumberKeyField ? " IsEnabled=\"{x:Bind ViewModel.IsNewRow}\"" : "";
             L(I + $"<NumberBox Header=\"{label}\"{required} Value=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{enabled}");
             L(I + $"           Minimum=\"{range.Min}\" Maximum=\"{range.Max}\" SmallChange=\"1\" LargeChange=\"{(range.Max - range.Min >= 100 ? 10 : 1)}\"");
             L(I + $"           SpinButtonPlacementMode=\"Inline\" ValidationMode=\"InvalidInputOverwritten\"{width} />");
         }
-        else if (kind == FieldKind.Boolean)
+        else if (formColumn.IsBooleanField)
         {
             L(I + $"<CheckBox Content=\"{label}\" IsChecked=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\" />");
         }
-        else if (kind == FieldKind.Date)
+        else if (formColumn.IsDateField)
         {
             L(I + "<StackPanel Orientation=\"Horizontal\" Spacing=\"8\">");
             // an end date cannot be picked before its start: the calendar's first date follows the start's
-            string minimum = DatePairs.EndingAt(table, project, column) is { } endsAfter && form.Columns.Contains(endsAfter.Start) && form.ValueOf(endsAfter.Start) == ValueKind.Date ? $" MinDate=\"{{x:Bind ViewModel.{prop}MinDate, Mode=OneWay}}\"" : "";
+            string minimum = DatePairs.EndingAt(table, project, column) is { } endsAfter && form.Columns.Contains(endsAfter.Start) && form.Field(endsAfter.Start).IsDateValue ? $" MinDate=\"{{x:Bind ViewModel.{prop}MinDate, Mode=OneWay}}\"" : "";
             L(I + $"    <CalendarDatePicker Header=\"{label}\"{required}{minimum} Date=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
             L(I + "                        DateFormat=\"{}{month.integer}/{day.integer}/{year.full}\" PlaceholderText=\"mm/dd/yyyy\" Width=\"180\" />");
             if (column.IsNullable)
                 L(I + $"    <Button Content=\"Clear\" VerticalAlignment=\"Bottom\" Click=\"OnClear{prop}Click\" />");
             L(I + "</StackPanel>");
         }
-        else if (kind == FieldKind.Multiline)
+        else if (formColumn.IsMultilineField)
         {
             L(I + $"<TextBox Header=\"{label}\"{required} Text=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
             L(I + $"         AcceptsReturn=\"True\" TextWrapping=\"Wrap\" Height=\"80\" MaxLength=\"{TemplateHelpers.Chars(column)}\" />");

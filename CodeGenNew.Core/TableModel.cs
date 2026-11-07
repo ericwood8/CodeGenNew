@@ -7,6 +7,15 @@ public enum SqlDialect { SqlServer, PostgreSql, MySql, Sqlite }
 /// <summary> Everything a template needs to know about one selected table, built fresh by CodeGenNew.SchemaIntrospection each time a table is selected. </summary>
 public class TableModel
 {
+    #region Private Variables
+    private bool? _isNameActiveTable;
+    private bool? _isJunctionTable;
+    private List<ColumnModel>? _junctionCandidateColumns;
+    private List<ForeignKeyModel>? _junctionForeignKeys;
+    private JunctionShape? _junction;
+    private Dictionary<string, ForeignKeyModel>? _foreignKeyByColumn;
+    #endregion
+
     public required string SchemaName { get; init; }
     /// <summary> The name generated code uses (a C# class, a file, a route). </summary>
     public required string TableName { get; init; }
@@ -16,7 +25,7 @@ public class TableModel
 
     /// <summary> Columns whose database type CodeGenNew does not map (PostGIS geometry, a range of timestamps ...): they come through as an unsupported object column that an EF Core
     /// context cannot map, so the project lists them in IgnoredColumns. </summary>
-    public IEnumerable<ColumnModel> UnsupportedColumns => Columns.Where(c => c.SqlType == System.Data.SqlDbType.Variant);
+    public IEnumerable<ColumnModel> UnsupportedColumns => Columns.Where(c => c.IsVariantColumn);
 
     /// <summary> The name SQL text uses: the database's own name. </summary>
     public string DbTableName => DatabaseTableName ?? TableName;
@@ -29,8 +38,16 @@ public class TableModel
     /// <summary> The same words for several rows: "time sheets". </summary>
     public string PluralWords => Words.Pluralize();
 
-    /// <summary> Which database the table was read from; a template that writes SQL text branches on it (T-SQL vs PostgreSQL). </summary>
-    public SqlDialect Dialect { get; init; } = SqlDialect.SqlServer;
+    /// <summary> Which database the table was read from; a template that writes SQL text branches on it (T-SQL vs PostgreSQL). Given when the table is made, with no default. </summary>
+    public required SqlDialect Dialect { get; init; }
+    /// <summary> The database is PostgreSQL. </summary>
+    public bool IsPostgreSql => Dialect == SqlDialect.PostgreSql;
+    /// <summary> The database is SQL Server. </summary>
+    public bool IsSqlServer => Dialect == SqlDialect.SqlServer;
+    /// <summary> The database is MySQL (or MariaDB, which speaks the same protocol). </summary>
+    public bool IsMySql => Dialect == SqlDialect.MySql;
+    /// <summary> The database is SQLite. </summary>
+    public bool IsSqlite => Dialect == SqlDialect.Sqlite;
     public bool IsReservedWordName { get; init; }
     public bool IsCSharpReservedWordName { get; init; }
 
@@ -119,11 +136,6 @@ public class TableModel
     public static ColumnModel? FindIsActive(IEnumerable<ColumnModel> columns) =>
         columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
 
-    private bool? _isNameActiveTable;
-    private bool? _isJunctionTable;
-    private List<ColumnModel>? _junctionCandidateColumns;
-    private List<ForeignKeyModel>? _junctionForeignKeys;
-
     /// <summary> A column that records the row's creation and a column that records a later change (see <see cref="AuditTableShape"/>): the tables SP_AuditTable is offered for. </summary>
     public bool IsAuditTable => AuditTableShape.IsAuditTable(Columns.Select(c => c.Name));
 
@@ -159,9 +171,7 @@ public class TableModel
     /// <summary> The API answers <c>GET &lt;route&gt;/{name}</c> and the clients have <c>findByName</c>: a table with a required Name that is not a name / active table. A text key has none, since
     /// <c>GET &lt;route&gt;/{id}</c> and <c>GET &lt;route&gt;/{name}</c> would be one route. The API, the repository and every client ask this one question. </summary>
     public bool CanFindByName => HasRequiredNameColumn && !IsNameActiveTable && KeyType.Of(this) is { Kind: not KeyKind.Text };
-
-    private Dictionary<string, ForeignKeyModel>? _foreignKeyByColumn;
-
+    
     /// <summary> The single-column foreign keys by the name of their column. A real table can have two constraints on one column, so the first one wins. </summary>
     public IReadOnlyDictionary<string, ForeignKeyModel> ForeignKeyByColumn => _foreignKeyByColumn ??= ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
         .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
@@ -225,8 +235,7 @@ public class TableModel
             .ToList();
 
     /// <summary> When <see cref="IsJunctionTable"/>, the anchor and target sides of the association as the junction routes and screens read them; null otherwise. </summary>
-    public JunctionShape? Junction => IsJunctionTable ? _junction ??= new JunctionShape(this) : null;
-    private JunctionShape? _junction;
+    public JunctionShape? Junction => IsJunctionTable ? _junction ??= new JunctionShape(this) : null;    
 
     /// <summary> Columns SP_Search.tt, API_Search.tt and CS_Repo.tt's SearchAsync all filter on: every string
     /// column (never a long note: ColumnModel.IsLongTextColumn) that isn't audit-classified (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/
@@ -240,7 +249,7 @@ public class TableModel
         get
         {
             var keys = SearchKeyColumns;
-            return Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn && !c.IsLongTextColumn && !c.IsCredentialColumn && c.DbSpatialType is null && !keys.Contains(c)).Take(MaxSearchFields).ToList();
+            return Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn && !c.IsLongTextColumn && !c.IsCredentialColumn && !c.IsSpatialColumn && !keys.Contains(c)).Take(MaxSearchFields).ToList();
         }
     }
 

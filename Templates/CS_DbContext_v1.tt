@@ -263,7 +263,7 @@
             Line("    }");
         }
     }
-    if (Database.Dialect == SqlDialect.PostgreSql)
+    if (Database.IsPostgreSql)
     {
         Line();
         Line("    // The columns are \"timestamp\" (no time zone), the counterpart of SQL Server's datetime; Npgsql would otherwise map a DateTime to");
@@ -344,7 +344,7 @@
     }
     else
     {
-        if (Database.Dialect == SqlDialect.PostgreSql)
+        if (Database.IsPostgreSql)
             Line("        // The password is not in appsettings.json: Npgsql reads the PGPASSWORD environment variable.");
         Line($"        options.{provider.UseMethod}(connectionString);");
     }

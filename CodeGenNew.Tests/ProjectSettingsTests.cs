@@ -365,15 +365,15 @@ public class ProjectSettingsTests
     public void The_range_of_a_number_box_comes_from_the_kind_the_project_years_and_the_sql_type()
     {
         var project = With(("MinYear", "1990"), ("MaxYear", "2040"));
-        NumericRange? Range(string name, System.Data.SqlDbType type, NumericKind kind) =>
-            project.RangeFor(Sample.Column(name, type, numericKind: kind));
+        NumericRange? Range(string name, System.Data.SqlDbType type) =>
+            project.RangeFor(Sample.Column(name, type));
 
-        Assert.AreEqual(new NumericRange(1990, 2040), Range("Year", System.Data.SqlDbType.Int, NumericKind.Year));
-        Assert.AreEqual(new NumericRange(1, 12), Range("Month", System.Data.SqlDbType.Int, NumericKind.Month));
-        Assert.AreEqual(new NumericRange(0, 100), Range("Pct", System.Data.SqlDbType.TinyInt, NumericKind.Percentage));
-        Assert.AreEqual(new NumericRange(0, int.MaxValue), Range("Qty", System.Data.SqlDbType.Int, NumericKind.Count));
-        Assert.AreEqual(new NumericRange(0, 255), Range("Flags", System.Data.SqlDbType.TinyInt, NumericKind.None));
-        Assert.AreEqual(new NumericRange(1, 12), ProjectSettings.None.RangeFor(Sample.Column("Month", System.Data.SqlDbType.TinyInt, numericKind: NumericKind.Month)));
+        Assert.AreEqual(new NumericRange(1990, 2040), Range("Year", System.Data.SqlDbType.Int));
+        Assert.AreEqual(new NumericRange(1, 12), Range("Month", System.Data.SqlDbType.Int));
+        Assert.AreEqual(new NumericRange(0, 100), Range("Pct", System.Data.SqlDbType.TinyInt));
+        Assert.AreEqual(new NumericRange(0, int.MaxValue), Range("Qty", System.Data.SqlDbType.Int));
+        Assert.AreEqual(new NumericRange(0, 255), Range("Flags", System.Data.SqlDbType.TinyInt));
+        Assert.AreEqual(new NumericRange(1, 12), ProjectSettings.None.RangeFor(Sample.Column("Month", System.Data.SqlDbType.TinyInt)));
         Assert.IsNull(project.RangeFor(Sample.Column("Price", System.Data.SqlDbType.Decimal)), "not a whole number");
     }
 
@@ -383,8 +383,8 @@ public class ProjectSettingsTests
         var table = Sample.Table("Summary", [
             Sample.Column("SummaryId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
             Sample.Column("Name", System.Data.SqlDbType.NVarChar, characters: 50),
-            Sample.Column("Year", System.Data.SqlDbType.Int, numericKind: NumericKind.Year),
-            Sample.Column("MonthNumber", System.Data.SqlDbType.Int, nullable: true, numericKind: NumericKind.Month)]);
+            Sample.Column("Year", System.Data.SqlDbType.Int),
+            Sample.Column("MonthNumber", System.Data.SqlDbType.Int, nullable: true)]);
         var project = With(("MinYear", "1990"), ("MaxYear", "2040"));
 
         var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, project);
@@ -409,8 +409,8 @@ public class ProjectSettingsTests
     private static TableModel SummaryTable() => Sample.Table("Summary", [
         Sample.Column("SummaryId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
         Sample.Column("Name", System.Data.SqlDbType.NVarChar, characters: 50),
-        Sample.Column("Year", System.Data.SqlDbType.Int, numericKind: NumericKind.Year),
-        Sample.Column("MonthNumber", System.Data.SqlDbType.Int, numericKind: NumericKind.Month)]);
+        Sample.Column("Year", System.Data.SqlDbType.Int),
+        Sample.Column("MonthNumber", System.Data.SqlDbType.Int)]);
 
     [TestMethod]
     [DataRow("TS_Component_v1.tt", "min=\"1\" max=\"12\"")]

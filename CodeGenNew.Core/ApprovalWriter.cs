@@ -49,7 +49,7 @@ public static class ApprovalWriter
         return Fill(MayDecideRows, ("§AP", approvers.Table.TableName), ("§APCHECK", check));
     }
 
-    private static string Now(ColumnModel column) => column.SqlType == System.Data.SqlDbType.DateTimeOffset ? "DateTimeOffset.Now" : "DateTime.Now";
+    private static string Now(ColumnModel column) => column.IsDateTimeOffsetColumn ? "DateTimeOffset.Now" : "DateTime.Now";
 
     private static string PerTable(ApprovalTableShape t, string contextType, bool tenantOwned)
     {

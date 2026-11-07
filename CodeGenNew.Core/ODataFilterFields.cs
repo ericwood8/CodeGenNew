@@ -34,8 +34,8 @@ public static class ODataFilterFields
         ODataFilterField Field(ODataFilterKind kind, string? literal = null, FormParent? parent = null, IReadOnlyList<string>? choices = null) =>
             new(name, property, kind, column.IsNullable, literal, parent, choices ?? []);
 
-        var cell = form.CellOf(column);
-        if (cell == CellKind.Lookup)
+        var cell = form.Field(column);
+        if (cell.IsLookupCell)
         {
             var parent = form.ParentOf(column);
             return parent is null ? null : Field(ODataFilterKind.Parent, parent.KeyType?.Kind == KeyKind.Int ? "number" : parent.KeyType?.Kind == KeyKind.Guid ? "guid" : "string", parent);
@@ -44,9 +44,9 @@ public static class ODataFilterFields
             return Field(ODataFilterKind.Choice, "string", choices: choices);
         return cell switch
         {
-            CellKind.Boolean => Field(ODataFilterKind.Boolean),
-            CellKind.Date or CellKind.DateTime => Field(ODataFilterKind.Date),
-            CellKind.Money or CellKind.Decimal => Field(ODataFilterKind.Number),
+            { IsBooleanCell: true } => Field(ODataFilterKind.Boolean),
+            { IsDateCell: true } or { IsDateTimeCell: true } => Field(ODataFilterKind.Date),
+            { IsMoneyCell: true } or { IsDecimalCell: true } => Field(ODataFilterKind.Number),
             _ when column.IsIntegerColumn => Field(ODataFilterKind.Number),
             _ when column.IsStringColumn && !column.IsLongTextColumn => Field(ODataFilterKind.Text),
             _ => null

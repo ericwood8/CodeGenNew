@@ -43,7 +43,7 @@
     Line("from fastapi.responses import JSONResponse");
     if (validate)
         Line("from pydantic import ValidationError");
-    Line(tables.Any(t => t.LogStamp is not null && t.Model.Dialect == SqlDialect.Sqlite) ? "from sqlalchemy import func, select" : "from sqlalchemy import select");
+    Line(tables.Any(t => t.LogStamp is not null && t.Model.IsSqlite) ? "from sqlalchemy import func, select" : "from sqlalchemy import select");
     Line("from sqlalchemy.exc import IntegrityError");
     Line("from sqlalchemy.orm import Session");
     Line();
@@ -286,7 +286,7 @@
     Line("        stamp = getattr(spec.model, spec.log_stamp)");
     Line("        statement = select(spec.model)");
     // SQLite keeps a date and time as text, and a value without a fraction sorts before the same value with one, so both sides go through datetime() there
-    bool sqliteLog = tables.Any(t => t.Model.Dialect == SqlDialect.Sqlite);
+    bool sqliteLog = tables.Any(t => t.Model.IsSqlite);
     string Side(string expression) => sqliteLog ? $"func.datetime({expression})" : expression;
     Line("        if range_from is not None:");
     Line($"            statement = statement.where({Side("stamp")} >= {Side("datetime.combine(range_from, time.min)")})");

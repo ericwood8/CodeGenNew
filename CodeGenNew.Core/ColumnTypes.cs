@@ -10,26 +10,6 @@ public static class ColumnTypes
     /// <summary> The column's name as a C# identifier: <c>class</c> is written <c>@class</c>. </summary>
     public static string CSharpName(this ColumnModel column) => column.IsCSharpReservedWordName ? "@" + column.Name : column.Name;
 
-    /// <summary> The C# type without nullability: <c>int</c>, <c>string</c>, <c>byte[]</c>; <c>object</c> for a type with no mapping. </summary>
-    public static string CSharpBase(this ColumnModel column) => column.SqlType switch
-    {
-        SqlDbType.Int => "int",
-        SqlDbType.BigInt => "long",
-        SqlDbType.SmallInt => "short",
-        SqlDbType.TinyInt => "byte",
-        SqlDbType.Bit => "bool",
-        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
-        SqlDbType.Float => "double",
-        SqlDbType.Real => "float",
-        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
-        SqlDbType.DateTimeOffset => "DateTimeOffset",
-        SqlDbType.Time => "TimeSpan",
-        SqlDbType.UniqueIdentifier => "Guid",
-        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
-        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
-        _ => "object"
-    };
-
     /// <summary> The C# type as an entity property has it: the base type, with <c>?</c> when the column can be NULL (<c>int?</c>, <c>string?</c>, <c>object?</c>). </summary>
     public static string CSharp(this ColumnModel column) => column.IsNullable ? column.CSharpBase() + "?" : column.CSharpBase();
 
@@ -60,46 +40,6 @@ public static class ColumnTypes
         _ => "Parse.untyped"
     };
 
-    /// <summary> The TypeScript type of the value the API's JSON holds: <c>number</c> for every number (a decimal too), <c>boolean</c>, else <c>string</c> (a date is its ISO text). </summary>
-    public static string TypeScript(this ColumnModel column) => column.SqlType switch
-    {
-        SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt or SqlDbType.Decimal or SqlDbType.Money
-            or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real => "number",
-        SqlDbType.Bit => "boolean",
-        _ => "string"
-    };
-
-    /// <summary> The protobuf type: <c>int32</c>, <c>int64</c>, <c>bool</c>, <c>float</c>, <c>double</c>, <c>bytes</c>, <c>google.protobuf.Timestamp</c> for a date, and <c>string</c> for text, a decimal (protobuf has no decimal type), a time or a GUID. </summary>
-    public static string Proto(this ColumnModel column) => column.SqlType switch
-    {
-        SqlDbType.Int or SqlDbType.SmallInt or SqlDbType.TinyInt => "int32",
-        SqlDbType.BigInt => "int64",
-        SqlDbType.Bit => "bool",
-        SqlDbType.Float => "double",
-        SqlDbType.Real => "float",
-        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime or SqlDbType.DateTimeOffset => "google.protobuf.Timestamp",
-        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "bytes",
-        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Time or SqlDbType.UniqueIdentifier
-            or SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
-        _ => "bytes"
-    };
-
-    /// <summary> The JSON Schema / OpenAPI <c>type</c> and <c>format</c> of the column's JSON value; the type is null for a database type with no JSON form. </summary>
-    public static (string? Type, string? Format) JsonSchema(this ColumnModel column) => column.SqlType switch
-    {
-        SqlDbType.Int or SqlDbType.SmallInt or SqlDbType.TinyInt => ("integer", "int32"),
-        SqlDbType.BigInt => ("integer", "int64"),
-        SqlDbType.Bit => ("boolean", null),
-        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => ("number", null),
-        SqlDbType.Float => ("number", "double"),
-        SqlDbType.Real => ("number", "float"),
-        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime or SqlDbType.DateTimeOffset => ("string", "date-time"),
-        SqlDbType.Time => ("string", null),
-        SqlDbType.UniqueIdentifier => ("string", "uuid"),
-        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => ("string", "byte"),
-        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => ("string", null),
-        _ => (null, null)
-    };
 }
 
 /// <summary> Captions made from names. </summary>
@@ -134,20 +74,8 @@ public static partial class Labels
     /// <summary> The caption of a column: <c>SY_</c> and a trailing <c>Id</c> dropped, then as words (<c>CustomerId</c> is "Customer", <c>BillingAddress</c> is "Billing Address"). </summary>
     public static string Column(string columnName) => Words(IdSuffix().Replace(SystemPrefix().Replace(columnName, ""), ""));
 
-    /// <summary> The caption of a field on a form: the column's caption, with a question mark for a yes / no column and its leading "Is" dropped, as on the grids
-    /// (<c>IsTaxable</c> is "Taxable?"). </summary>
-    public static string Field(ColumnModel column)
-    {
-        string caption = NumberSign(Column(column.Name));
-        if (!column.IsBooleanColumn)
-            return caption;
-        if (caption.StartsWith("Is ", StringComparison.OrdinalIgnoreCase) && caption.Length > 3)
-            caption = caption[3..];
-        return caption + "?";
-    }
-
     /// <summary> "Customer Item Number" is "Customer Item #", as on the grids; a caption that is only "Number" keeps its word. </summary>
-    private static string NumberSign(string caption)
+    internal static string NumberSign(string caption)
     {
         var words = caption.Split(' ');
         if (words.Length < 2)

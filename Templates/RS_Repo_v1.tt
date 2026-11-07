@@ -19,7 +19,7 @@
     // ==========================================================================================
 
     var t = RustTable.Of(Model, Project);
-    bool mysql = Model.Dialect == SqlDialect.MySql;
+    bool mysql = Model.IsMySql;
     bool search = Model.HasSearchApiOfAnyKey(Project);
     string key = t.Key.Name;
     string keyType = t.Key.Type;

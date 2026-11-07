@@ -89,8 +89,8 @@ public class StampedDateTests
             Sample.Column("Received", SqlDbType.Date, ordinal: 3)
         ]);
 
-        Assert.AreEqual(CellKind.DateTime, GridCells.KindOf(Stock().Columns.Single(c => c.Name == "CreatedDate"), false));
-        Assert.AreEqual(CellKind.Date, GridCells.KindOf(plain.Columns.Single(c => c.Name == "Received"), false));
+        Assert.IsTrue(Stock().Columns.Single(c => c.Name == "CreatedDate").IsDateTimeCell);
+        Assert.IsTrue(plain.Columns.Single(c => c.Name == "Received").IsDateCell);
 
         Expect.Contains(await Rendered("TSX_Page_v1.tt", Stock(), Project()), ".substring(0, 16).replace('T', ' ')");
         Expect.Contains(await Rendered("TS_Component_v1.tt", Stock(), Project()), "| date:'MM/dd/yyyy HH:mm'");

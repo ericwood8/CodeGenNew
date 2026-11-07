@@ -15,7 +15,7 @@ public sealed record TextConversion(string Expression, string? ColumnType)
             usings.AddRange(["System.Globalization", "System.Text", "System.Text.RegularExpressions", "NpgsqlTypes"]);
             source.Add(PgTextSource.Code);
         }
-        if (list.Any(c => c.DbSpatialType is not null))
+        if (list.Any(c => c.IsSpatialColumn))
         {
             usings.AddRange(["System.Globalization"]);
             source.Add(MySqlSpatialSource.Code);

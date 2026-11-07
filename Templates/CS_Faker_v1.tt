@@ -41,8 +41,8 @@
         // the numbers of a whole-number column: its range when the name or a CHECK gives one, else 1 to 1000 inside the type
         (long Low, long High) IntegerBounds(ColumnModel c)
         {
-            var type = NumericClassifier.TypeRange(c.SqlType);
-            if ((c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
+            var type = c.TypeRange;
+            if (c.HasNumericLimits && Project.RangeFor(c) is { } range)
                 return (range.Min, Math.Min(range.Max, range.Min + 1000));
             return (Math.Max(1, type.Min), Math.Min(1000, type.Max));
         }
@@ -118,7 +118,7 @@
                         _ => $"f.Random.Double({Num(low2)}, {Num(high2)})"
                     };
                 case "bool": return "f.Random.Bool()";
-                case "DateTime": return c.SqlType == SqlDbType.Date ? "f.Date.Past(5).Date" : "f.Date.Past(5)";
+                case "DateTime": return c.IsDateOnlyColumn ? "f.Date.Past(5).Date" : "f.Date.Past(5)";
                 case "DateTimeOffset": return "f.Date.PastOffset(5)";
                 case "TimeSpan": return "f.Date.Timespan()";
                 case "Guid": return "f.Random.Guid()";

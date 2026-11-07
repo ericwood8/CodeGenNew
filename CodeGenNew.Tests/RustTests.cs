@@ -427,6 +427,7 @@ public class RustTests
 
     private sealed class SqlServerProvider(TableModel table) : ISchemaProvider
     {
+        public SqlDialect Dialect => SqlDialect.SqlServer;
         public Task<List<TableSummary>> ListTablesAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new List<TableSummary> { new() { SchemaName = table.SchemaName, TableName = table.TableName, HasPrimaryKey = true } });
         public Task<List<ColumnSummary>> ListColumnSummariesAsync(string schemaName, string tableName, CancellationToken cancellationToken = default) => Task.FromResult(new List<ColumnSummary>());

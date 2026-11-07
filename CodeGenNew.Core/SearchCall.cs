@@ -18,8 +18,8 @@ public sealed class SearchCall
     public SearchCall(TableModel model, string entity, IEnumerable<string> filterNames, bool qualifyTypes = false)
     {
         _prefix = qualifyTypes ? DialectInfo.For(model.Dialect).DriverPrefix : "";
-        _postgres = model.Dialect == SqlDialect.PostgreSql;
-        _mysql = model.Dialect == SqlDialect.MySql;
+        _postgres = model.IsPostgreSql;
+        _mysql = model.IsMySql;
         _schema = model.SchemaName;
         _entity = entity;
         _filterArguments = filterNames.Select(n => "@p" + n).ToList();

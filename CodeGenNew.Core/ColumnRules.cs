@@ -58,7 +58,7 @@ public static class ColumnRules
                 Noun = text?.Noun
             };
         }
-        else if (column.IsIntegerColumn && (column.NumericKind != NumericKind.None || column.Check is not null) && project.RangeFor(column) is { } range)
+        else if (column.HasNumericLimits && project.RangeFor(column) is { } range)
         {
             rule = new ColumnRule { Min = range.Min, Max = range.Max };
         }

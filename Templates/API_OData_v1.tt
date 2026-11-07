@@ -246,7 +246,7 @@ public static partial class ODataEndpoints
         builder.EntityType<<#= entity #>>().Ignore(e => e.<#= c.CSharpName() #>);
 <#
         }
-        foreach (var c in t.Columns.Where(c => c.SqlType == SqlDbType.Date))
+        foreach (var c in t.Columns.Where(c => c.IsDateOnlyColumn))
         {
 #>
         builder.EntityType<<#= entity #>>().Property(e => e.<#= c.CSharpName() #>).AsDate();

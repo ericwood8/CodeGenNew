@@ -37,6 +37,7 @@ public class GenerateAllTests
 
     private sealed class FakeProvider(params TableModel[] tables) : ISchemaProvider
     {
+        public SqlDialect Dialect => SqlDialect.SqlServer;
         public Task<List<TableSummary>> ListTablesAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(tables.Select(t => new TableSummary { SchemaName = t.SchemaName, TableName = t.TableName, HasPrimaryKey = t.HasPrimaryKey }).ToList());
         public Task<List<ColumnSummary>> ListColumnSummariesAsync(string schemaName, string tableName, CancellationToken cancellationToken = default) => Task.FromResult(new List<ColumnSummary>());

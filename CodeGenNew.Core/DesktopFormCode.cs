@@ -11,10 +11,10 @@ public static class DesktopFormCode
     /// <summary> The type of the view-model property that holds the column's value. </summary>
     public static string FieldType(FormModel form, ColumnModel column)
     {
-        var value = form.ValueOf(column);
-        return value == ValueKind.Lookup ? form.ParentOf(column)!.KeyCs + "?"
-            : value == ValueKind.Boolean ? "bool?"
-            : value is ValueKind.Money or ValueKind.Decimal or ValueKind.WholeNumber ? "double"
+        var formColumn = form.Field(column);
+        return formColumn.IsLookupValue ? form.ParentOf(column)!.KeyCs + "?"
+            : formColumn.IsBooleanValue ? "bool?"
+            : (formColumn.IsMoneyValue || formColumn.IsDecimalValue || formColumn.IsWholeNumberValue) ? "double"
             : TemplateHelpers.IsDate(column) ? "DateTimeOffset?"
             : "string?";
     }
@@ -42,7 +42,7 @@ public static class DesktopFormCode
     public static string PairProperties(FormModel form, ProjectSettings project)
     {
         var o = new StringBuilder();
-        foreach (var pair in DatePairs.For(form.Table, project).Where(p => form.Columns.Contains(p.End) && form.Columns.Contains(p.Start) && form.ValueOf(p.End) == ValueKind.Date && form.ValueOf(p.Start) == ValueKind.Date))
+        foreach (var pair in DatePairs.For(form.Table, project).Where(p => form.Columns.Contains(p.End) && form.Columns.Contains(p.Start) && form.Field(p.End).IsDateValue && form.Field(p.Start).IsDateValue))
         {
             o.Append('\n');
             o.Append($"    /// <summary> The earliest date the {pair.End.Name} calendar offers: the {pair.Start.Name} date (the calendar's own first date while there is none). </summary>\n");
@@ -55,7 +55,7 @@ public static class DesktopFormCode
     /// <summary> The check of a date that must not be earlier than the date it follows (a changed value only), or null when the column ends no pair. </summary>
     public static string? PairCheck(FormModel form, ProjectSettings project, TableModel table, ColumnModel column, string prop)
     {
-        if (DatePairs.EndingAt(table, project, column) is not { } pair || !form.Columns.Contains(pair.Start) || form.ValueOf(pair.Start) != ValueKind.Date)
+        if (DatePairs.EndingAt(table, project, column) is not { } pair || !form.Columns.Contains(pair.Start) || !form.Field(pair.Start).IsDateValue)
             return null;
         string start = pair.Start.Name;
         return $"else if ({start} is not null && {prop}.Value.Date < {start}.Value.Date && (((DateTime?)entity.{prop})?.Date != {prop}.Value.Date || ((DateTime?)entity.{start})?.Date != {start}.Value.Date)) {{ ErrorMessage = \"{pair.Message}\"; return false; }}";
@@ -64,31 +64,35 @@ public static class DesktopFormCode
     /// <summary> The line that fills the view-model property from <c>editing</c>, the row being edited (twelve spaces in). A foreign key is not set here: its drop-down is filled first. Empty for it. </summary>
     public static string LoadLines(FormModel form, ColumnModel column)
     {
-        var value = form.ValueOf(column);
+        var formColumn = form.Field(column);
         string prop = column.Name;
         var o = new StringBuilder();
         void L(string s) => o.Append("            ").Append(s).Append('\n');
-        switch (value)
         {
-            case ValueKind.Lookup:
-                break;
-            case ValueKind.Money:
-            case ValueKind.Decimal:
+            if (formColumn.IsLookupValue)
+            {
+            }
+            else if (formColumn.IsMoneyValue || formColumn.IsDecimalValue)
+            {
                 L($"{prop} = " + (column.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}") + ";");
-                break;
-            case ValueKind.WholeNumber:
+            }
+            else if (formColumn.IsWholeNumberValue)
+            {
                 L($"{prop} = editing.{prop}" + (column.IsNullable ? " ?? double.NaN" : "") + ";");
-                break;
-            case ValueKind.Boolean:
+            }
+            else if (formColumn.IsBooleanValue)
+            {
                 L($"{prop} = editing.{prop};");
-                break;
-            case ValueKind.Date:
+            }
+            else if (formColumn.IsDateValue)
+            {
                 L($"{prop} = " + (column.IsNullable ? $"editing.{prop}.HasValue ? new DateTimeOffset(editing.{prop}.Value) : null" : $"new DateTimeOffset(editing.{prop})") + ";");
                 L($"_{char.ToLowerInvariant(prop[0]) + prop[1..]}Time = editing.{prop}" + (column.IsNullable ? "?.TimeOfDay ?? TimeSpan.Zero" : ".TimeOfDay") + ";");
-                break;
-            default:
+            }
+            else
+            {
                 L($"{prop} = editing.{prop}" + (column.IsNullable ? "?.ToString()" : ".ToString()") + ";");
-                break;
+            }
         }
         return o.ToString();
     }
@@ -164,7 +168,7 @@ public static class DesktopFormCode
     /// that breaks a shape rule, a date after today, each setting <c>ErrorMessage</c> and returning false. </summary>
     public static string SaveLines(FormModel form, ProjectSettings project, ColumnModel column)
     {
-        var value = form.ValueOf(column);
+        var formColumn = form.Field(column);
         string prop = column.Name;
         string label = Labels.Column(column.Name);
         var table = form.Table;
@@ -173,9 +177,9 @@ public static class DesktopFormCode
         // the branch taken for a blank value: refused when the column is NOT NULL, else stored as null
         void Blank() => L(column.IsNullable ? "    entity." + prop + " = null;" : "    ErrorMessage = \"" + label + " is required.\"; return false;");
 
-        switch (value)
         {
-            case ValueKind.Lookup:
+            if (formColumn.IsLookupValue)
+            {
                 if (!column.IsNullable)
                 {
                     L($"if ({prop} is null) {{ ErrorMessage = \"{label} is required.\"; return false; }}");
@@ -183,27 +187,27 @@ public static class DesktopFormCode
                 }
                 else
                     L($"entity.{prop} = {prop};");
-                break;
-            case ValueKind.Money:
+            }
+            else if (formColumn.IsMoneyValue)
+            {
                 L($"if (double.IsNaN({prop}))");
                 L("{");
                 Blank();
                 L("}");
                 L($"else {{ entity.{prop} = Math.Round((decimal){prop}, {NumericClassifier.CurrencyDigits(column)}); }}");
-                break;
-            case ValueKind.Decimal:
+            }
+            else if (formColumn.IsDecimalValue)
             {
                 var (decMin, decMax) = NumericClassifier.DecimalRange(column);
-                string decValue = column.SqlType == SqlDbType.Decimal ? $"Math.Round((decimal){prop}, {NumericClassifier.DecimalPlaces(column)})" : column.SqlType == SqlDbType.Real ? $"(float){prop}" : prop;
+                string decValue = column.IsDecimalColumn ? $"Math.Round((decimal){prop}, {NumericClassifier.DecimalPlaces(column)})" : column.IsRealColumn ? $"(float){prop}" : prop;
                 L($"if (double.IsNaN({prop}))");
                 L("{");
                 Blank();
                 L("}");
                 L($"else if ({prop} < {TemplateHelpers.Inv(decMin)} || {prop} > {TemplateHelpers.Inv(decMax)}) {{ ErrorMessage = \"{label} must be between {TemplateHelpers.Inv(decMin)} and {TemplateHelpers.Inv(decMax)}.\"; return false; }}");
                 L($"else {{ entity.{prop} = {decValue}; }}");
-                break;
             }
-            case ValueKind.WholeNumber:
+            else if (formColumn.IsWholeNumberValue)
             {
                 var range = project.RangeFor(column)!.Value;
                 string intType = NumericClassifier.NumericCSharpType(column);
@@ -214,12 +218,12 @@ public static class DesktopFormCode
                 L($"else if ({prop} != Math.Floor({prop})) {{ ErrorMessage = \"{label} must be a whole number.\"; return false; }}");
                 L($"else if ({prop} < {range.Min} || {prop} > {range.Max}) {{ ErrorMessage = \"{label} must be between {range.Min} and {range.Max}.\"; return false; }}");
                 L($"else {{ entity.{prop} = ({intType}){prop}; }}");
-                break;
             }
-            case ValueKind.Boolean:
+            else if (formColumn.IsBooleanValue)
+            {
                 L($"entity.{prop} = {prop}" + (column.IsNullable ? "" : " ?? false") + ";");
-                break;
-            case ValueKind.Date:
+            }
+            else if (formColumn.IsDateValue)
             {
                 L($"if ({prop} is null)");
                 L("{");
@@ -230,17 +234,17 @@ public static class DesktopFormCode
                 if (PairCheck(form, project, table, column, prop) is { } pairCheck)
                     L(pairCheck);
                 L($"else {{ entity.{prop} = {prop}.Value.Date + _{char.ToLowerInvariant(prop[0]) + prop[1..]}Time; }}");
-                break;
             }
-            case ValueKind.Guid:
+            else if (formColumn.IsGuidValue)
+            {
                 L($"if (string.IsNullOrWhiteSpace({prop}))");
                 L("{");
                 Blank();
                 L("}");
                 L($"else if (!Guid.TryParse({prop}, out var {prop}Value)) {{ ErrorMessage = \"{label} is not a valid value.\"; return false; }}");
                 L($"else {{ entity.{prop} = {prop}Value; }}");
-                break;
-            case ValueKind.Number:
+            }
+            else if (formColumn.IsNumberValue)
             {
                 string numType = NumericClassifier.NumericCSharpType(column);
                 L($"if (string.IsNullOrWhiteSpace({prop}))");
@@ -249,9 +253,9 @@ public static class DesktopFormCode
                 L("}");
                 L($"else if (!{numType}.TryParse({prop}, out var {prop}Value)) {{ ErrorMessage = \"{label} is not a valid number.\"; return false; }}");
                 L($"else {{ entity.{prop} = {prop}Value; }}");
-                break;
             }
-            default:   // plain text
+            else
+            {
                 if (!column.IsNullable)
                 {
                     L($"if (string.IsNullOrWhiteSpace({prop})) {{ ErrorMessage = \"{label} is required.\"; return false; }}");
@@ -265,7 +269,7 @@ public static class DesktopFormCode
                         L(optionalShape);
                     L($"entity.{prop} = string.IsNullOrWhiteSpace({prop}) ? null : {prop};");
                 }
-                break;
+            }
         }
         return o.ToString();
     }

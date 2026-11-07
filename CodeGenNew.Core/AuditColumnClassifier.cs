@@ -1,6 +1,5 @@
-using CodeGenNew.Core;
 
-namespace CodeGenNew.SchemaIntrospection;
+namespace CodeGenNew.Core;
 
 /// <summary> Name-pattern match for audit/tracking columns, used to exclude them from DisplayColumnSelector
 /// (Docs/ARCHITECTURE.md section 4). </summary>

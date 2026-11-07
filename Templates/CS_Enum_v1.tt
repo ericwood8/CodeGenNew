@@ -26,14 +26,12 @@
     // ==========================================================================================
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    string underlying = keyColumn?.SqlType switch
-    {
-        SqlDbType.Int => "",
-        SqlDbType.SmallInt => "short",
-        SqlDbType.TinyInt => "byte",
-        SqlDbType.BigInt => "long",
-        _ => null
-    };
+    string? underlying = keyColumn is null ? null
+        : keyColumn.IsInt32Column ? ""
+        : keyColumn.IsSmallIntColumn ? "short"
+        : keyColumn.IsTinyIntColumn ? "byte"
+        : keyColumn.IsBigIntColumn ? "long"
+        : null;
 
     // the column that names each row, first match wins: a text column called "Name"; then "<Table>Name" (Company ->
     // CompanyName; a leading "E_" / "SY_" on the table name is ignored, so SY_Role -> RoleName); then the display column

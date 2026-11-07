@@ -25,7 +25,7 @@ public class ApiExtrasTemplateTests
         Sample.Column("Weight", SqlDbType.Decimal, precision: 8, scale: 2, ordinal: 8, check: new CheckRange(0, true, null, false)),
         Sample.Column("Added", SqlDbType.DateTime, ordinal: 9, createDateColumn: true),
         Sample.Column("Phone", SqlDbType.VarChar, nullable: true, characters: 20, ordinal: 10),
-        Sample.Column("Year", SqlDbType.Int, nullable: true, ordinal: 11, numericKind: NumericKind.Year)
+        Sample.Column("Year", SqlDbType.Int, nullable: true, ordinal: 11)
     ],
     [new ForeignKeyModel { ConstraintName = "FK_s", ReferencingColumns = ["CustomerStatusId"], ReferencedSchema = "dbo", ReferencedTable = "CustomerStatus", ReferencedColumns = ["CustomerStatusId"] }]);
 
@@ -136,7 +136,7 @@ public class ApiExtrasTemplateTests
         var customer = Customer();
         var described = new TableModel
         {
-            SchemaName = customer.SchemaName, TableName = customer.TableName, QuotedName = customer.QuotedName, Columns = customer.Columns, PrimaryKeyColumns = customer.PrimaryKeyColumns,
+            SchemaName = customer.SchemaName, Dialect = customer.Dialect, TableName = customer.TableName, QuotedName = customer.QuotedName, Columns = customer.Columns, PrimaryKeyColumns = customer.PrimaryKeyColumns,
             ForeignKeys = [], ChildForeignKeys = [], Description = "Somebody who buys."
         };
 

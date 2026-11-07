@@ -35,9 +35,9 @@ public sealed class NumberBox
     /// and what the CHECK constraint (or the project's <c>NonNegativeColumns</c>) says about an amount of money. </summary>
     public static NumberBox For(string table, ColumnModel column, ProjectSettings project)
     {
-        string? step = column.SqlType is System.Data.SqlDbType.Decimal && (column.Scale ?? 0) > 0 ? "0." + new string('0', column.Scale!.Value - 1) + "1"
+        string? step = column.IsDecimalColumn && (column.Scale ?? 0) > 0 ? "0." + new string('0', column.Scale!.Value - 1) + "1"
             : column.IsMoneyColumn ? "0.01"
-            : column.SqlType is System.Data.SqlDbType.Float or System.Data.SqlDbType.Real ? "any" : null;
+            : (column.IsFloatColumn || column.IsRealColumn) ? "any" : null;
         string? min = null, max = null;
         if (project.RangeFor(column) is { } range)
             (min, max) = (range.Min.ToString(), range.Max.ToString());

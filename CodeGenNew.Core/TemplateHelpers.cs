@@ -25,11 +25,11 @@ public static partial class TemplateHelpers
     /// <summary> A table's name without the E_ or SY_ prefix some databases put on it. </summary>
     public static string BaseName(string table) => SystemPrefix().Replace(EntityPrefix().Replace(table, ""), "");
 
-    public static bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText;
+    public static bool IsText(ColumnModel c) => c.IsStringColumn;
 
     public static bool IsNumber(ColumnModel c) => c.IsIntegerColumn || c.IsNumericColumn || c.IsMoneyColumn;
 
-    public static bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+    public static bool IsDate(ColumnModel c) => c.IsLocalDateColumn;
 
     public static bool IsGuid(ColumnModel c) => c.IsGuidColumn;
 

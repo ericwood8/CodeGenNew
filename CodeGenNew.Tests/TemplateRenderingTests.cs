@@ -103,8 +103,8 @@ public class TemplateRenderingTests
     {
         string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
 
-        Expect.Contains(sql, "@pSY_IsoCountry_Alpha3Code char(3) = NULL");
-        Expect.Contains(sql, "@pName nvarchar(50) = NULL");
+        Expect.Contains(sql, "@pstrSY_IsoCountry_Alpha3Code char(3) = NULL");
+        Expect.Contains(sql, "@pstrName nvarchar(50) = NULL");
     }
 
     [TestMethod]
@@ -112,8 +112,8 @@ public class TemplateRenderingTests
     {
         string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
 
-        Expect.Contains(sql, "(@pName IS NULL OR [Name] LIKE '%' + REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(@pName)), '\\', '\\\\'), '%', '\\%'), '_', '\\_'), '[', '\\[') + '%' ESCAPE '\\')");
-        Expect.Contains(sql, "AND (@pSY_IsoCountry_Alpha3Code IS NULL OR [SY_IsoCountry_Alpha3Code] = @pSY_IsoCountry_Alpha3Code)");
+        Expect.Contains(sql, "(@pstrName IS NULL OR [Name] LIKE '%' + REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(@pstrName)), '\\', '\\\\'), '%', '\\%'), '_', '\\_'), '[', '\\[') + '%' ESCAPE '\\')");
+        Expect.Contains(sql, "AND (@pstrSY_IsoCountry_Alpha3Code IS NULL OR [SY_IsoCountry_Alpha3Code] = @pstrSY_IsoCountry_Alpha3Code)");
     }
 
     // ------------------------------------------------------------------ PostgreSQL
@@ -132,7 +132,7 @@ public class TemplateRenderingTests
 
         Expect.Contains(sql, "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Search\"(");
         Expect.Contains(sql, "RETURNS SETOF \"public\".\"Holiday\"");
-        Expect.Contains(sql, "(\"pName\" IS NULL OR \"Name\" ILIKE '%' || REPLACE(REPLACE(REPLACE(btrim(\"pName\"), '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\')");
+        Expect.Contains(sql, "(\"pstrName\" IS NULL OR \"Name\" ILIKE '%' || REPLACE(REPLACE(REPLACE(btrim(\"pstrName\"), '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\')");
         Expect.Contains(sql, "OFFSET (\"PageNumber\" - 1) * \"PageSize\" LIMIT \"PageSize\"");
         Expect.Contains(sql, "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_SearchCount\"(");
         Expect.Contains(sql, "RETURNS integer");
@@ -187,8 +187,8 @@ public class TemplateRenderingTests
     {
         string sql = await Render("SP_Search_v1.tt", Sample.WithModifiedByColumn());
 
-        Expect.Contains(sql, "@pSubject nvarchar(100) = NULL");
-        Expect.DoesNotContain(sql, "@pModifiedBy");
+        Expect.Contains(sql, "@pstrSubject nvarchar(100) = NULL");
+        Expect.DoesNotContain(sql, "@pstrModifiedBy");
     }
 
     [TestMethod]
@@ -905,7 +905,7 @@ public class TemplateRenderingTests
         Expect.DoesNotContain(insertSql, "ModifiedBy");
 
         string updateSql = await Render("SP_Update_v1.tt", table);
-        Expect.Contains(updateSql, "@pModifiedBy");
+        Expect.Contains(updateSql, "@pstrModifiedBy");
     }
 
     [TestMethod]

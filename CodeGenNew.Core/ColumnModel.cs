@@ -5,21 +5,85 @@ namespace CodeGenNew.Core;
 /// <summary> One column of a TableModel, as read from the database plus classification computed by CodeGenNew.SchemaIntrospection. </summary>
 public class ColumnModel
 {
+    #region Private Variables
+    private bool? _isReservedWordName;
+    private bool? _isCSharpReservedWordName;
+    private bool? _isComputed;
+    private bool? _isAuditColumn;
+    private bool? _isIntegerColumn;
+    private bool? _isNumericColumn;
+    private bool? _isMoneyColumn;
+    private bool? _isStringColumn;
+    private bool? _isDateColumn;
+    private bool? _isBooleanColumn;
+    private CellKind? _cell;
+    private string? _label;
+    private NumericKind? _numericKind;
+    private bool? _isPercentage;
+    private string? _parameterName;
+    private TextConversion? _conversion;
+    private bool _conversionKnown;
+    private bool? _isPgTextColumn;
+    private bool? _isSpatialColumn;
+    private bool? _isBitColumn;
+    #endregion
+
+    #region Private Strings
+    private static readonly string[] LongTextNameEndings = ["Note", "Notes", "Comment", "Comments", "Remarks", "Memo"];
+    private static readonly string[] CredentialNameEndings = ["Salt", "Secret", "ApiKey", "Token"];
+    private static readonly string[] StampNameStarts = ["Create", "Modif", "Updated", "LastChang", "LastUpdat"];
+    #endregion
+
+    #region Private Enums
+    private enum CellKind { Boolean, Date, DateTime, Money, Decimal, Plain }
+    #endregion
+
+    #region Private Misc
+    private string CaptionOf()
+    {
+        string caption = Labels.NumberSign(Labels.Column(Name));
+        if (!IsBooleanColumn)
+            return caption;
+        if (caption.StartsWith("Is ", StringComparison.OrdinalIgnoreCase) && caption.Length > 3)
+            caption = caption[3..];
+        return caption + "?";
+    }
+
+    // How a grid shows the value when the column is not a foreign key shown as the parent's name. The first that fits wins.
+    private CellKind Cell => _cell ??=
+        IsBooleanColumn ? CellKind.Boolean
+        : TemplateHelpers.IsDate(this) ? (IsStampColumn && SqlType != SqlDbType.Date ? CellKind.DateTime : CellKind.Date)
+        : IsMoneyAmount ? CellKind.Money
+        : SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney ? CellKind.Decimal
+        : CellKind.Plain;
+    #endregion
+
     /// <summary> The name generated code uses (a C# property, a TypeScript field). </summary>
     public required string Name { get; init; }
 
     /// <summary> The column's real name in the database when the project's naming style changed <see cref="Name"/> (customer_id -> CustomerId); null when they are the same. </summary>
     public string? DatabaseName { get; init; }
 
+    /// <summary> The caption a screen shows for the column: <c>SY_</c> and a trailing <c>Id</c> dropped, then as words (<c>CustomerId</c> is "Customer"), "Number" as "#" (<c>CustomerItemNumber</c> is
+    /// "Customer Item #"), and for a yes / no column a leading "Is" dropped and a question mark added (<c>IsTaxable</c> is "Taxable?"). </summary>
+    public string Label => _label ??= CaptionOf();
+
+
+
     /// <summary> The name SQL text uses: the database's own name. </summary>
     public string DbName => DatabaseName ?? Name;
 
     /// <summary> The column's name quoted for the database it was read from. </summary>
     public required string QuotedName { get; init; }
-    public bool IsReservedWordName { get; init; }
-    public bool IsCSharpReservedWordName { get; init; }
 
-    public required SqlDbType SqlType { get; init; }
+    /// <summary> The database's name for the column is a reserved word of SQL. </summary>
+    public bool IsReservedWordName => _isReservedWordName ??= DbName.IsSqlReservedWord();
+
+    /// <summary> The generated name is a reserved word of C#. </summary>
+    public bool IsCSharpReservedWordName => _isCSharpReservedWordName ??= Name.IsCSharpReservedWord();
+
+    /// <summary> What the database says the type is. Only the column reads it (the getter is not public): every question about the type is a property below. </summary>
+    public required SqlDbType SqlType { internal get; init; }
     public required string SqlTypeDeclaration { get; init; }
     public int? MaxLength { get; init; }
     public int? Precision { get; init; }
@@ -37,7 +101,8 @@ public class ColumnModel
     /// of a row cannot keep such a value unchanged, which is what SP_Clone builds an override parameter for. </summary>
     public bool IsInUniqueIndex { get; init; }
 
-    public bool IsComputed { get; init; }
+    /// <summary> The database computes the column's value (it has a <see cref="ComputedDefinition"/>). </summary>
+    public bool IsComputed => _isComputed ??= ComputedDefinition is not null;
     public string? ComputedDefinition { get; init; }
 
     /// <summary> Raw DEFAULT constraint text from the database, if any (e.g. "((0))", "(getdate())"). </summary>
@@ -50,18 +115,138 @@ public class ColumnModel
     /// </summary>
     public string? SuggestedCSharpDefaultValueLiteral { get; init; }
 
-    // Type classification, grouped onto System.Data.SqlDbType.
-    public bool IsIntegerColumn { get; init; }
-    public bool IsNumericColumn { get; init; }
-    public bool IsMoneyColumn { get; init; }
-    public bool IsStringColumn { get; init; }
-    public bool IsDateColumn { get; init; }
-    public bool IsBooleanColumn { get; init; }
+    // Type classification, worked out from SqlType.
+    public bool IsIntegerColumn => _isIntegerColumn ??= SqlTypeKinds.IsInteger(SqlType);
+    public bool IsNumericColumn => _isNumericColumn ??= SqlTypeKinds.IsNumeric(SqlType);
+    public bool IsMoneyColumn => _isMoneyColumn ??= SqlTypeKinds.IsMoney(SqlType);
+    public bool IsStringColumn => _isStringColumn ??= SqlTypeKinds.IsString(SqlType);
+    public bool IsDateColumn => _isDateColumn ??= SqlTypeKinds.IsDate(SqlType);
+    public bool IsBooleanColumn => _isBooleanColumn ??= SqlTypeKinds.IsBoolean(SqlType);
 
     /// <summary> An int column (not bigint, smallint or tinyint: see <see cref="IsIntegerColumn"/> for every whole-number type). </summary>
     public bool IsInt32Column => SqlType == System.Data.SqlDbType.Int;
 
+
+
+    /// <summary> A grid shows the value as Yes or No. </summary>
+    public bool IsBooleanCell => Cell == CellKind.Boolean;
+    /// <summary> A grid shows the value as a date. </summary>
+    public bool IsDateCell => Cell == CellKind.Date;
+    /// <summary> A grid shows the value as a day and the time of day (a date and time the system stamps). </summary>
+    public bool IsDateTimeCell => Cell == CellKind.DateTime;
+    /// <summary> A grid shows the value as an amount of money, with the currency. </summary>
+    public bool IsMoneyCell => Cell == CellKind.Money;
+    /// <summary> A grid shows the value as a decimal that is not money, with two decimals. </summary>
+    public bool IsDecimalCell => Cell == CellKind.Decimal;
+    /// <summary> A grid shows the value as it is (text, a whole number or anything else). </summary>
+    public bool IsPlainCell => Cell == CellKind.Plain;
+
+    /// <summary> A decimal, float or real column that is not money (a percentage, a rate, a weight): edited in a number box limited to what the column can hold. </summary>
+    public bool IsDecimalBox => !IsCurrencyColumn && IsNumericColumn;
+
+    /// <summary> A whole-number column (not a flag): edited in a number box limited to its range. </summary>
+    public bool IsWholeNumberBox => IsIntegerColumn && !IsBooleanColumn;
+
     public bool IsGuidColumn => SqlType == System.Data.SqlDbType.UniqueIdentifier;
+
+    public bool IsBigIntColumn => SqlType == SqlDbType.BigInt;
+    public bool IsSmallIntColumn => SqlType == SqlDbType.SmallInt;
+    public bool IsTinyIntColumn => SqlType == SqlDbType.TinyInt;
+    public bool IsDecimalColumn => SqlType == SqlDbType.Decimal;
+    public bool IsFloatColumn => SqlType == SqlDbType.Float;
+    public bool IsRealColumn => SqlType == SqlDbType.Real;
+    public bool IsSmallMoneyColumn => SqlType == SqlDbType.SmallMoney;
+
+    /// <summary> A date with no time of day. </summary>
+    public bool IsDateOnlyColumn => SqlType == SqlDbType.Date;
+    /// <summary> A datetime, datetime2 or smalldatetime. </summary>
+    public bool IsDateTimeColumn => SqlType is SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+    public bool IsDateTime2Column => SqlType == SqlDbType.DateTime2;
+    public bool IsSmallDateTimeColumn => SqlType == SqlDbType.SmallDateTime;
+    public bool IsDateTimeOffsetColumn => SqlType == SqlDbType.DateTimeOffset;
+    public bool IsTimeColumn => SqlType == SqlDbType.Time;
+    /// <summary> A date or a date and time without an offset: the dates a form edits in a date box. </summary>
+    public bool IsLocalDateColumn => IsDateOnlyColumn || IsDateTimeColumn;
+
+    /// <summary> A char, varchar, nchar or nvarchar column (not text, ntext or xml). </summary>
+    public bool IsPlainTextColumn => SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+    public bool IsXmlColumn => SqlType == SqlDbType.Xml;
+    /// <summary> Text kept in the Unicode types (nchar, nvarchar, ntext) or xml. </summary>
+    public bool IsUnicodeTextColumn => SqlType is SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.NText or SqlDbType.Xml;
+    /// <summary> A binary, varbinary or image column. </summary>
+    public bool IsBinaryColumn => SqlType is SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image;
+    /// <summary> A text, ntext or image column: the large-object types a table cannot copy, compare or keep history of. </summary>
+    public bool IsLargeObjectColumn => IsLargeTextColumn || SqlType == SqlDbType.Image;
+    public bool IsVariantColumn => SqlType == SqlDbType.Variant;
+    /// <summary> A type with no text form to search or sort by (binary, xml, a row version, a user-defined or structured type, a variant). </summary>
+    public bool IsOpaqueColumn => IsBinaryColumn || SqlType is SqlDbType.Xml or SqlDbType.Timestamp or SqlDbType.Udt or SqlDbType.Structured or SqlDbType.Variant;
+
+    /// <summary> The column and <paramref name="other"/> have the same database type. </summary>
+    public bool HasSameTypeAs(ColumnModel other) => SqlType == other.SqlType;
+
+    /// <summary> The C# type without nullability: <c>int</c>, <c>string</c>, <c>byte[]</c>; <c>object</c> for a type with no mapping. </summary>
+    public string CSharpBase() => SqlType switch
+    {
+        SqlDbType.Int => "int",
+        SqlDbType.BigInt => "long",
+        SqlDbType.SmallInt => "short",
+        SqlDbType.TinyInt => "byte",
+        SqlDbType.Bit => "bool",
+        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
+        SqlDbType.Float => "double",
+        SqlDbType.Real => "float",
+        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
+        SqlDbType.DateTimeOffset => "DateTimeOffset",
+        SqlDbType.Time => "TimeSpan",
+        SqlDbType.UniqueIdentifier => "Guid",
+        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
+        _ => "object"
+    };
+
+    /// <summary> The TypeScript type of the value the API's JSON holds: <c>number</c> for every number (a decimal too), <c>boolean</c>, else <c>string</c> (a date is its ISO text). </summary>
+    public string TypeScript() => SqlType switch
+    {
+        SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt or SqlDbType.Decimal or SqlDbType.Money
+            or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real => "number",
+        SqlDbType.Bit => "boolean",
+        _ => "string"
+    };
+
+    /// <summary> The protobuf type: <c>int32</c>, <c>int64</c>, <c>bool</c>, <c>float</c>, <c>double</c>, <c>bytes</c>, <c>google.protobuf.Timestamp</c> for a date, and <c>string</c> for text, a decimal (protobuf has no decimal type), a time or a GUID. </summary>
+    public string Proto() => SqlType switch
+    {
+        SqlDbType.Int or SqlDbType.SmallInt or SqlDbType.TinyInt => "int32",
+        SqlDbType.BigInt => "int64",
+        SqlDbType.Bit => "bool",
+        SqlDbType.Float => "double",
+        SqlDbType.Real => "float",
+        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime or SqlDbType.DateTimeOffset => "google.protobuf.Timestamp",
+        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "bytes",
+        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Time or SqlDbType.UniqueIdentifier
+            or SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+        _ => "bytes"
+    };
+
+    /// <summary> The JSON Schema / OpenAPI <c>type</c> and <c>format</c> of the column's JSON value; the type is null for a database type with no JSON form. </summary>
+    public (string? Type, string? Format) JsonSchema() => SqlType switch
+    {
+        SqlDbType.Int or SqlDbType.SmallInt or SqlDbType.TinyInt => ("integer", "int32"),
+        SqlDbType.BigInt => ("integer", "int64"),
+        SqlDbType.Bit => ("boolean", null),
+        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => ("number", null),
+        SqlDbType.Float => ("number", "double"),
+        SqlDbType.Real => ("number", "float"),
+        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime or SqlDbType.DateTimeOffset => ("string", "date-time"),
+        SqlDbType.Time => ("string", null),
+        SqlDbType.UniqueIdentifier => ("string", "uuid"),
+        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => ("string", "byte"),
+        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => ("string", null),
+        _ => (null, null)
+    };
+
+    /// <summary> The smallest and largest value the type of a whole-number column holds. </summary>
+    public NumericRange TypeRange => NumericClassifier.TypeRange(SqlType);
 
     /// <summary> A text column's length in characters. The schema reader states the length of a Unicode column (<c>nchar</c>, <c>nvarchar</c>) in bytes, so it is halved; 0 when the length is not known,
     /// and a negative number for <c>varchar(max)</c> (callers test <c>&gt; 0</c>). </summary>
@@ -123,8 +308,42 @@ public class ColumnModel
     public string? Description { get; init; }
 
     /// <summary> What this integer column's name suggests about its values (a year, a month, a percentage, ...); None for any
-    /// other column. See NumericClassifier; ProjectSettings.RangeFor turns it into limits. </summary>
-    public NumericKind NumericKind { get; init; }
+    /// other column. See NumericClassifier, which holds the rule table. </summary>
+    public NumericKind NumericKind => _numericKind ??= IsIntegerColumn ? NumericClassifier.Classify(Name) : NumericKind.None;
+
+    /// <summary> The name says the column holds a percentage, whatever its type (a whole number or a decimal). </summary>
+    public bool IsPercentage => _isPercentage ??= NumericClassifier.Classify(Name) == NumericKind.Percentage;
+
+    /// <summary> A whole-number column whose values have limits beyond its type: its name suggests some (a month, a percentage) or a CHECK constraint of the database sets some. </summary>
+    public bool HasNumericLimits => IsIntegerColumn && (NumericKind != NumericKind.None || Check is not null);
+
+    /// <summary> The whole-number limits a number box for this column should enforce: what its name suggests (a year runs from <paramref name="minYear"/> to <paramref name="maxYear"/>, a month 1-12, a
+    /// percentage 0-100, a count or sequence from 0), narrowed by a CHECK constraint, always inside the limits of its SQL type. Null for a column that is not a whole number. </summary>
+    public NumericRange? RangeWith(long minYear, long maxYear)
+    {
+        if (!IsIntegerColumn)
+            return null;
+        var type = NumericClassifier.TypeRange(SqlType);
+        (long min, long max) = NumericKind switch
+        {
+            NumericKind.Year => (minYear, maxYear),
+            NumericKind.Month => (1L, 12L),
+            NumericKind.DayOfMonth => (1L, 31L),
+            NumericKind.Quarter => (1L, 4L),
+            NumericKind.WeekNumber => (1L, 53L),
+            NumericKind.Percentage => (0L, 100L),
+            NumericKind.Count or NumericKind.Sequence => (0L, type.Max),
+            _ => (type.Min, type.Max)
+        };
+        // what the database says in a CHECK constraint narrows it further (CHECK (rating BETWEEN 1 AND 5))
+        if (Check is { } check)
+        {
+            long checkedMin = Math.Max(min, check.IntegerMin ?? min), checkedMax = Math.Min(max, check.IntegerMax ?? max);
+            if (checkedMin <= checkedMax)
+                (min, max) = (checkedMin, checkedMax);
+        }
+        return new NumericRange(Math.Max(min, type.Min), Math.Min(max, type.Max));
+    }
 
     /// <summary> A money / smallmoney column, or a decimal column whose name says it holds money (see
     /// NumericClassifier.IsCurrencyName). A generated form edits it in a currency-formatted number box. </summary>
@@ -142,8 +361,6 @@ public class ColumnModel
             || CharacterLength >= 500
             || Array.Exists(LongTextNameEndings, s => Name.EndsWithIgnoreCase(s)));
 
-    private static readonly string[] LongTextNameEndings = ["Note", "Notes", "Comment", "Comments", "Remarks", "Memo"];
-
     /// <summary> One example value of the column as JSON text that the column accepts (a choice from its CHECK list, a number inside its range, text cut to its length). </summary>
     public string ValidExample(ProjectSettings project, string? table = null) => ApiSampleValues.Value(this, project, table);
 
@@ -155,7 +372,7 @@ public class ColumnModel
             if (!_conversionKnown)
             {
                 _conversion = PgText is { } pg ? new TextConversion($"{pg.Converter(IsNullable)}, PgText.Comparer", pg.Name)
-                    : MySqlSpatialType.FromName(DbSpatialType) is not null ? new TextConversion($"MySqlSpatial.Converter({DbSrid}), MySqlSpatial.Comparer", null)   // the provider maps the bytes as they are; naming the spatial type confuses its type mapping
+                    : IsSpatialColumn && MySqlSpatialType.FromName(DbSpatialType) is not null ? new TextConversion($"MySqlSpatial.Converter({DbSrid}), MySqlSpatial.Comparer", null)   // the provider maps the bytes as they are; naming the spatial type confuses its type mapping
                     : DbBitWidth == 64 ? new TextConversion("new ValueConverter<decimal, ulong>(v => (ulong)v, v => v)", null)   // the driver reads BIT(64) as an unsigned 64-bit integer, which the entity holds as a decimal
                     : null;
                 _conversionKnown = true;
@@ -164,8 +381,14 @@ public class ColumnModel
         }
     }
 
-    private TextConversion? _conversion;
-    private bool _conversionKnown;
+    /// <summary> The column holds a PostgreSQL array, interval, range or geometric value, which the generator handles as text in that type's notation. The Python and Rust code reads it as text and casts what it writes. </summary>
+    public bool IsPgTextColumn => _isPgTextColumn ??= DbTextType is not null;
+
+    /// <summary> The column holds a MySQL spatial value, which the generator handles as well-known text (the SQL converts it on the way in and out). </summary>
+    public bool IsSpatialColumn => _isSpatialColumn ??= DbSpatialType is not null;
+
+    /// <summary> The column is a MySQL <c>bit(n)</c> of 2 to 64 bits, which the generator handles as the whole number its bits make (<see cref="DbBitWidth"/> says how wide). </summary>
+    public bool IsBitColumn => _isBitColumn ??= DbBitWidth is not null;
 
     /// <summary> The column's name as lower case words: "credit limit". </summary>
     public string Words => Labels.Words(Name).ToLowerInvariant();
@@ -186,7 +409,7 @@ public class ColumnModel
 
     /// <summary> Name-pattern match for create/modify/delete/activate/inactivate tracking columns
     /// (e.g. CreateDate, ModifiedBy, InactivatedDate). </summary>
-    public bool IsAuditColumn { get; init; }
+    public bool IsAuditColumn => _isAuditColumn ??= Name.IsAuditColumn();
 
     /// <summary> Matches SpecialLogicColumns.config category "CreateDateColumn" -- e.g. CreateDate, CreatedDate.
     /// Never touched by generated Update logic: excluded from parameters and never appears in a SET clause. </summary>
@@ -271,10 +494,5 @@ public class ColumnModel
     public bool IsFilePathColumn { get; init; }
 
     /// <summary> Hungarian-prefixed SQL parameter name, e.g. "@pstrDescription", "@plngID". See Docs/Reference.md section 7. </summary>
-    public required string ParameterName { get; init; }
-
-    #region Privates
-    private static readonly string[] CredentialNameEndings = ["Salt", "Secret", "ApiKey", "Token"];
-    private static readonly string[] StampNameStarts = ["Create", "Modif", "Updated", "LastChang", "LastUpdat"];
-    #endregion
+    public string ParameterName => _parameterName ??= Name.ToSqlParameterName(SqlType);
 }

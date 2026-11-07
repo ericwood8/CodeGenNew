@@ -440,20 +440,20 @@
                     foreach (var c in form.Columns)
                     {
                         string field = "[role=dialog] #" + form.FieldId(c);
-                        var kind = form.KindOf(c);
-                        if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
+                        var formColumn = form.Field(c);
+                        if (formColumn.IsNumberBoxField)
                         {
                             var box = NumberBox.For(Model.TableName, c, Project);
                             if (box.Min is { } min) { checks.Add($"Assert.AreEqual(\"{min}\", page.Find(\"{field}\").GetAttribute(\"min\"));"); storedChecks.Add($"Assert.IsNull(page.Find(\"{field}\").GetAttribute(\"min\"));"); }
                             if (box.Max is { } max) checks.Add($"Assert.AreEqual(\"{max}\", page.Find(\"{field}\").GetAttribute(\"max\"));");
                         }
-                        else if (kind == FieldKind.Money)
+                        else if (formColumn.IsMoneyField)
                         {
                             var money = MoneyBox.For(Model.TableName, c, Project);
                             if (money.Min is { } min) checks.Add($"Assert.AreEqual(\"{min}\", page.Find(\"{field}\").GetAttribute(\"min\"));");
                             if (money.Max is { } max) checks.Add($"Assert.AreEqual(\"{max}\", page.Find(\"{field}\").GetAttribute(\"max\"));");
                         }
-                        else if (kind == FieldKind.Date && c.RuleOf(Project, Model.TableName) is { NotFuture: true })
+                        else if (formColumn.IsDateField && c.RuleOf(Project, Model.TableName) is { NotFuture: true })
                         {
                             checks.Add($"Assert.AreEqual(DateTime.Today.ToString(\"yyyy-MM-dd\"), page.Find(\"{field}\").GetAttribute(\"max\"));");
                             storedChecks.Add($"Assert.IsNull(page.Find(\"{field}\").GetAttribute(\"max\"));");

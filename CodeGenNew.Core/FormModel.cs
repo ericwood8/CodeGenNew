@@ -43,12 +43,12 @@ public sealed class FormModel
         SearchKeys = _project.ListSearchProtocol ? [] : table.SearchKeyColumns
             .Select(c => (Column: c, Parent: ParentOf(c)))
             .Where(k => k.Parent is not null)
-            .Select(k => new SearchKeyField(k.Column, k.Parent!, TemplateHelpers.LowerFirst(k.Column.Name), GridCaption.For(k.Column, Labels.Field(k.Column))))
+            .Select(k => new SearchKeyField(k.Column, k.Parent!, TemplateHelpers.LowerFirst(k.Column.Name), GridCaption.For(k.Column, k.Column.Label)))
             .ToList();
         // a text key the screen has no drop-down for is a search box again: it sends the key's own parameter, which matches exactly
         TextKeyBoxes = table.SearchKeyColumns.Where(c => c.IsStringColumn && SearchKeys.All(k => k.Column != c)).ToList();
         SearchFields = table.SearchableColumns.Concat(TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
-            .Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Field(c)))).ToList();
+            .Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, c.Label))).ToList();
         Log = TableShapes.For(table, project).Log;
         DateRange = Log is null ? [] : [new SearchField(Log.Timestamp, "From", LogShape.FromParameter, "From", true), new SearchField(Log.Timestamp, "To", LogShape.ToParameter, "To", true)];
         DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c)).ToList();
@@ -200,26 +200,18 @@ public sealed class FormModel
     public List<FormParent> ParentsOf(IEnumerable<ColumnModel> columns) =>
         columns.Select(ParentOf).OfType<FormParent>().DistinctBy(p => p.Table, StringComparer.OrdinalIgnoreCase).ToList();
 
-    /// <summary> How the grid shows a column of this table (<see cref="GridCells.KindOf"/>). </summary>
-    public CellKind CellOf(ColumnModel column) =>
-        Log is not null && column.Name == Log.Timestamp.Name && LookupOf(column) is null ? CellKind.DateTime   // a log shows when a row was written down to the minute
-        : GridCells.KindOf(column, LookupOf(column) is not null);
-
     /// <summary> Long text is a multi-line box, except an email address, a phone number or a URL: those are one line, whatever their column length, so the browser can check them. </summary>
     public bool IsMultilineBox(ColumnModel column) => TemplateHelpers.IsMultiline(column) && column.InputType(_project, Table.TableName) == "text";
 
-    /// <summary> Which editor a column gets on the form. The order is the rule every stack follows: the first that fits wins. </summary>
-    public FieldKind KindOf(ColumnModel column) =>
-        column.IsSystemStampColumn || IsGuardStamp(column) ? FieldKind.SystemStamp
-        : TypedKey && column.IsPrimaryKey ? (TextKey ? FieldKind.TypedKey : FieldKind.TypedNumberKey)
-        : LookupOf(column) is not null ? FieldKind.Lookup
-        : column.HasChoices ? FieldKind.Choices
-        : column.IsBooleanColumn ? FieldKind.Boolean
-        : TemplateHelpers.IsDate(column) ? FieldKind.Date
-        : IsMoneyInput(column) ? FieldKind.Money
-        : TemplateHelpers.IsNumber(column) ? FieldKind.Number
-        : IsMultilineBox(column) ? FieldKind.Multiline
-        : FieldKind.Text;
+    /// <summary> The column as this form shows it: it answers which editor it gets and how a view model holds its value (see <see cref="FormColumn"/>). </summary>
+    public FormColumn Field(ColumnModel column)
+    {
+        if (!_fields.TryGetValue(column, out var field))
+            _fields[column] = field = new FormColumn(this, _project, column);
+        return field;
+    }
+
+    private readonly Dictionary<ColumnModel, FormColumn> _fields = [];
 
     /// <summary> The project's guarded columns of this table (GuardedColumns): the screen asks the API which of them the caller may change and shows the others as text with the sentence. </summary>
     public IReadOnlyList<GuardHint> Guards => _guards ??= GatePlan.GuardsOf(_project, Table);
@@ -231,36 +223,14 @@ public sealed class FormModel
     /// <summary> A column the server stamps for a guard (who changed the guarded column, and when): shown as text, never edited. </summary>
     public bool IsGuardStamp(ColumnModel column) => Guards.Any(g => g.Stamps.Any(s => s.EqualsIgnoreCase(column.Name)));
 
-    /// <summary> The person must give this column a value: a field of the form that is NOT NULL, other than the system's own stamps and a yes/no box (which always holds a value). Every stack's
-    /// <c>required</c> check and red mark read this, so they cannot drift apart. </summary>
-    public bool IsRequired(ColumnModel column) =>
-        !column.IsNullable && KindOf(column) is not (FieldKind.SystemStamp or FieldKind.Boolean);
+    /// <summary> The person must give this column a value (see <see cref="FormColumn.IsRequired"/>). </summary>
+    public bool IsRequired(ColumnModel column) => Field(column).IsRequired;
 
-    /// <summary> The caption of this column carries the red asterisk: <see cref="IsRequired"/>, unless the project turned <c>RequiredMarks</c> off. </summary>
-    public bool IsMarked(ColumnModel column) => _project.RequiredMarks && IsRequired(column);
+    /// <summary> The caption of this column carries the red asterisk (see <see cref="FormColumn.IsMarked"/>). </summary>
+    public bool IsMarked(ColumnModel column) => Field(column).IsMarked;
 
-    /// <summary> How an editor that keeps numbers as numbers and everything else as text (the WinUI3 view model) holds a column's value. The first that fits wins, so every screen of that kind reads, loads and saves a
-    /// column the same way. A system stamp is held as what it is (a date stays a date); only <see cref="KindOf"/> decides that it is shown as text. </summary>
-    public ValueKind ValueOf(ColumnModel column) =>
-        LookupOf(column) is not null ? ValueKind.Lookup
-        : IsMoneyInput(column) ? ValueKind.Money
-        : IsDecimalBox(column) ? ValueKind.Decimal
-        : IsWholeNumberBox(column) ? ValueKind.WholeNumber
-        : column.IsBooleanColumn ? ValueKind.Boolean
-        : TemplateHelpers.IsDate(column) ? ValueKind.Date
-        : column.IsGuidColumn ? ValueKind.Guid
-        : TemplateHelpers.IsNumber(column) ? ValueKind.Number
-        : ValueKind.Text;
-
-    /// <summary> A decimal, float or real column that is not money (a percentage, a rate, a weight): edited in a number box limited to what the column can hold. </summary>
-    public static bool IsDecimalBox(ColumnModel column) => !column.IsCurrencyColumn && column.IsNumericColumn;
-
-    /// <summary> A whole-number column (not a flag): edited in a number box limited to its range. </summary>
-    public static bool IsWholeNumberBox(ColumnModel column) => column.IsIntegerColumn && !column.IsBooleanColumn;
-
-    /// <summary> A money column that is edited in a money box: a foreign key, a list of choices, a stamp and the typed key are not. </summary>
-    public bool IsMoneyInput(ColumnModel column) =>
-        column.IsMoneyAmount && TemplateHelpers.IsNumber(column) && !column.IsSystemStampColumn && LookupOf(column) is null && !column.HasChoices && !(TypedKey && column.IsPrimaryKey);
+    /// <summary> A money column that is edited in a money box (see <see cref="FormColumn.IsMoneyInput"/>). </summary>
+    public bool IsMoneyInput(ColumnModel column) => Field(column).IsMoneyInput;
 }
 
 /// <summary> One search box: the column it searches, the name the API takes it by and the caption. </summary>
@@ -273,47 +243,3 @@ public sealed record SearchField(ColumnModel? Column, string Name, string ParamN
 /// <summary> One key filter: the foreign key column, the parent whose rows the drop-down lists, the query parameter and filter field (the column name with a lower-case first letter) and the caption,
 /// the same words as the column's grid heading. </summary>
 public sealed record SearchKeyField(ColumnModel Column, FormParent Parent, string ParamName, string Label);
-
-/// <summary> The editor a form gives a column (see <see cref="FormModel.KindOf"/>). </summary>
-public enum FieldKind
-{
-    /// <summary> Written by the system (who made the row and when): shown as text once the row exists. </summary>
-    SystemStamp,
-    /// <summary> The text key a person types on a new row; read-only afterwards. </summary>
-    TypedKey,
-    /// <summary> The whole-number key a person types on a new row (the database does not hand it out); read-only afterwards. </summary>
-    TypedNumberKey,
-    /// <summary> A foreign key: a drop-down of the parent's rows. </summary>
-    Lookup,
-    /// <summary> A column whose values the database lists: a drop-down of them. </summary>
-    Choices,
-    Boolean,
-    Date,
-    /// <summary> An amount of money: a money box. </summary>
-    Money,
-    /// <summary> A whole or decimal number that is not money. </summary>
-    Number,
-    /// <summary> Text that needs several lines. </summary>
-    Multiline,
-    Text
-}
-
-/// <summary> How a view model holds a column's value (see <see cref="FormModel.ValueOf"/>). </summary>
-public enum ValueKind
-{
-    /// <summary> A foreign key to a parent that is looked up: the parent's key, or null for none. </summary>
-    Lookup,
-    /// <summary> An amount of money, held as a double (NaN is blank) and saved as a rounded decimal. </summary>
-    Money,
-    /// <summary> A decimal, float or real that is not money, held as a double (NaN is blank). </summary>
-    Decimal,
-    /// <summary> A whole number, held as a double (NaN is blank) and saved after checking it is whole and in range. </summary>
-    WholeNumber,
-    Boolean,
-    Date,
-    /// <summary> A uniqueidentifier typed as text. </summary>
-    Guid,
-    /// <summary> Any other number, typed as text. </summary>
-    Number,
-    Text
-}

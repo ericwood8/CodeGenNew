@@ -114,7 +114,7 @@
         bool Ahead(FormParent p) => p.TypeAhead;
         bool FilterAhead(ODataFilterField? f) => f is { Kind: ODataFilterKind.Parent } && Ahead(f.Parent!);
         string NamesOf(FormParent p) => p.Variable + "NameCache";
-        bool anyBox = shown.Any(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)) || searchKeys.Any(k => Ahead(k.Parent)) || (odataFilters?.Any(FilterAhead) ?? false);
+        bool anyBox = shown.Any(c => form.Field(c).IsLookupField && Ahead(form.ParentOf(c)!)) || searchKeys.Any(k => Ahead(k.Parent)) || (odataFilters?.Any(FilterAhead) ?? false);
 
         var gridColumns = form.GridColumns;
         IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
@@ -621,7 +621,7 @@
             T("  };");
         }
         }
-        var parentsShownInGrid = oneRow ? new HashSet<string>() : columnList.Select(c => c.Column).Where(c => form.CellOf(c) == CellKind.Lookup).Select(c => form.ParentOf(c)!.NameMethod).ToHashSet();
+        var parentsShownInGrid = oneRow ? new HashSet<string>() : columnList.Select(c => c.Column).Where(c => form.Field(c).IsLookupCell).Select(c => form.ParentOf(c)!.NameMethod).ToHashSet();
         foreach (var p in parents.Where(p => parentsShownInGrid.Contains(p.NameMethod)))
         {
             T();
@@ -766,15 +766,15 @@
         {
             var c = column.Column;
             string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
-            var cellKind = form.CellOf(c);
+            var formColumn = form.Field(c);
             string cell;
             // A nullable column's value may be undefined: optional chaining keeps a strict (noUncheckedIndexedAccess/strictNullChecks) build compiling.
-            if (cellKind == CellKind.Lookup) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
-            else if (cellKind == CellKind.Boolean) cell = $"{{{prop} ? 'Yes' : 'No'}}";
-            else if (cellKind == CellKind.Date) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
-            else if (cellKind == CellKind.DateTime) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 16).replace('T', ' ')}}";
-            else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
-            else if (cellKind == CellKind.Decimal) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
+            if (formColumn.IsLookupCell) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
+            else if (formColumn.IsBooleanCell) cell = $"{{{prop} ? 'Yes' : 'No'}}";
+            else if (formColumn.IsDateCell) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
+            else if (formColumn.IsDateTimeCell) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 16).replace('T', ' ')}}";
+            else if (formColumn.IsMoneyCell) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
+            else if (formColumn.IsDecimalCell) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
             T("              " + Shown(c, $"<td>{cell}</td>"));
         }
@@ -814,7 +814,7 @@
             string shapeColumns = "[" + string.Join(", ", columnList.Select(c =>
             {
                 string key = JsonNames.Camel(c.Column.Name);
-                string show = form.CellOf(c.Column) == CellKind.Date ? ", show: (value: unknown) => String(value ?? '').substring(0, 10)" : form.CellOf(c.Column) == CellKind.Lookup ? $", show: (value: unknown) => {form.ParentOf(c.Column)!.NameMethod}(value as {form.ParentOf(c.Column)!.KeyTs})" : "";
+                string show = form.Field(c.Column).IsDateCell ? ", show: (value: unknown) => String(value ?? '').substring(0, 10)" : form.Field(c.Column).IsLookupCell ? $", show: (value: unknown) => {form.ParentOf(c.Column)!.NameMethod}(value as {form.ParentOf(c.Column)!.KeyTs})" : "";
                 return $"{{ key: '{key}', label: '{c.Caption.Replace("'", "\\'")}'{show} }}";
             })) + "]";
             T($"      {{shapeView === null ? null : <RowShapeDialog");
@@ -856,8 +856,8 @@
         {
             string id = form.FieldId(c);
             string prop = JsonNames.Camel(c.Name);
-            var kind = form.KindOf(c);
-            if (kind == FieldKind.SystemStamp)
+            var formColumn = form.Field(c);
+            if (formColumn.IsSystemStampField)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
@@ -866,7 +866,7 @@
                     stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : '{GuardStamp.NotRecorded}'}}" : $"{{selectedRow.{prop} || '{GuardStamp.NotRecorded}'}}";
                 T($"            {{{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && (");
                 T("              <>");
-                T("                <label htmlFor=\"" + id + "\">" + Labels.Field(c) + "</label>");
+                T("                <label htmlFor=\"" + id + "\">" + c.Label + "</label>");
                 T($"                <span id=\"{id}\">{stampValue}</span>");
                 T("              </>");
                 T("            )}");
@@ -884,7 +884,7 @@
                 T($"            {{featureFlag{form.FeatureIndex(fieldFlag)} && (");
                 T("              <>");
             }
-            T("            <label htmlFor=\"" + id + "\">" + Labels.Field(c) + RequiredMark.Jsx(form.IsMarked(c)) + "</label>");
+            T("            <label htmlFor=\"" + id + "\">" + c.Label + RequiredMark.Jsx(form.IsMarked(c)) + "</label>");
             // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
             var guard = form.GuardOf(c);
             if (guard is not null)
@@ -892,13 +892,13 @@
                 T($"            {{guards['{guard.Json}'] ? (");
                 T("              <>");
             }
-            if (kind == FieldKind.TypedKey)
+            if (formColumn.IsTypedKeyField)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"text\"");
-                T($"              aria-label=\"{Labels.Field(c)}\"");
+                T($"              aria-label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop} ?? ''}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (Chars(c) > 0) T($"              maxLength={{{Chars(c)}}}");
@@ -907,14 +907,14 @@
                 T("              required");
                 T("            />");
             }
-            else if (kind == FieldKind.Lookup)
+            else if (formColumn.IsLookupField)
             {
                 var p = form.ParentOf(c)!;
                 if (Ahead(p))
                 {
                     T($"            <TypeAheadBox<{p.KeyTs}>");
                     T($"              id=\"{id}\"");
-                    T($"              label=\"{Labels.Field(c)}\"");
+                    T($"              label=\"{c.Label}\"");
                     T($"              value={{selectedRow.{prop}}}");
                     T($"              names={{{NamesOf(p)}}}");
                     T($"              find={{(query) => {ReactNames.ApiVar(p.Table)}.getLookup(query)}}");
@@ -932,7 +932,7 @@
                 string blankTest = p.KeyTs == "number" && !c.IsNullable ? "||" : "??";
                 T($"            <select");
                 T($"              id=\"{id}\"");
-                T($"              aria-label=\"{Labels.Field(c)}\"");
+                T($"              aria-label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop} {blankTest} ''}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: {numeric} }})}}");
                 if (!c.IsNullable) T("              required");
@@ -944,12 +944,12 @@
                 T("            </select>");
                 }
             }
-            else if (kind == FieldKind.Choices)
+            else if (formColumn.IsChoicesField)
             {
                 // A column whose values the database lists (a MySQL enum) is a drop-down of them; the blank first entry keeps a new row from silently taking the first value.
                 T($"            <select");
                 T($"              id=\"{id}\"");
-                T($"              aria-label=\"{Labels.Field(c)}\"");
+                T($"              aria-label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop} ?? ''}}");
                 T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (!c.IsNullable) T("              required");
@@ -959,17 +959,17 @@
                     T($"              <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 T("            </select>");
             }
-            else if (kind == FieldKind.Boolean)
+            else if (formColumn.IsBooleanField)
             {
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"checkbox\"");
-                T($"              aria-label=\"{Labels.Field(c)}\"");
+                T($"              aria-label=\"{c.Label}\"");
                 T($"              checked={{!!selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.checked }})}}");
                 T("            />");
             }
-            else if (kind == FieldKind.Date)
+            else if (formColumn.IsDateField)
             {
                 // A nullable date has a Clear button beside it (the date box's own clear is easy to miss, and WinUI3's calendar has a Clear button too).
                 if (c.IsNullable) T("            <div style={{ display: 'flex', gap: 8 }}>");
@@ -979,7 +979,7 @@
                 // an end date cannot be picked before its start (the form's own check refuses it too, for a field that changed)
                 if (DatePairs.EndingAt(Model, Project, c) is { } endsAfter)
                     T($"              min={{selectedRow.{JsonNames.Camel(endsAfter.Start.Name)}?.substring(0, 10)}}");
-                T($"              aria-label=\"{Labels.Field(c)}\"");
+                T($"              aria-label=\"{c.Label}\"");
                 T(c.IsNullable ? $"              value={{selectedRow.{prop} ?? ''}}" : $"              value={{selectedRow.{prop}}}");
                 T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (!c.IsNullable) T("              required");
@@ -990,13 +990,13 @@
                     T("            </div>");
                 }
             }
-            else if (kind == FieldKind.Money)
+            else if (formColumn.IsMoneyField)
             {
                 // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
                 var money = MoneyBox.For(Model.TableName, c, Project);
                 T($"            <CurrencyInput");
                 T($"              id=\"{id}\"");
-                T($"              label=\"{Labels.Field(c)}\"");
+                T($"              label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(value) => setSelectedRow({{ ...selectedRow, {prop}: value ?? {(c.IsNullable ? "undefined" : "0")} }})}}");
                 T($"              digits={{{money.Digits}}}");
@@ -1006,13 +1006,13 @@
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
-            else if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
+            else if (formColumn.IsNumberBoxField)
             {
                 var box = NumberBox.For(Model.TableName, c, Project);
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"number\"");
-                T($"              aria-label=\"{Labels.Field(c)}\"");
+                T($"              aria-label=\"{c.Label}\"");
                 if (box.Characters is { } boxWidth) T($"              style={{{{ width: '{boxWidth}ch' }}}}");
                 if (box.Step is { } step) T($"              step=\"{step}\"");
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
@@ -1020,16 +1020,16 @@
                 if (box.Max is { } max) T($"              max=\"{max}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
-                if (kind == FieldKind.TypedNumberKey) T("              readOnly={!adding}");   // the key of a new row is typed; once the row exists it is read-only
+                if (formColumn.IsTypedNumberKeyField) T("              readOnly={!adding}");   // the key of a new row is typed; once the row exists it is read-only
                 T($"              placeholder=\"{Labels.Placeholder(c)}\"");
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
-            else if (kind == FieldKind.Multiline)
+            else if (formColumn.IsMultilineField)
             {
                 T($"            <textarea");
                 T($"              id=\"{id}\"");
-                T($"              aria-label=\"{Labels.Field(c)}\"");
+                T($"              aria-label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 T($"              maxLength={{{Chars(c)}}}");
@@ -1043,7 +1043,7 @@
                 T($"              id=\"{id}\"");
                 T($"              type=\"{c.InputType(Project, Model.TableName)}\"");
                 if (c.InputPattern(Project, Model.TableName) is { Length: > 0 } pattern) T("              " + pattern);
-                T($"              aria-label=\"{Labels.Field(c)}\"");
+                T($"              aria-label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (IsText(c) && Chars(c) > 0) T($"              maxLength={{{Chars(c)}}}");
@@ -1195,7 +1195,7 @@
             string guardKey = form.TextKey ? $"{keyProp}: '{ApiSampleValues.KeyText(keyColumn)}'" : $"{keyProp}: 1";
             string guardRow = "{ " + string.Join(", ", new[] { guardKey }.Concat(adds.Where(a => !a.StartsWith(keyProp + ":")))) + " }";
             string listCall = odata ? "queryPage" : "getPage";
-            string guardLabel = Labels.Field(Model.Columns.First(c => c.Name.EqualsIgnoreCase(guard0.Column)));
+            string guardLabel = (Model.Columns.First(c => c.Name.EqualsIgnoreCase(guard0.Column))).Label;
             foreach (bool mayChange in new[] { false, true })
             {
                 S();
@@ -1227,11 +1227,11 @@
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
             S($"    fireEvent.click(await screen.findByText('Add New'));");
             S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");
-            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{Labels.Field(keyColumn)}')).not.toHaveAttribute('readonly');");
+            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{keyColumn.Label}')).not.toHaveAttribute('readonly');");
             S("    fireEvent.click(screen.getByText('Cancel'));");
             S("    fireEvent.click(await screen.findByText('Edit'));");
             S($"    expect(await screen.findByText('Edit {title}')).toBeInTheDocument();");
-            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{Labels.Field(keyColumn)}')).toHaveAttribute('readonly');");
+            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{keyColumn.Label}')).toHaveAttribute('readonly');");
             S("  });");
         }
         if (nameActive)
@@ -1264,7 +1264,7 @@
             S("  });");
             if (sortable is not null)
             {
-                string sortLabel = GridCaption.For(sortable, Labels.Field(sortable));
+                string sortLabel = GridCaption.For(sortable, sortable.Label);
                 S();
                 S("  it('sorts by a header on a click and adds a second column on a Shift-click', async () => {");
                 S("    localStorage.clear();");
@@ -1278,7 +1278,7 @@
             }
             if (columnList.Where(c => c.Initial).Select(c => c.Filter).FirstOrDefault(f => f is { Kind: ODataFilterKind.Text }) is { } textFilter)
             {
-                string filterLabel = Labels.Field(gridColumns.First(c => c.Name == textFilter.Name));
+                string filterLabel = (gridColumns.First(c => c.Name == textFilter.Name)).Label;
                 S();
                 S("  it('sends what was typed in the filter row when Search is pressed', async () => {");
                 S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");

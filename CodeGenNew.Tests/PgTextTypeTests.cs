@@ -212,14 +212,14 @@ public class PgTextTypeTests
 
         string insert = PostgresProcedures.Insert(pg), update = PostgresProcedures.Update(pg), save = PostgresProcedures.Save(pg);
 
-        Expect.Contains(insert, "COALESCE(NULLIF(btrim(\"pTags\"), '')::text[], '{}')");
-        Expect.Contains(insert, "NULLIF(btrim(\"pScores\"), '')::int4[]");
-        Expect.Contains(insert, "NULLIF(btrim(\"pDuration\"), '')::interval");
-        Expect.Contains(insert, "\"pDuration\" varchar(64) DEFAULT NULL");
-        Expect.Contains(insert, "\"pTags\" varchar(255) DEFAULT NULL");   // '' is no value of an array
-        Expect.Contains(update, "COALESCE(NULLIF(btrim(\"pScores\"), '')::int4[], \"Scores\")");
-        Expect.Contains(save, "\"Duration\" = NULLIF(\"pDuration\", '')::interval");
-        Expect.DoesNotContain(insert, "btrim(\"pPlaceName\")::");
+        Expect.Contains(insert, "COALESCE(NULLIF(btrim(\"pstrTags\"), '')::text[], '{}')");
+        Expect.Contains(insert, "NULLIF(btrim(\"pstrScores\"), '')::int4[]");
+        Expect.Contains(insert, "NULLIF(btrim(\"pstrDuration\"), '')::interval");
+        Expect.Contains(insert, "\"pstrDuration\" varchar(64) DEFAULT NULL");
+        Expect.Contains(insert, "\"pstrTags\" varchar(255) DEFAULT NULL");   // '' is no value of an array
+        Expect.Contains(update, "COALESCE(NULLIF(btrim(\"pstrScores\"), '')::int4[], \"Scores\")");
+        Expect.Contains(save, "\"Duration\" = NULLIF(\"pstrDuration\", '')::interval");
+        Expect.DoesNotContain(insert, "btrim(\"pstrPlaceName\")::");
     }
 
     // ---- the C# context ----

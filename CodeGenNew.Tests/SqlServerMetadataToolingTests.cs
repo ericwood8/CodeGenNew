@@ -78,7 +78,7 @@ public class SqlServerMetadataToolingTests
     {
         string sql = Text(await Run("SP_Insert_v1.tt", Gadget(), Project(("KeySequenceTables", "Gadget"))));
 
-        Expect.DoesNotContain(sql, "@pGadgetId");   // no key parameter
+        Expect.DoesNotContain(sql, "@plngGadgetId");   // no key parameter
         Expect.Contains(sql, "DECLARE @NewKey int;");
         Expect.Contains(sql, "EXEC [dbo].[GetNextID] 'Gadget', 'GadgetId', @NewKey OUTPUT;");
         Expect.Contains(sql, "[GadgetId],");
@@ -91,7 +91,7 @@ public class SqlServerMetadataToolingTests
     {
         string sql = Text(await Run("SP_Insert_v1.tt", Gadget(), Project()));
 
-        Expect.Contains(sql, "@pGadgetId int");
+        Expect.Contains(sql, "@plngGadgetId int");
         Expect.DoesNotContain(sql, "GetNextID");
     }
 
@@ -114,8 +114,8 @@ public class SqlServerMetadataToolingTests
         Expect.Contains(sql, "CREATE OR ALTER TRIGGER [dbo].[TR_E_DonateLeave_Replicate_I]");
         Expect.Contains(sql, "ON [dbo].[E_DonateLeave] AFTER INSERT");
         Expect.Contains(sql, "DECLARE insert_cursor CURSOR LOCAL FAST_FORWARD FOR SELECT [DonateLeaveId], [DonateFrom_EmployeeId], [DonateTo_EmployeeId], [WhenDonated], [HoursDonated], [Note] FROM inserted;");
-        Expect.Contains(sql, "EXEC [east].[Sales].[dbo].[E_DonateLeave_Replicate_Insert] @pDonateLeaveId, @pDonateFrom_EmployeeId");
-        Expect.Contains(sql, "EXEC [west].[Sales].[dbo].[E_DonateLeave_Replicate_Insert] @pDonateLeaveId, @pDonateFrom_EmployeeId");
+        Expect.Contains(sql, "EXEC [east].[Sales].[dbo].[E_DonateLeave_Replicate_Insert] @plngDonateLeaveId, @plngDonateFrom_EmployeeId");
+        Expect.Contains(sql, "EXEC [west].[Sales].[dbo].[E_DonateLeave_Replicate_Insert] @plngDonateLeaveId, @plngDonateFrom_EmployeeId");
 
         Expect.Contains(sql, "ON [dbo].[E_DonateLeave] AFTER UPDATE");
         Expect.Contains(sql, "IF UPDATE([DonateLeaveId])");
@@ -125,7 +125,7 @@ public class SqlServerMetadataToolingTests
 
         Expect.Contains(sql, "ON [dbo].[E_DonateLeave] AFTER DELETE");
         Expect.Contains(sql, "SELECT [DonateLeaveId] FROM deleted;");
-        Expect.Contains(sql, "EXEC [east].[Sales].[dbo].[E_DonateLeave_Replicate_Delete] @pDonateLeaveId;");
+        Expect.Contains(sql, "EXEC [east].[Sales].[dbo].[E_DonateLeave_Replicate_Delete] @plngDonateLeaveId;");
     }
 
     [TestMethod]

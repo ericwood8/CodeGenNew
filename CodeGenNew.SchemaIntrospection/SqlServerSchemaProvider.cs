@@ -16,7 +16,7 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         _connectionRequest = connectionRequest;
     }
 
-    protected override SqlDialect Dialect => SqlDialect.SqlServer;
+    public override SqlDialect Dialect => SqlDialect.SqlServer;
 
     protected override async Task<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {

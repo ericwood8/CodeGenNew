@@ -35,7 +35,7 @@
     var displayDb = junction.TargetForeignKey.ReferencedDisplayDbColumns;
     string targetKeyDb = junction.TargetForeignKey.ReferencedDbColumns[0];
     string orderColumn = displayDb.Count > 0 ? displayDb[0] : targetKeyDb;
-    string textType = Model.Dialect == SqlDialect.MySql ? "CHAR" : "TEXT";
+    string textType = Model.IsMySql ? "CHAR" : "TEXT";
 
     string links = di.QuoteTable(Model.SchemaName, Model.DbTableName);
     string targets = di.QuoteTable(junction.TargetForeignKey.ReferencedSchema, junction.TargetForeignKey.ReferencedDbTable);

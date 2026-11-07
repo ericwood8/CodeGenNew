@@ -67,7 +67,7 @@ public sealed class ApiTestPlan
         {
             foreach (var c in BodyColumns.Where(c => !c.IsPrimaryKey && c.IsIntegerColumn))
             {
-                if (project.RangeFor(c) is { } range && range.Max < NumericClassifier.TypeRange(c.SqlType).Max && ParentRoute(c, out string _).Length == 0)
+                if (project.RangeFor(c) is { } range && range.Max < c.TypeRange.Max && ParentRoute(c, out string _).Length == 0)
                 {
                     Ranged = c;
                     OverLimit = range.Max + 1;
@@ -148,7 +148,7 @@ public sealed class ApiTestPlan
                 return $"ApiFixture.NewCode({(c.CharacterLength > 0 ? c.CharacterLength : 8)})";
             if (c.IsIdentity)
                 return sample;
-            var range = NumericClassifier.TypeRange(c.SqlType);
+            var range = c.TypeRange;
             long high = Math.Min(range.Max, 2_000_000_000);
             return $"ApiFixture.NewKey({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
         }

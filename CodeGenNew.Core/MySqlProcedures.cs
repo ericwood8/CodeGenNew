@@ -33,7 +33,7 @@ public static partial class MySqlProcedures
 
     /// <summary> The text of a parameter as a spatial column's own type: well-known text, longitude first, in the column's spatial reference system; blank is NULL. Any other column's text is as it is. </summary>
     private static string Native(ColumnModel c, string expression, ProjectSettings? project) =>
-        c.DbSpatialType is null ? expression : DialectInfo.For(SqlDialect.MySql).SpatialFromText(expression, c.DbSrid, project?.MariaDbSetting == true);
+        !c.IsSpatialColumn ? expression : DialectInfo.For(SqlDialect.MySql).SpatialFromText(expression, c.DbSrid, project?.MariaDbSetting == true);
 
     private static string Create(TableModel m, string suffix, IEnumerable<(string Name, string Type, string Mode)> parameters, string body)
     {

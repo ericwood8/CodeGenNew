@@ -22,8 +22,8 @@ public class PostgresProcedureTests
         string sql = PostgresProcedures.Insert(AsPostgres(Sample.Holiday()));
 
         StringAssert.Contains(sql, "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Insert\"(");
-        StringAssert.Contains(sql, "\"pName\" nvarchar(50) DEFAULT ''");
-        StringAssert.Contains(sql, "btrim(\"pName\")");
+        StringAssert.Contains(sql, "\"pstrName\" nvarchar(50) DEFAULT ''");
+        StringAssert.Contains(sql, "btrim(\"pstrName\")");
         Assert.DoesNotContain("@", sql);
         Assert.DoesNotContain("GETDATE", sql);
     }
@@ -44,7 +44,7 @@ public class PostgresProcedureTests
         string sql = PostgresProcedures.Update(AsPostgres(Sample.Holiday()));
 
         StringAssert.Contains(sql, "RETURNS integer");
-        StringAssert.Contains(sql, "\"Name\" = COALESCE(btrim(\"pName\"), \"Name\")");
+        StringAssert.Contains(sql, "\"Name\" = COALESCE(btrim(\"pstrName\"), \"Name\")");
         StringAssert.Contains(sql, "GET DIAGNOSTICS v_rows = ROW_COUNT;");
     }
 

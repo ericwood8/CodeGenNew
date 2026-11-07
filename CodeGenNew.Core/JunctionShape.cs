@@ -60,34 +60,21 @@ public sealed class JunctionShape
     public bool AnchorKeyIsText => IsTextKey(AnchorColumn);
     public bool TargetKeyIsText => IsTextKey(TargetColumn);
 
-    private static bool IsTextKey(ColumnModel c) => c.SqlType is not (SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt);
+    private static bool IsTextKey(ColumnModel c) => !c.IsIntegerColumn;
 
     /// <summary> The C# expression of a target key no row has, for the test that a missing target cannot be linked; blank when the key is text the person chooses (any text may exist). </summary>
-    public string AbsentTargetCs => TargetColumn.SqlType switch
-    {
-        SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt => "int.MaxValue",
-        SqlDbType.UniqueIdentifier => "Guid.NewGuid()",
-        _ => ""
-    };
+    public string AbsentTargetCs => TargetColumn.IsIntegerColumn && !TargetColumn.IsTinyIntColumn ? "int.MaxValue" : TargetColumn.IsGuidColumn ? "Guid.NewGuid()" : "";
 
     /// <summary> The C# types of the two keys (<c>int</c> when the column is of a type the routes do not name). </summary>
-    public string AnchorCs => CSharpType(AnchorColumn.SqlType);
-    public string TargetCs => CSharpType(TargetColumn.SqlType);
+    public string AnchorCs => CSharpType(AnchorColumn);
+    public string TargetCs => CSharpType(TargetColumn);
 
     /// <summary> The TypeScript types of the two keys: <c>string</c> for a uniqueidentifier, else <c>number</c>. </summary>
-    public string AnchorTs => TypeScriptType(AnchorColumn.SqlType);
-    public string TargetTs => TypeScriptType(TargetColumn.SqlType);
+    public string AnchorTs => TypeScriptType(AnchorColumn);
+    public string TargetTs => TypeScriptType(TargetColumn);
 
-    private static string CSharpType(SqlDbType type) => type switch
-    {
-        SqlDbType.Int => "int",
-        SqlDbType.BigInt => "long",
-        SqlDbType.SmallInt => "short",
-        SqlDbType.TinyInt => "byte",
-        SqlDbType.UniqueIdentifier => "Guid",
-        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar => "string",
-        _ => "int"
-    };
+    private static string CSharpType(ColumnModel c) =>
+        c.IsInt32Column ? "int" : c.IsBigIntColumn ? "long" : c.IsSmallIntColumn ? "short" : c.IsTinyIntColumn ? "byte" : c.IsGuidColumn ? "Guid" : c.IsPlainTextColumn ? "string" : "int";
 
-    private static string TypeScriptType(SqlDbType type) => type == SqlDbType.UniqueIdentifier ? "string" : "number";
+    private static string TypeScriptType(ColumnModel c) => c.IsGuidColumn ? "string" : "number";
 }

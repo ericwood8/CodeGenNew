@@ -30,30 +30,30 @@ public static class DesktopGridCode
     /// in the project's currency, a decimal with two places, text or the value; <paramref name="cut"/> shows a long text cut to <see cref="ChosenGridColumns.CutLength"/> characters. </summary>
     public static string CellLines(FormModel form, ProjectSettings project, ColumnModel column, bool cut = false)
     {
-        var cellKind = form.CellOf(column);
+        var formColumn = form.Field(column);
         string prop = column.Name;
         string varName = TemplateHelpers.LowerFirst(prop);
         bool nullable = column.IsNullable;
         string text;
-        if (cellKind == CellKind.Lookup)
+        if (formColumn.IsLookupCell)
         {
             var p = form.ParentOf(column)!;
             text = nullable
                 ? $"e.{prop} is {column.CSharpBase()} {varName}Id && {WinUI3Names.NamesDictionary(p)}.TryGetValue({varName}Id, out var {varName}Name) ? {varName}Name : \"\","
                 : $"{WinUI3Names.NamesDictionary(p)}.TryGetValue(e.{prop}, out var {varName}Name) ? {varName}Name : e.{prop}.ToString(),";
         }
-        else if (cellKind == CellKind.Boolean)
+        else if (formColumn.IsBooleanCell)
             text = nullable ? $"e.{prop} switch {{ true => \"Yes\", false => \"No\", null => \"\" }}," : $"e.{prop} ? \"Yes\" : \"No\",";
-        else if (cellKind == CellKind.Date)
+        else if (formColumn.IsDateCell)
             text = $"e.{prop}" + (nullable ? "?.ToString(\"MM/dd/yyyy\") ?? \"\"" : ".ToString(\"MM/dd/yyyy\")") + ",";
-        else if (cellKind == CellKind.DateTime)
+        else if (formColumn.IsDateTimeCell)
             text = $"e.{prop}" + (nullable ? "?.ToString(\"MM/dd/yyyy HH:mm\") ?? \"\"" : ".ToString(\"MM/dd/yyyy HH:mm\")") + ",";
-        else if (cellKind == CellKind.Money)
+        else if (formColumn.IsMoneyCell)
             // currency, in the project's CurrencyCode with the column's own number of decimals (the same as the editor)
             text = (nullable ? $"e.{prop} is {{ }} {varName}Money ? " : "")
                 + $"new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"{project.CurrencyCode}\") {{ IsGrouped = true, FractionDigits = {NumericClassifier.CurrencyDigits(column)} }}.FormatDouble((double){(nullable ? varName + "Money" : "e." + prop)})"
                 + (nullable ? " : \"\"" : "") + ",";
-        else if (cellKind == CellKind.Decimal)
+        else if (formColumn.IsDecimalCell)
             // a decimal that is not money shows two decimals, as on the web
             text = $"e.{prop}" + (nullable ? "?.ToString(\"N2\") ?? \"\"" : ".ToString(\"N2\")") + ",";
         else if (TemplateHelpers.IsText(column))

@@ -16,7 +16,7 @@ public class FormPolishTests
     [
         Sample.Column("InvoiceId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
         Sample.Column("Title", SqlDbType.NVarChar, characters: 50, ordinal: 2),
-        Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month, ordinal: 3),
+        Sample.Column("MonthNumber", SqlDbType.Int, ordinal: 3),
         Sample.Column("Freight", SqlDbType.Decimal, precision: 18, scale: 2, ordinal: 4, currency: true),
         Sample.Column("CreateDate", SqlDbType.DateTime, createDateColumn: true, ordinal: 5),
         Sample.Column("CreateUser", SqlDbType.VarChar, characters: 30, createUserColumn: true, ordinal: 6)
@@ -222,8 +222,8 @@ public class FormPolishTests
         Assert.IsFalse(Sample.Column("Title", SqlDbType.VarChar).IsSystemStampColumn);
 
         var project = Project(("MinYear", "1990"), ("MaxYear", "2040"));
-        Assert.AreEqual(7, project.NumberBoxCharacters(Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month)));
-        Assert.AreEqual(9, project.NumberBoxCharacters(Sample.Column("Year", SqlDbType.Int, numericKind: NumericKind.Year)));
+        Assert.AreEqual(7, project.NumberBoxCharacters(Sample.Column("MonthNumber", SqlDbType.Int)));
+        Assert.AreEqual(9, project.NumberBoxCharacters(Sample.Column("Year", SqlDbType.Int)));
         Assert.AreEqual(8, project.NumberBoxCharacters(Sample.Column("Flags", SqlDbType.TinyInt)), "0 to 255");
         Assert.IsNull(project.NumberBoxCharacters(Sample.Column("Quantity", SqlDbType.Int)), "a plain int keeps the form's width");
         Assert.IsNull(project.NumberBoxCharacters(Sample.Column("Price", SqlDbType.Decimal)));

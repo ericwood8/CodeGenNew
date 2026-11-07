@@ -90,7 +90,7 @@ public class DisplayColumnSelectorTests
     private static ColumnModel Copy(ColumnModel c, int rank) => new()
     {
         Name = c.Name, QuotedName = c.QuotedName, SqlType = c.SqlType, SqlTypeDeclaration = c.SqlTypeDeclaration,
-        MaxLength = c.MaxLength, IsStringColumn = c.IsStringColumn, ParameterName = c.ParameterName, DisplayRank = rank
+        MaxLength = c.MaxLength, DisplayRank = rank
     };
 
     [TestMethod]

@@ -18,20 +18,17 @@ public static class CSharpLiteral
         {
             if (column.IsBooleanColumn)
                 return Format(value is string flag ? flag is "1" || flag.Equals("true", StringComparison.OrdinalIgnoreCase) : Convert.ToBoolean(value, CultureInfo.InvariantCulture));
-            return column.SqlType switch
-            {
-                SqlDbType.Int => Format(Convert.ToInt32(value, CultureInfo.InvariantCulture)),
-                SqlDbType.SmallInt => Format(Convert.ToInt16(value, CultureInfo.InvariantCulture)),
-                SqlDbType.TinyInt => Format(Convert.ToByte(value, CultureInfo.InvariantCulture)),
-                SqlDbType.BigInt => Format(Convert.ToInt64(value, CultureInfo.InvariantCulture)),
-                SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => Format(Convert.ToDecimal(value, CultureInfo.InvariantCulture)),
-                SqlDbType.Float => Format(Convert.ToDouble(value, CultureInfo.InvariantCulture)),
-                SqlDbType.Real => Format(Convert.ToSingle(value, CultureInfo.InvariantCulture)),
-                SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => Format(value as DateTime? ?? DateTime.Parse(Convert.ToString(value, CultureInfo.InvariantCulture)!, CultureInfo.InvariantCulture)),
-                SqlDbType.UniqueIdentifier => Format(value as Guid? ?? Guid.Parse(Convert.ToString(value, CultureInfo.InvariantCulture)!)),
-                _ when column.IsStringColumn => Format(Convert.ToString(value, CultureInfo.InvariantCulture)),
-                _ => Format(value)
-            };
+            if (column.IsInt32Column) return Format(Convert.ToInt32(value, CultureInfo.InvariantCulture));
+            if (column.IsSmallIntColumn) return Format(Convert.ToInt16(value, CultureInfo.InvariantCulture));
+            if (column.IsTinyIntColumn) return Format(Convert.ToByte(value, CultureInfo.InvariantCulture));
+            if (column.IsBigIntColumn) return Format(Convert.ToInt64(value, CultureInfo.InvariantCulture));
+            if (column.IsDecimalColumn || column.IsMoneyColumn) return Format(Convert.ToDecimal(value, CultureInfo.InvariantCulture));
+            if (column.IsFloatColumn) return Format(Convert.ToDouble(value, CultureInfo.InvariantCulture));
+            if (column.IsRealColumn) return Format(Convert.ToSingle(value, CultureInfo.InvariantCulture));
+            if (column.IsLocalDateColumn) return Format(value as DateTime? ?? DateTime.Parse(Convert.ToString(value, CultureInfo.InvariantCulture)!, CultureInfo.InvariantCulture));
+            if (column.IsGuidColumn) return Format(value as Guid? ?? Guid.Parse(Convert.ToString(value, CultureInfo.InvariantCulture)!));
+            if (column.IsStringColumn) return Format(Convert.ToString(value, CultureInfo.InvariantCulture));
+            return Format(value);
         }
         catch (Exception error) when (error is FormatException or InvalidCastException or OverflowException)
         {

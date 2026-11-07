@@ -17,7 +17,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
         _connectionRequest = connectionRequest;
     }
 
-    protected override SqlDialect Dialect => SqlDialect.MySql;
+    public override SqlDialect Dialect => SqlDialect.MySql;
 
     protected override async Task<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {

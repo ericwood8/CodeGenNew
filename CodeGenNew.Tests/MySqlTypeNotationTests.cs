@@ -200,12 +200,12 @@ public class MySqlTypeNotationTests
 
         string insert = MySqlProcedures.Insert(table), update = MySqlProcedures.Update(table), save = MySqlProcedures.Save(table), search = MySqlProcedures.Search(table);
 
-        Expect.Contains(insert, "ST_GeomFromText(NULLIF(TRIM(`pSpot`), ''), 0, 'axis-order=long-lat')");
-        Expect.Contains(insert, "ST_GeomFromText(NULLIF(TRIM(`pSpot2`), ''), 4326, 'axis-order=long-lat')");
-        Expect.Contains(update, "`Spot` = COALESCE(ST_GeomFromText(NULLIF(TRIM(`pSpot`), ''), 0, 'axis-order=long-lat'), `Spot`)");
-        Expect.Contains(save, "ST_GeomFromText(NULLIF(`pSpot2`, ''), 4326, 'axis-order=long-lat')");
-        Expect.DoesNotContain(search, "pSpot");
-        Expect.DoesNotContain(insert, "ST_GeomFromText(NULLIF(TRIM(`pPlaceName`)");
+        Expect.Contains(insert, "ST_GeomFromText(NULLIF(TRIM(`pstrSpot`), ''), 0, 'axis-order=long-lat')");
+        Expect.Contains(insert, "ST_GeomFromText(NULLIF(TRIM(`pstrSpot2`), ''), 4326, 'axis-order=long-lat')");
+        Expect.Contains(update, "`Spot` = COALESCE(ST_GeomFromText(NULLIF(TRIM(`pstrSpot`), ''), 0, 'axis-order=long-lat'), `Spot`)");
+        Expect.Contains(save, "ST_GeomFromText(NULLIF(`pstrSpot2`, ''), 4326, 'axis-order=long-lat')");
+        Expect.DoesNotContain(search, "pstrSpot");
+        Expect.DoesNotContain(insert, "ST_GeomFromText(NULLIF(TRIM(`pstrPlaceName`)");
     }
 
     [TestMethod]
@@ -217,7 +217,7 @@ public class MySqlTypeNotationTests
         string insert = MySqlProcedures.Insert(table, project);
         var rust = RustTable.Of(table, project);
 
-        Expect.Contains(insert, "ST_GeomFromText(NULLIF(TRIM(`pSpot`), ''), 4326)");
+        Expect.Contains(insert, "ST_GeomFromText(NULLIF(TRIM(`pstrSpot`), ''), 4326)");
         Expect.DoesNotContain(insert, "axis-order");
         Expect.Contains(rust.SelectList, "ST_AsText(`Spot`) AS `Spot`");
         Expect.Contains(rust.Insert, "ST_GeomFromText(NULLIF(?, ''), 4326)");

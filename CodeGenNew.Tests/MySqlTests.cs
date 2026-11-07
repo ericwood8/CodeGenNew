@@ -150,7 +150,7 @@ public class NamingStyleTests
 
     private static ColumnModel Column(string generated, string? database) => new()
     {
-        Name = generated, DatabaseName = database, QuotedName = "`" + (database ?? generated) + "`", SqlType = SqlDbType.Int, SqlTypeDeclaration = "int", ParameterName = "@p" + generated
+        Name = generated, DatabaseName = database, QuotedName = "`" + (database ?? generated) + "`", SqlType = SqlDbType.Int, SqlTypeDeclaration = "int"
     };
 
     [TestMethod]
@@ -175,9 +175,8 @@ public class MySqlProcedureTests
         return new()
         {
             Name = name, DatabaseName = db, QuotedName = "`" + (db ?? name) + "`", SqlType = type, SqlTypeDeclaration = declaration,
-            IsPrimaryKey = key, IsIdentity = identity, IsNullable = nullable, OrdinalPosition = ordinal, IsStringColumn = isText, IsIntegerColumn = type == SqlDbType.Int,
-            MaxLength = characters, IsInUniqueIndex = unique,
-            ParameterName = "@" + (isText ? "pstr" : type == SqlDbType.Int ? "plng" : "p") + name
+            IsPrimaryKey = key, IsIdentity = identity, IsNullable = nullable, OrdinalPosition = ordinal,
+            MaxLength = characters, IsInUniqueIndex = unique
         };
     }
 

@@ -33,7 +33,7 @@
         string Id(ColumnModel c) => c.CSharpName();
         string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
         bool schemaNamed = Model.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql
-            && !Model.SchemaName.EqualsIgnoreCase(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
+            && !Model.SchemaName.EqualsIgnoreCase(Model.IsSqlServer ? "dbo" : "public");
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -59,23 +59,23 @@
             if (c.DatabaseName is not null)
                 chain.Add($".HasColumnName({CSharpText.Quote(c.DatabaseName)})");
             string? columnType = null;
-            if (c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime)
+            if (c.IsLocalDateColumn)
             {
-                if (Model.Dialect == SqlDialect.PostgreSql)
+                if (Model.IsPostgreSql)
                     columnType = c.SqlTypeDeclaration;
             }
             else if (c.IsMoneyColumn)
-                columnType = c.SqlType == SqlDbType.Money ? "money" : "smallmoney";
-            else if (c.SqlType == SqlDbType.Decimal && c.Conversion is { } bits)
+                columnType = c.IsSmallMoneyColumn ? "smallmoney" : "money";
+            else if (c.IsDecimalColumn && c.Conversion is { } bits)
                 chain.Add($".HasConversion({bits.Expression})");   // a MySQL BIT(64) column
-            else if (c.SqlType == SqlDbType.Decimal)
+            else if (c.IsDecimalColumn)
             {
-                if (!(Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration == "numeric"))
+                if (!(Model.IsPostgreSql && c.SqlTypeDeclaration == "numeric"))
                     chain.Add($".HasPrecision({c.Precision ?? 18}, {c.Scale ?? 0})");
             }
-            else if (c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar)
+            else if (c.IsPlainTextColumn)
             {
-                if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
+                if (Model.IsPostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
                     columnType = c.SqlTypeDeclaration;
                 // an array, interval, range, geometric or spatial column: the entity holds its text, and the converter says how the database stores it
                 if (c.Conversion is { } conversion)

@@ -84,7 +84,7 @@
         {
             foreach (var c in bodyColumns.Where(c => !c.IsPrimaryKey && c.IsIntegerColumn))
             {
-                if (Project.RangeFor(c) is { } range && range.Max < NumericClassifier.TypeRange(c.SqlType).Max && ForeignKeyParentRoute(c, out string _).Length == 0)
+                if (Project.RangeFor(c) is { } range && range.Max < c.TypeRange.Max && ForeignKeyParentRoute(c, out string _).Length == 0)
                 {
                     ranged = c;
                     over = range.Max + 1;

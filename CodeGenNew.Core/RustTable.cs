@@ -275,51 +275,38 @@ public sealed class RustTable
     public static string? RustType(ColumnModel column, SqlDialect dialect)
     {
         string declaration = column.SqlTypeDeclaration.ToLowerInvariant();
-        switch (column.SqlType)
-        {
-            case SqlDbType.Int when declaration.Contains("unsigned"):
-                return "u32";
-            case SqlDbType.Int:
-                return "i32";
-            case SqlDbType.BigInt when declaration.Contains("unsigned"):
-                return "u64";
-            case SqlDbType.BigInt:
-                return "i64";
-            case SqlDbType.SmallInt when declaration.Contains("unsigned"):
-                return "u16";
-            case SqlDbType.SmallInt when declaration.StartsWith("tinyint", StringComparison.Ordinal):
-                return "i8";
-            case SqlDbType.SmallInt when declaration == "year":
-                return "u16";
-            case SqlDbType.SmallInt:
-                return "i16";
-            case SqlDbType.TinyInt:
-                return "u8";
-            case SqlDbType.Bit:
-                return "bool";
-            case SqlDbType.Decimal when declaration.Contains("unsigned"):
-                return "u64";
-            case SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney:
-                return dialect == SqlDialect.Sqlite ? "f64" : "Decimal";
-            case SqlDbType.Float:
-                return "f64";
-            case SqlDbType.Real:
-                return "f32";
-            case SqlDbType.Date:
-                return "NaiveDate";
-            case SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime:
-                return "NaiveDateTime";
-            case SqlDbType.DateTimeOffset:
-                return "DateTime<Utc>";
-            case SqlDbType.Time:
-                return "NaiveTime";
-            case SqlDbType.UniqueIdentifier:
-                return "Uuid";
-            case SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText:
-                return "String";
-            default:
-                return null;
-        }
+        bool unsigned = declaration.Contains("unsigned");
+        if (column.IsInt32Column)
+            return unsigned ? "u32" : "i32";
+        if (column.IsBigIntColumn)
+            return unsigned ? "u64" : "i64";
+        if (column.IsSmallIntColumn)
+            return unsigned ? "u16" : declaration.StartsWith("tinyint", StringComparison.Ordinal) ? "i8" : declaration == "year" ? "u16" : "i16";
+        if (column.IsTinyIntColumn)
+            return "u8";
+        if (column.IsBooleanColumn)
+            return "bool";
+        if (column.IsDecimalColumn && unsigned)
+            return "u64";
+        if (column.IsDecimalColumn || column.IsMoneyColumn)
+            return dialect == SqlDialect.Sqlite ? "f64" : "Decimal";
+        if (column.IsFloatColumn)
+            return "f64";
+        if (column.IsRealColumn)
+            return "f32";
+        if (column.IsDateOnlyColumn)
+            return "NaiveDate";
+        if (column.IsDateTimeColumn)
+            return "NaiveDateTime";
+        if (column.IsDateTimeOffsetColumn)
+            return "DateTime<Utc>";
+        if (column.IsTimeColumn)
+            return "NaiveTime";
+        if (column.IsGuidColumn)
+            return "Uuid";
+        if (column.IsStringColumn)
+            return "String";
+        return null;
     }
 
     // The module of src/support.rs (or the serde feature of a crate) that writes and reads the type the way ASP.NET does.
@@ -332,12 +319,12 @@ public sealed class RustTable
     };
 
     /// <summary> True for a PostgreSQL column of a type that is not text (an enum and the like): it is read and compared as text. </summary>
-    private bool NeedsTextCast(ColumnModel column) => _di.Dialect == SqlDialect.PostgreSql && column.DbCastType is not null;
+    private bool NeedsTextCast(ColumnModel column) => _di.IsPostgreSql && column.DbCastType is not null;
 
     private string SelectExpression(ColumnModel column)
     {
         string q = _di.Quote(column.DbName);
-        if (_di.Dialect == SqlDialect.PostgreSql)
+        if (_di.IsPostgreSql)
         {
             if (column.IsMoneyColumn)
                 return $"{q}::numeric AS {q}";
@@ -346,10 +333,10 @@ public sealed class RustTable
         }
         if (_di.Dialect == SqlDialect.MySql)
         {
-            if (column.DbSpatialType is not null)
+            if (column.IsSpatialColumn)
                 return $"{_di.SpatialAsText(q, _mariaDb)} AS {q}";
-            if (column.DbBitWidth is { } bits)
-                return bits < 64 ? $"CAST({q} AS SIGNED) AS {q}" : $"CAST({q} AS DECIMAL(20,0)) AS {q}";
+            if (column.IsBitColumn)
+                return column.DbBitWidth < 64 ? $"CAST({q} AS SIGNED) AS {q}" : $"CAST({q} AS DECIMAL(20,0)) AS {q}";
         }
         // SQLite stores a whole number that was written to a DECIMAL or FLOAT column as an integer, and sqlx refuses to read an integer as a double: read the value as the real it means
         if (_di.Dialect == SqlDialect.Sqlite && (column.IsNumericColumn || column.IsMoneyColumn))
@@ -362,14 +349,14 @@ public sealed class RustTable
     private string Parameter(RustField field, int index)
     {
         string p = _di.Placeholder(index);
-        if (_di.Dialect == SqlDialect.MySql && field.Column.DbSpatialType is not null)
+        if (_di.Dialect == SqlDialect.MySql && field.Column.IsSpatialColumn)
             return _di.SpatialFromText(p, field.Column.DbSrid, _mariaDb);
-        if (_di.Dialect != SqlDialect.PostgreSql)
+        if (!_di.IsPostgreSql)
             return p;
         if (field.Column.IsMoneyColumn)
             return $"{p}::numeric::money";
-        if (field.Column.DbTextType is { } textType)
-            return $"CAST(NULLIF({p}::text, '') AS {textType})";
+        if (field.Column.IsPgTextColumn)
+            return $"CAST(NULLIF({p}::text, '') AS {field.Column.DbTextType})";
         if (field.Column.DbEnumType is { } type)
             return $"CAST({p}::text AS {string.Join(".", type.Split('.').Select(_di.Quote))})";
         return p;

@@ -934,31 +934,7 @@ public partial class ProjectSettings
     /// <summary> The whole-number limits a number box for this column should enforce: what its name suggests (a year runs from
     /// MinYear to MaxYear, a month 1-12, a percentage 0-100, a count or sequence from 0), always inside the limits of its SQL
     /// type. Null for a column that is not a whole number. </summary>
-    public NumericRange? RangeFor(ColumnModel column)
-    {
-        if (!column.IsIntegerColumn)
-            return null;
-        var type = NumericClassifier.TypeRange(column.SqlType);
-        (long min, long max) = column.NumericKind switch
-        {
-            NumericKind.Year => (MinYear, MaxYear),
-            NumericKind.Month => (1L, 12L),
-            NumericKind.DayOfMonth => (1L, 31L),
-            NumericKind.Quarter => (1L, 4L),
-            NumericKind.WeekNumber => (1L, 53L),
-            NumericKind.Percentage => (0L, 100L),
-            NumericKind.Count or NumericKind.Sequence => (0L, type.Max),
-            _ => (type.Min, type.Max)
-        };
-        // what the database says in a CHECK constraint narrows it further (CHECK (rating BETWEEN 1 AND 5))
-        if (column.Check is { } check)
-        {
-            long checkedMin = Math.Max(min, check.IntegerMin ?? min), checkedMax = Math.Min(max, check.IntegerMax ?? max);
-            if (checkedMin <= checkedMax)
-                (min, max) = (checkedMin, checkedMax);
-        }
-        return new NumericRange(Math.Max(min, type.Min), Math.Min(max, type.Max));
-    }
+    public NumericRange? RangeFor(ColumnModel column) => column.RangeWith(MinYear, MaxYear);
 
     /// <summary> How many characters wide a number box for a whole-number column needs when its values are short (a month, a year, a percentage, a tinyint or smallint): the digits of its longest limit and room
     /// for the spin buttons. Null for a column whose values can be long, which keeps the form's own box width. </summary>

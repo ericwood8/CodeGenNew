@@ -168,7 +168,7 @@ public class SchemaDocumentTemplateTests
         var parent = Status();
         var withChildren = new TableModel
         {
-            SchemaName = parent.SchemaName, TableName = parent.TableName, QuotedName = parent.QuotedName, Columns = parent.Columns, PrimaryKeyColumns = parent.PrimaryKeyColumns,
+            SchemaName = parent.SchemaName, Dialect = parent.Dialect, TableName = parent.TableName, QuotedName = parent.QuotedName, Columns = parent.Columns, PrimaryKeyColumns = parent.PrimaryKeyColumns,
             ForeignKeys = [], ChildForeignKeys =
             [
                 new ChildForeignKeyModel { ConstraintName = "FK_x", ReferencingSchema = "dbo", ReferencingTable = "Customer", ReferencingColumns = ["CustomerStatusId"], ReferencedColumns = ["CustomerStatusId"] }

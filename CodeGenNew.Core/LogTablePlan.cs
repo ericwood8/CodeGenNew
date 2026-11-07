@@ -87,7 +87,7 @@ public static class LogTablePlan
     }
 
     public static bool HasTimeOfDay(ColumnModel column) =>
-        column.SqlType is SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+        column.IsDateTimeColumn;
 
     /// <summary> Whether a table has the shape of a log: an integer key, a date-and-time column and either a log-like name or a level and a message. Only a run note uses it. </summary>
     public static bool Looks(TableModel table)

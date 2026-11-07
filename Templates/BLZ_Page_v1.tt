@@ -190,7 +190,7 @@
         {
             string bind = $"line.{c.CSharpName()}";
             string required = c.IsNullable ? "" : " required";
-            string label = Labels.Field(c).Replace("\"", "'");
+            string label = c.Label.Replace("\"", "'");
             string aria = $" aria-label=\"{label}\"";
             var l = grid.Lookups.FirstOrDefault(x => x.ColumnName.EqualsIgnoreCase(c.Name));
             if (l is not null)
@@ -230,13 +230,12 @@
         // A cell of a grid row: the lookup's name for a foreign key, yes / no, a date, money with its symbol, or the value.
         string Cell(ColumnModel c, string prop, string lookupCall)
         {
-            var kind = GridCells.KindOf(c, lookupCall is not null);
-            if (kind == CellKind.Lookup) return "@" + lookupCall;
-            if (kind == CellKind.Boolean) return c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
-            if (kind == CellKind.Date) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
-            if (kind == CellKind.DateTime) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd HH:mm\")";
-            if (kind == CellKind.Money) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
-            if (kind == CellKind.Decimal) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N2\")";
+            if (lookupCall is not null) return "@" + lookupCall;
+            if (c.IsBooleanCell) return c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
+            if (c.IsDateCell) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
+            if (c.IsDateTimeCell) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd HH:mm\")";
+            if (c.IsMoneyCell) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
+            if (c.IsDecimalCell) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N2\")";
             return $"@{prop}";
         }
 
@@ -492,13 +491,13 @@
         foreach (var c in formPages[pageIndex].Columns)
         {
             string id = form.FieldId(c);
-            string label = Labels.Field(c);
+            string label = c.Label;
             string bind = $"row.{c.CSharpName()}";
             // a required field on a tab that is not open would stop the Save with no message (the browser cannot show it), so it is checked by the browser only while its tab is open
             string required = c.IsNullable ? "" : pageIndex > 0 ? $" required=\"@(editTab == {pageIndex})\"" : " required";
             string input;
-            var kind = form.KindOf(c);
-            if (kind == FieldKind.SystemStamp)
+            var formColumn = form.Field(c);
+            if (formColumn.IsSystemStampField)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampText = IsDate(c) ? $"@{bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\")" : $"@{bind}";
@@ -508,13 +507,13 @@
                 L($"            @if (!isNew) {{ <div class=\"field\"><label for=\"{id}\">{label}</label><span id=\"{id}\">{stampText}</span></div> }}");
                 continue;
             }
-            if (kind == FieldKind.TypedKey)
+            if (formColumn.IsTypedKeyField)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 string max = Chars(c) is > 0 and < 4000 ? $" maxlength=\"{Chars(c)}\"" : "";
                 input = $"<InputText id=\"{id}\" @bind-Value=\"{bind}\"{max} readonly=\"@(!isNew)\" required />";
             }
-            else if (kind == FieldKind.Lookup)
+            else if (formColumn.IsLookupField)
             {
                 var p = form.ParentOf(c)!;
                 string blank = c.IsNullable ? "<option value=\"\">None</option>" : c.CSharpBase() == "string" ? "<option value=\"\">Select</option>" : $"<option value=\"@(default({c.CSharpBase()}))\">Select</option>";
@@ -522,19 +521,19 @@
                     ? $"<TypeAhead TValue=\"{Cs(p)}\" Id=\"{id}\" Label=\"{label}\" Required=\"{(c.IsNullable ? "false" : "true")}\" Name=\"@Name{p.BaseName}({bind})\" Find=\"@Find{p.BaseName}\" OnPick=\"@Pick{Prop(c)}\" />"
                     : $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {BlazorNames.LookupField(p)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(p)}\">@parent.{BlazorNames.DisplayProperty(p)}</option> }}</InputSelect>";
             }
-            else if (kind == FieldKind.Choices)
+            else if (formColumn.IsChoicesField)
             {
                 // A column whose values the database lists (a CHECK list, a MySQL enum) is a drop-down of them; the blank first entry keeps a new row from silently taking the first value.
                 string choices = string.Join("", c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"));
                 input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"{required}><option value=\"\"></option>{choices}</InputSelect>";
             }
-            else if (kind == FieldKind.Boolean)
+            else if (formColumn.IsBooleanField)
             {
                 input = c.IsNullable
                     ? $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"><option value=\"\"></option><option value=\"true\">Yes</option><option value=\"false\">No</option></InputSelect>"
                     : $"<InputCheckbox id=\"{id}\" @bind-Value=\"{bind}\" />";
             }
-            else if (kind == FieldKind.Date)
+            else if (formColumn.IsDateField)
             {
                 // an end date cannot be picked before its start (the browser refuses a Save with one)
                 string minimum = DatePairs.EndingAt(Model, Project, c) is { } endsAfter
@@ -546,13 +545,13 @@
                     : "";
                 input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{minimum}{maximum}{required} />";
             }
-            else if (kind == FieldKind.Money)
+            else if (formColumn.IsMoneyField)
                 input = $"<CurrencyInput id=\"{id}\" @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{MoneyBox.For(Model.TableName, c, Project).Razor}{required} />";
-            else if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
+            else if (formColumn.IsNumberBoxField)
             {
                 var box = NumberBox.For(Model.TableName, c, Project);
                 string limits = box.Razor(box.Min is null && box.Max is null ? "" : Changed(bind));
-                string readOnly = kind == FieldKind.TypedNumberKey ? " readonly=\"@(!isNew)\"" : "";   // the key of a new row is typed; once the row exists it is read-only
+                string readOnly = formColumn.IsTypedNumberKeyField ? " readonly=\"@(!isNew)\"" : "";   // the key of a new row is typed; once the row exists it is read-only
                 input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{limits}{readOnly}{required} />";
             }
             else if (c.CSharpBase() == "string")
@@ -607,7 +606,7 @@
             L("                        <thead>");
             L("                            <tr>");
             foreach (var c in ch.EditColumns)
-                L(ChildFlagged(ch.Grid, c, $"<th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(ch.Grid.IsMarked(c))}</th>", "                                "));
+                L(ChildFlagged(ch.Grid, c, $"<th>{GridCaption.For(c, c.Label)}{RequiredMark.Html(ch.Grid.IsMarked(c))}</th>", "                                "));
             L("                                <th></th>");
             L("                            </tr>");
             L("                        </thead>");
@@ -667,7 +666,7 @@
                 L("                    <thead>");
                 L("                        <tr>");
                 foreach (var c in ch.Columns)
-                    L(ChildFlagged(ch.Grid, c, $"<th>{GridCaption.For(c, Labels.Field(c))}</th>", "                            "));
+                    L(ChildFlagged(ch.Grid, c, $"<th>{GridCaption.For(c, c.Label)}</th>", "                            "));
                 L("                            <th>Actions</th>");
                 L("                        </tr>");
                 L("                    </thead>");
@@ -1170,7 +1169,7 @@
             L($"            {field}.Add(new {BlazorNames.LookupType(p.Table)}(option.Id, option.Name));");
             L("    }");
         }
-        foreach (var c in shown.Where(c => form.KindOf(c) == FieldKind.Lookup && form.ParentOf(c) is { } p && Ahead(p)))
+        foreach (var c in shown.Where(c => form.Field(c).IsLookupField && form.ParentOf(c) is { } p && Ahead(p)))
         {
             var p = form.ParentOf(c)!;
             L();
