@@ -333,7 +333,7 @@ public static class ApiFixture
         }
 #>
 <#
-        if (!tenants && Project.ApiAuth && Project.TokenTables.Length > 0)
+        if (!tenants && ((Project.ApiAuth && Project.TokenTables.Length > 0) || Project.InboundTables.Length > 0))
         {
 #>
     public static IServiceProvider Services => _factory!.Services;

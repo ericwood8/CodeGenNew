@@ -27,7 +27,7 @@ public partial class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode", "MaxGridColumns",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "TokenTables", "TokenAnonymousSpend", "UsageTables", "UsageLimits", "UsageRollup", "UsageRollupDays", "UsageRollupHours", "UsageRefuse", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "FeatureTables", "FeaturePlanTable", "FeatureScreens", "FeatureFields", "FeatureCacheSeconds", "FeatureRefreshSeconds", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "InboundTables", "InboundSecret", "InboundSourceSecrets", "InboundEditTables", "InboundMaxBytes", "InboundToleranceSeconds", "InboundClientTables", "InboundClientPerMinute", "InboundClientMaxBytes", "PartitionTables", "PartitionMonthsAhead", "PartitionKeepMonths", "TokenTables", "TokenAnonymousSpend", "UsageTables", "UsageLimits", "UsageRollup", "UsageRollupDays", "UsageRollupHours", "UsageRefuse", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "FeatureTables", "FeaturePlanTable", "FeatureScreens", "FeatureFields", "FeatureCacheSeconds", "FeatureRefreshSeconds", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "PythonTests", "OutputSql", "AppNamespace", "DatabaseProvider", "MySqlFlavour", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"
     ];
@@ -318,15 +318,18 @@ public partial class ProjectSettings
             if (ApiAuth && RowApprovals.Length > 0) { yield return "API_Approvals"; yield return "SP_ApprovalTable"; yield return "PY_Approvals"; yield return "RS_Approvals"; yield return "TSX_Approvals"; yield return "TS_Approvals"; yield return "BLZ_Approvals"; yield return "UNO_Approvals"; yield return "WinUI3_Approvals"; }
             if (LogTablePlan.Entries(this).Count > 0) yield return "SP_LogIndex";
             if (QueueTables.Length > 0) { yield return "API_Queue"; yield return "PY_Queue"; yield return "RS_Queue"; }
+            if (InboundTables.Length > 0) { yield return "API_Inbound"; yield return "PY_Inbound"; yield return "RS_Inbound"; }
             if (ApiAuth && TokenTables.Length > 0) { yield return "API_Token"; yield return "PY_Token"; yield return "RS_Token"; }
             if (ApiAuth && UsageTables.Length > 0) { yield return "API_Usage"; yield return "PY_Usage"; yield return "RS_Usage"; }
             if (Auth && ApiAuth && TokenTables.Length > 0) { yield return "TSX_Tokens"; yield return "TS_Tokens"; yield return "BLZ_Tokens"; yield return "UNO_Tokens"; }
             if (TenantPlan.HasDesktopSignIn(this) && TokenTables.Length > 0) yield return "WinUI3_Tokens";
             if (ApiAuth && ApiTests && TokenTables.Length > 0) yield return "API_TestTokens";
             if (ApiAuth && ApiTests && UsageTables.Length > 0) yield return "API_TestUsage";
+            if (ApiTests && InboundTables.Length > 0) yield return "API_TestInbound";
             if (Auth && ApiAuth && UsageTables.Length > 0 && TenantPlan.IsEnabled(this)) { yield return "TSX_Usage"; yield return "TS_Usage"; yield return "BLZ_Usage"; yield return "UNO_Usage"; }
             if (TenantPlan.HasDesktopTenants(this) && UsageTables.Length > 0) yield return "WinUI3_Usage";
             if (ArchiveTables.Length > 0) yield return "SP_ArchiveJob";
+            if (PartitionTables.Length > 0) yield return "SP_PartitionJob";
             if (RowShapePlan.Any(this)) yield return "API_RowShapes";
             if (ApiAuth && TenantTable is not null) { yield return "API_Tenants"; yield return "PY_Tenants"; yield return "RS_Tenants"; }
             if (ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "PY_Subscriptions";
@@ -369,6 +372,7 @@ public partial class ProjectSettings
                 if (ApiAuth && (ChangeGates is not null || GuardedColumns is not null)) yield return "RS_TestGates";
                 if (ApiAuth && RowApprovals.Length > 0) yield return "RS_TestApprovals";
                 if (QueueTables.Length > 0) yield return "RS_TestQueue";
+                if (InboundTables.Length > 0) yield return "RS_TestInbound";
                 if (ApiAuth && TokenTables.Length > 0) yield return "RS_TestTokens";
                 if (ApiAuth && TenantTable is not null) yield return "RS_TestTenants";
                 if (ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "RS_TestSubscriptions";
@@ -376,6 +380,7 @@ public partial class ProjectSettings
             }
             if (PythonTests && ApiAuth && RowApprovals.Length > 0) yield return "PY_TestApprovals";
             if (PythonTests && QueueTables.Length > 0) yield return "PY_TestQueue";
+            if (PythonTests && InboundTables.Length > 0) yield return "PY_TestInbound";
             if (PythonTests && ApiAuth && TokenTables.Length > 0) yield return "PY_TestTokens";
             if (PythonTests && ApiAuth && TenantTable is not null) yield return "PY_TestTenants";
             if (PythonTests && ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "PY_TestSubscriptions";
@@ -637,6 +642,42 @@ public partial class ProjectSettings
 
     /// <summary> Work-queue tables (<c>QueueTables=JobQueue,Mail:State:Attempts</c>: a table and optionally its status and retry columns, default Status and RetryCount): the API gets claim, complete, fail and retry routes, the rows are not edited by hand and the list shows the counts by status. See <see cref="QueuePlan"/>. </summary>
     public string[] QueueTables => Items("QueueTables");
+
+    /// <summary> Inbound event landing tables (<c>InboundTables=WebhookEvent,ErrorReport:Payload:ExternalId</c>: a table and optionally its body and event id columns, found by name when left out): an insert-only table fed by a sender that is not a person. The API gets a receiving route that is open to anyone and checks a signature instead of a login, and a worker route to list the unprocessed events and mark one processed. See <see cref="InboundPlan"/>. </summary>
+    public string[] InboundTables => Items("InboundTables");
+
+    /// <summary> The name of the environment variable (or configuration key) that holds the shared secret the senders of the inbound tables sign their messages with (<c>InboundSecret=INBOUND_WEBHOOK_SECRET</c>). </summary>
+    public string InboundSecret => Explicit("InboundSecret") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : InboundPlan.DefaultSecret;
+
+    /// <summary> The inbound tables whose rows a person may also add, change and delete (<c>InboundEditTables=WebhookEvent</c>): such a table is an ordinary table with the CRUD screens and routes, and keeps the inbound routes. </summary>
+    public string[] InboundEditTables => Items("InboundEditTables");
+
+    /// <summary> The senders that sign with a secret of their own (<c>InboundSourceSecrets=stripe:STRIPE_WEBHOOK_SECRET,github:GITHUB_WEBHOOK_SECRET</c>): the source in <c>receive/{source}</c> and the environment variable that holds its secret. </summary>
+    public string[] InboundSourceSecrets => Items("InboundSourceSecrets");
+
+    /// <summary> The largest body, in bytes, an inbound route accepts (<c>InboundMaxBytes</c>, default 1048576). </summary>
+    public int InboundMaxBytes => PositiveInt("InboundMaxBytes", 1048576);
+
+    /// <summary> How many seconds the signed time of an inbound message may differ from the server's time (<c>InboundToleranceSeconds</c>, default 300): an older message is a replay. </summary>
+    public int InboundToleranceSeconds => PositiveInt("InboundToleranceSeconds", 300);
+
+    /// <summary> The inbound tables that also get a write-only route for a browser (<c>InboundClientTables=PageView,SearchQuery</c>): open to anyone, no signature, a small body and a limit of requests a minute for each caller address. See <see cref="InboundPlan"/>. </summary>
+    public string[] InboundClientTables => Items("InboundClientTables");
+
+    /// <summary> How many requests a minute one caller address may make to a client route (<c>InboundClientPerMinute</c>, default 30). </summary>
+    public int InboundClientPerMinute => PositiveInt("InboundClientPerMinute", 30);
+
+    /// <summary> The largest body, in bytes, a client route accepts (<c>InboundClientMaxBytes</c>, default 4096). </summary>
+    public int InboundClientMaxBytes => PositiveInt("InboundClientMaxBytes", 4096);
+
+    /// <summary> Tables a script splits into one partition for each month of their date column (<c>PartitionTables=WebhookEvent,PageView:ViewedOn</c>), with a procedure that adds the coming months and drops the old ones. See <see cref="PartitionPlan"/>. </summary>
+    public string[] PartitionTables => Items("PartitionTables");
+
+    /// <summary> How many months ahead the partition procedure keeps ready (<c>PartitionMonthsAhead</c>, default 3). </summary>
+    public int PartitionMonthsAhead => PositiveInt("PartitionMonthsAhead", 3);
+
+    /// <summary> How many whole months of partitions the procedure keeps before it drops the oldest (<c>PartitionKeepMonths</c>; 0 or blank keeps every month). </summary>
+    public int PartitionKeepMonths => PositiveInt("PartitionKeepMonths", 0);
 
     /// <summary> Session and token tables (<c>TokenTables=Session:TokenHash:ExpiresOn:UsedOn+RevokedOn:FamilyId</c>: a table and optionally its hash, expiry, ending columns joined with + and family column): no ordinary API or screen, only the routes of <see cref="TokenPlan"/>. </summary>
     public string[] TokenTables => Items("TokenTables");

@@ -38,6 +38,9 @@ public sealed class TableShapes
 
     /// <summary> The table as a work queue, a soft deleted table, a tree, an effective dated table, a log or a table with a Name and an IsActive column; null when it is not. </summary>
     public QueueShape? Queue => Shape<QueueShape>();
+
+    /// <summary> The table as an inbound event landing table; null when it is not. </summary>
+    public InboundShape? Inbound => Shape<InboundShape>();
     public TokenShape? Token => Shape<TokenShape>();
     public UsageShape? Usage => Shape<UsageShape>();
     public SoftDeleteShape? SoftDelete => Shape<SoftDeleteShape>();
@@ -62,7 +65,7 @@ public sealed class TableShapes
         return (T?)ShapeOf(typeof(T));
     }
 
-    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(TokenShape), typeof(UsageShape), typeof(LogShape), typeof(TreeShape), typeof(EffectiveShape), typeof(ExtensionShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape)];
+    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(InboundShape), typeof(TokenShape), typeof(UsageShape), typeof(LogShape), typeof(TreeShape), typeof(EffectiveShape), typeof(ExtensionShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape)];
     private static readonly Type[] NeedDatabase = [typeof(TenantMembershipShape), typeof(ApprovalTableShape), typeof(ApprovalSide)];
 
     /// <summary> Every shape the table has, in a fixed order; a table with none gives an empty list. </summary>
@@ -85,6 +88,7 @@ public sealed class TableShapes
     {
         if (shape == typeof(SoftDeleteShape)) return SoftDeletePlan.For(_table, _project);
         if (shape == typeof(QueueShape)) return QueuePlan.For(_table, _project);
+        if (shape == typeof(InboundShape)) return InboundPlan.For(_table, _project);
         if (shape == typeof(TokenShape)) return TokenPlan.For(_table, _project);
         if (shape == typeof(UsageShape)) return UsagePlan.For(_table, _project);
         if (shape == typeof(LogShape)) return LogTablePlan.For(_table, _project);

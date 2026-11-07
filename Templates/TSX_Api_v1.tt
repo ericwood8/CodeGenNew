@@ -92,6 +92,17 @@
             L("}");
             L();
         }
+        if (TableShapes.For(Model, Project).Inbound is not null)
+        {
+            L("// GET status: the events that wait, with a sentence that says what the generator was told about the table (InboundTables).");
+            L("export interface InboundStatus {");
+            L("  summary: string;");
+            L("  total: number;");
+            L("  unprocessed: number;");
+            L($"  oldestUnprocessedId?: {keyTs} | null;");
+            L("}");
+            L();
+        }
         if (TableShapes.For(Model, Project).Tree is not null)
         {
             L("export interface TreeNode {");
@@ -136,6 +147,15 @@
             L("  getQueueStats: () => request<QueueStats>(`${apiUrl}/stats`),");
             L();
             L($"  retry: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/retry`, {{ method: 'POST' }}),");
+        }
+        if (TableShapes.For(Model, Project).Inbound is not null)
+        {
+            L();
+            L("  // an inbound event table: the events that wait and what the generator was told about the table (GET status)");
+            L($"  getInboundStatus: () => request<InboundStatus>(`${{apiUrl}}/status`),");
+            L();
+            L("  // an inbound event table: one event marked processed (InboundTables); the answer says whether this call did it or it was done already");
+            L($"  markProcessed: (id: {keyTs}) => request<{{ processed: boolean; alreadyProcessed: boolean; row: {baseName} }}>(`${{apiUrl}}/{keyPath}/processed`, {{ method: 'POST' }}),");
         }
         if (TableShapes.For(Model, Project).Tree is not null)
         {

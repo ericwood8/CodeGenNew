@@ -117,6 +117,9 @@ pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
 <#
     }
 #>
+<# if (Project.InboundTables.Length > 0) { #>
+    let router = router.merge(routes::inbound::public_router());   // the signed receive routes of the inbound tables: not signed in
+<# } #>
 <#
     if (Project.ApiDocs)
     {
@@ -157,10 +160,10 @@ pub async fn serve(listener: tokio::net::TcpListener, frontend: Option<PathBuf>)
     routes::start_background(pool.clone());   // UsageRollupHours
 <# } #>
 <#
-    if (auth)
+    if (auth || Project.InboundClientTables.Length > 0)
     {
 #>
-    // the sign-in counts wrong passwords per address
+    // the sign-in counts wrong passwords per address and the collect routes count requests per address
     axum::serve(listener, app(pool, frontend).into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
 <#
     }

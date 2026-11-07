@@ -93,6 +93,7 @@
         var searchKeys = DesktopGridCode.KeyFilters(form).Where(_ => !odata).ToList();
         bool logOnly = form.ReadOnly && !isNameActive;   // a table in LogTables: a list with a first and a last day (the date boxes end searchFields) and no Add New, Edit, Clone or Delete
         var queue = logOnly ? TableShapes.For(Model, Project).Queue : null;   // a work queue also shows the counts by status and a Retry button on a failed row
+        var inbound = logOnly ? TableShapes.For(Model, Project).Inbound : null;   // an inbound event table has a Processed button on a row that is not processed yet
         bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0 || isNameActive;   // a name / active table's search bar also has the Active only check box
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
@@ -122,7 +123,7 @@
         bool softScreen = softPlan is not null;
         bool validOnScreen = effectivePlan is not null;
         bool shapeScreen = softScreen || validOnScreen;
-        string actionWidth = logOnly ? (queue is null ? "90" : "170") : canClone ? "250" : "175";
+        string actionWidth = logOnly ? (queue is null && inbound is null ? "90" : "170") : canClone ? "250" : "175";
 #>
 @@@FILE <#= viewsFolder #>/<#= stemName #>ListPage.xaml@@@
 <Page
@@ -169,6 +170,9 @@
 <# } #>
 <# if (queue is not null) { #>
                 <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.QueueSummary, Mode=OneWay}" />
+<# } #>
+<# if (inbound is not null) { #>
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.InboundSummary, Mode=OneWay}" />
 <# } #>
             </StackPanel>
         </Border>
@@ -286,6 +290,9 @@
                                             <Button Content="View" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnViewClick" />
 <# if (queue is not null) { #>
                                             <Button Content="Retry" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnRetryClick" Visibility="{x:Bind RetryVisibility}" />
+<# } #>
+<# if (inbound is not null) { #>
+                                            <Button Content="<#= InboundScreens.Button #>" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnMarkProcessedClick" Visibility="{x:Bind ProcessedVisibility}" />
 <# } #>
                                         </StackPanel>
 <# } #>
@@ -474,6 +481,14 @@ public sealed partial class <#= stemName #>ListPage : Page
     }
 
 <# } #>
+<# if (inbound is not null) { #>
+    // Processed marks an event that is not processed yet; the page is read again.
+    private async void OnMarkProcessedClick(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.MarkProcessedAsync((<#= keyCs #>)((Button)sender).Tag);
+    }
+
+<# } #>
     // View opens the whole row, read-only: a long message that the grid cuts can be read here.
     private async void OnViewClick(object sender, RoutedEventArgs e)
     {
@@ -586,6 +601,13 @@ public class <#= stemName #>ListRow
     public Visibility RetryVisibility { get; init; } = Visibility.Collapsed;
 <#
         }
+        if (inbound is not null)
+        {
+#>
+    /// <summary> Whether the Processed button shows: only an event that is not processed yet can be marked. </summary>
+    public Visibility ProcessedVisibility { get; init; } = Visibility.Collapsed;
+<#
+        }
         if (gated)
         {
 #>
@@ -685,6 +707,15 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     /// <summary> The counts by status and the oldest pending row (GET stats), above the grid. </summary>
     [ObservableProperty]
     private string _queueSummary = "";
+
+<#
+        }
+        if (inbound is not null)
+        {
+#>
+    /// <summary> How many events wait and what the generator was told about the table (GET status), above the grid. </summary>
+    [ObservableProperty]
+    private string _inboundSummary = "";
 
 <#
         }
@@ -960,10 +991,13 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
             Write(DesktopGridCode.CellLines(form, Project, c, chosen.Offered.First(o => o.Column == c).Cut));
 #>
             ];
-            Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= softScreen ? ", NormalVisibility = ShowDeleted ? Visibility.Collapsed : Visibility.Visible, RestoreVisibility = ShowDeleted && " + (gated ? "_api.Session.HasRole([\"" + Project.AuthAdminRole + "\"])" : "true") + " ? Visibility.Visible : Visibility.Collapsed" : "" #><#= gated ? ", WriteVisibility = WriteVisibility" : "" #><#= queue is null ? "" : $", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #> });
+            Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= softScreen ? ", NormalVisibility = ShowDeleted ? Visibility.Collapsed : Visibility.Visible, RestoreVisibility = ShowDeleted && " + (gated ? "_api.Session.HasRole([\"" + Project.AuthAdminRole + "\"])" : "true") + " ? Visibility.Visible : Visibility.Collapsed" : "" #><#= gated ? ", WriteVisibility = WriteVisibility" : "" #><#= queue is null ? "" : $", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #><#= inbound is null ? "" : $", ProcessedVisibility = {InboundScreens.UnprocessedCs(inbound, "e", inbound.Processed.CSharpName())} ? Visibility.Visible : Visibility.Collapsed" #> });
         }
 <# if (queue is not null) { #>
         await LoadStatsAsync();
+<# } #>
+<# if (inbound is not null) { #>
+        await LoadInboundSummaryAsync();
 <# } #>
     }
 
@@ -993,6 +1027,41 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
         catch (ApiException ex)
         {
             ErrorMessage = ex.Explain("retrying");
+            return;
+        }
+        catch (HttpRequestException)
+        {
+            ErrorMessage = "The server could not be reached.";
+            return;
+        }
+        await LoadAsync();
+    }
+<# } #>
+<# if (inbound is not null) { #>
+
+    /// <summary> How many events wait and what the generator was told about the table; a failure to read it leaves the old text. </summary>
+    private async Task LoadInboundSummaryAsync()
+    {
+        try
+        {
+            InboundSummary = (await Client.GetInboundStatusAsync()).Summary;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+        }
+    }
+
+    /// <summary> An event that is not processed yet is marked processed; the page is read again. </summary>
+    public async Task MarkProcessedAsync(<#= keyCs #> id)
+    {
+        ErrorMessage = null;
+        try
+        {
+            await Client.MarkProcessedAsync(id);
+        }
+        catch (ApiException ex)
+        {
+            ErrorMessage = ex.Explain("marking processed");
             return;
         }
         catch (HttpRequestException)

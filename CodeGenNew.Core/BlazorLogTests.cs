@@ -5,7 +5,7 @@ namespace CodeGenNew.Core;
 /// <summary> The bUnit tests of the Blazor page of a log table (LogTables): it lists rows, so they check the heading, a row, that no button adds, changes or deletes one, and that Search sends the first and last day. </summary>
 public static class BlazorLogTests
 {
-    public static string Body(string type, BlazorTestPlan plan, string title, QueueShape? queue = null, ProjectSettings? project = null)
+    public static string Body(string type, BlazorTestPlan plan, string title, QueueShape? queue = null, ProjectSettings? project = null, InboundShape? inbound = null)
     {
         var row = plan.Row;
         var o = new StringBuilder();
@@ -28,11 +28,21 @@ public static class BlazorLogTests
             L("    private const string Stats = \"\"\"{ \"pending\": 2, \"claimed\": 1, \"done\": 5, \"failed\": 1, \"oldestPendingId\": 4, \"oldestPendingOn\": \"2026-10-26T08:12:00\" }\"\"\";");
             L();
         }
+        if (inbound is not null)
+        {
+            string Json(string name, string value) => $"\"{name}\": {value}";
+            L($"    private const string WaitingRow = \"\"\"{InboundScreens.Row(inbound, project!, 7, false, Json)}\"\"\";");
+            L("    private const string InboundSummary = \"\"\"{ \"summary\": \"Unprocessed: 1 of 2. Oldest unprocessed: #7.\", \"total\": 2, \"unprocessed\": 1, \"oldestUnprocessedId\": 7 }\"\"\";");
+            L($"    private const string DoneRow = \"\"\"{InboundScreens.Row(inbound, project!, 8, true, Json)}\"\"\";");
+            L();
+        }
         L($"    private IRenderedComponent<{page}> Open({(row is not null ? "string? list = null" : "")})");
         L("    {");
         L(row is not null ? "        Api.Answer(\"/search\", list ?? FakeApi.Page(Row, 1));" : "        Api.Answer(\"/search\", FakeApi.Page(\"\", 0));");
         if (queue is not null)
             L("        Api.Answer(\"/stats\", Stats);");
+        if (inbound is not null)
+            L("        Api.Answer(\"/status\", InboundSummary);");
         o.Append(plan.SignIn);
         L($"        return Render<{page}>();");
         L("    }");
@@ -118,6 +128,24 @@ public static class BlazorLogTests
             L("        page.WaitForAssertion(() => Assert.IsTrue(page.FindAll(\"button\").Any(b => b.TextContent.Trim() == \"Retry\")));");
             L("        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Retry\").Click();");
             L("        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith(\"/7/retry\"))));");
+            L("    }");
+        }
+        if (inbound is not null)
+        {
+            L();
+            L("    [TestMethod]");
+            L($"    public void {InboundScreens.Button}_marks_an_event_that_is_not_processed_yet_and_is_offered_on_no_other()");
+            L("    {");
+            L("        Api.Answer(\"/search\", FakeApi.Page(WaitingRow + \", \" + DoneRow, 2));");
+            L("        Api.Answer(\"/status\", InboundSummary);");
+            L("        Api.AnswerWrite(HttpMethod.Post, \"/7/processed\", \"\"\"{ \"processed\": true, \"alreadyProcessed\": false }\"\"\");");
+            o.Append(plan.SignIn);
+            L($"        var page = Render<{page}>();");
+            L($"        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll(\"button\").Count(b => b.TextContent.Trim() == \"{InboundScreens.Button}\")));");
+            L($"        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"{InboundScreens.Button}\").Click();");
+            L("        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith(\"/7/processed\"))));");
+            L("        page.WaitForAssertion(() => Assert.AreEqual(2, Api.Requests.Count(r => r.Method == HttpMethod.Get && r.Path.EndsWith(\"/status\")), \"the summary is read again\"));");
+            L("        StringAssert.Contains(page.Markup, \"Unprocessed: 1 of 2. Oldest unprocessed: #7.\");");
             L("    }");
         }
         L("}");

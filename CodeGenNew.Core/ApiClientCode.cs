@@ -70,6 +70,12 @@ public static class ApiClientCode
             L($"public record {type}QueueStats(int Pending, int Claimed, int Done, int Failed, {keyType}? OldestPendingId, DateTime? OldestPendingOn);");
             L();
         }
+        if (!nameActive && TableShapes.For(table, project).Inbound is not null)
+        {
+            L("// GET " + BlazorNames.ApiRoute(table.TableName) + "/status: the events that wait, with a sentence that says what the generator was told about the table (InboundTables).");
+            L($"public record {type}InboundStatus(string Summary, int Total, int Unprocessed, {keyType}? OldestUnprocessedId);");
+            L();
+        }
         if (!nameActive && TableShapes.For(table, project).Tree is not null)
         {
             L("// One row of GET " + BlazorNames.ApiRoute(table.TableName) + "/tree: the rows depth first, level 1 is a root (TreeTables).");
@@ -134,6 +140,14 @@ public static class ApiClientCode
             L($"    public async Task<{type}QueueStats> GetQueueStatsAsync() => await (await http.GetAsync($\"{{Url}}/stats\")).ReadAsync<{type}QueueStats>();");
             L();
             L($"    public async Task<{type}> RetryAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/retry\", null)).ReadAsync<{type}>();");
+        }
+        if (!nameActive && TableShapes.For(table, project).Inbound is not null)
+        {
+            L();
+            L("    // An inbound event table (InboundTables): the events that wait, and one event marked processed; marking it again changes nothing.");
+            L($"    public async Task<{type}InboundStatus> GetInboundStatusAsync() => await (await http.GetAsync($\"{{Url}}/status\")).ReadAsync<{type}InboundStatus>();");
+            L();
+            L($"    public async Task MarkProcessedAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/processed\", null)).EnsureSuccessAsync();");
         }
         if (!nameActive && TableShapes.For(table, project).Tree is not null)
         {

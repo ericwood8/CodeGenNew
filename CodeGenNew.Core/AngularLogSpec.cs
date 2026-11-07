@@ -6,7 +6,7 @@ namespace CodeGenNew.Core;
 public static class AngularLogSpec
 {
     /// <param name="viewRow"> A row (a TypeScript object literal) whose long text the View dialog must show whole, or null when the table has no text column to check. </param>
-    public static string Text(string cls, string screenStem, IReadOnlyList<SearchField> dates, QueueShape? queue = null, ProjectSettings? project = null, string? viewRow = null)
+    public static string Text(string cls, string screenStem, IReadOnlyList<SearchField> dates, QueueShape? queue = null, ProjectSettings? project = null, string? viewRow = null, InboundShape? inbound = null)
     {
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -89,8 +89,33 @@ public static class AngularLogSpec
         }
         if (queue is not null)
             QueueSpecs(L, queue, project!);
+        if (inbound is not null)
+            InboundSpecs(L, inbound, project!);
         L("});");
         return o.ToString();
+    }
+
+    private static void InboundSpecs(Action<string> L, InboundShape inbound, ProjectSettings project)
+    {
+        string Member(string name, string value) => $"{name}: {value}";
+        string waiting = InboundScreens.Row(inbound, project, 7, false, Member), done = InboundScreens.Row(inbound, project, 8, true, Member);
+        L("");
+        L($"  it('marks an event that is not processed yet with {InboundScreens.Button}, and offers it on no other', () => {{");
+        L($"    const waiting = {waiting};");
+        L($"    const done = {done};");
+        L("    http.expectOne((r) => r.url.endsWith('/search')).flush({ items: [waiting, done], page: 1, pageSize: 20, totalCount: 2, totalPages: 1 });");
+        L("    http.expectOne((r) => r.url.endsWith('/status')).flush({ summary: 'Unprocessed: 1 of 2. Oldest unprocessed: #7.', total: 2, unprocessed: 1, oldestUnprocessedId: 7 });");
+        L("    fixture.detectChanges();");
+        L("    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Unprocessed: 1 of 2. Oldest unprocessed: #7.');");
+        L($"    const buttons = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).filter((button) => (button.textContent ?? '').trim() === '{InboundScreens.Button}');");
+        L("    expect(buttons.length).toBe(1);");
+        L("    buttons[0].click();");
+        L("    const request = http.expectOne((r) => r.url.endsWith('/7/processed'));");
+        L("    expect(request.request.method).toBe('POST');");
+        L("    request.flush({ processed: true, alreadyProcessed: false, row: waiting });");
+        L("    http.expectOne((r) => r.url.endsWith('/search')).flush(empty);");
+        L("    http.expectOne((r) => r.url.endsWith('/status')).flush({ summary: 'Unprocessed: 0 of 2.', total: 2, unprocessed: 0 });");
+        L("  });");
     }
 
     private static void QueueSpecs(Action<string> L, QueueShape queue, ProjectSettings project)

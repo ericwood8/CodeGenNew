@@ -58,6 +58,9 @@
     // and the queue routes (PY_Queue): /api/<table>/stats and /claim would be read as a key and refused
     if (Database.Tables.Any(t => TableShapes.For(t, Project).Queue is not null))
         modules.Insert(0, "queue");
+    // and the inbound event routes (PY_Inbound)
+    if (Database.Tables.Any(t => TableShapes.For(t, Project).Inbound is not null))
+        modules.Insert(0, "inbound");
     // and the token routes (PY_Token)
     if (Project.ApiAuth && Database.Tables.Any(t => TableShapes.For(t, Project).Token is not null))
         modules.Insert(0, "tokens");

@@ -101,6 +101,17 @@
             L("}");
             L();
         }
+        if (TableShapes.For(Model, Project).Inbound is not null)
+        {
+            L("// GET status: the events that wait, with a sentence that says what the generator was told about the table (InboundTables).");
+            L("export interface InboundStatus {");
+            L("    summary: string;");
+            L("    total: number;");
+            L("    unprocessed: number;");
+            L($"    oldestUnprocessedId?: {keyTs} | null;");
+            L("}");
+            L();
+        }
         L("@Injectable({");
         L("    providedIn: 'root',");
         L("})");
@@ -128,6 +139,19 @@
             L();
             L($"    retry(id: {keyTs}): Observable<{baseName}> {{");
             L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/retry`, null);");
+            L("    }");
+        }
+        if (TableShapes.For(Model, Project).Inbound is not null)
+        {
+            L();
+            L("    // an inbound event table: the events that wait and what the generator was told about the table (GET status)");
+            L("    getInboundStatus(): Observable<InboundStatus> {");
+            L("        return this.http.get<InboundStatus>(`${this.apiUrl}/status`);");
+            L("    }");
+            L();
+            L("    // an inbound event table: one event marked processed (InboundTables); the answer says whether this call did it or it was done already");
+            L($"    markProcessed(id: {keyTs}): Observable<{{ processed: boolean; alreadyProcessed: boolean; row: {baseName} }}> {{");
+            L($"        return this.http.post<{{ processed: boolean; alreadyProcessed: boolean; row: {baseName} }}>(`${{this.apiUrl}}/${{id}}/processed`, null);");
             L("    }");
         }
         if (TableShapes.For(Model, Project).Tree is not null)

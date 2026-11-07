@@ -1,0 +1,32 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // API_TestInbound_v1.tt
+    // Generates: <Table>InboundApiTests.cs   (the test project; see OutputRoot in API_TestInbound_v1.tt.config)
+    // The tests of the inbound routes (InboundTables): a message with no signature, a wrong one or an old one is refused and stores nothing, a signed message is kept and listed as unprocessed, marking it processed takes it
+    // out of the list, an event id is kept once, a body over the limit is refused and the worker routes need a sign-in. They need the shared secret (the environment variable InboundSecret names) and are inconclusive without it.
+    // Writes nothing without InboundTables and ApiTests.
+    // Full notes: Docs/TemplateNotes/API_Inbound_v1.md
+    // ==========================================================================================
+
+    foreach (var table in ApiInboundTests.Tables(Database, Project))
+        Write("@@@FILE " + table.Table.TableName + "InboundApiTests.cs@@@\n" + ApiInboundTests.ClassText(table, Project));
+#>

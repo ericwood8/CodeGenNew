@@ -1,0 +1,20 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestInbound_v1.tt
+    // Generates: tests/api/inbound_<table>_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of the routes RS_Inbound writes for InboundTables, run in process over a scratch database like RS_Test: a message with no signature, a wrong one or an old one is refused and stores nothing, a signed
+    // message is kept and listed as unprocessed, marking it processed takes it out of the list, an event id is kept once, a body over the limit is refused and the worker routes need a sign-in. The tests put the shared
+    // secret in the environment once and remove the events they wrote. Written only for a project with RustTests=true.
+    // Needs Client.start, Client.pool, Client.with_header and Client.post_text of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the modules.
+    // Full notes: Docs/TemplateNotes/API_Inbound_v1.md
+    // ==========================================================================================
+    if (RustInboundTests.Applies(Database, Project))
+    {
+        foreach (var table in RustInboundTests.Tables(Database, Project))
+            Write("@@@FILE tests/api/" + RustInboundTests.Module(table, Project) + ".rs@@@\n" + RustInboundTests.File(table, Database, Project));
+    }
+#>

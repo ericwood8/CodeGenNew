@@ -386,7 +386,7 @@
         Line($"pub async fn clone_row(pool: &Pool, id: {keyType}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
         if (cloneStatement.Overrides.Count > 0)
         {
-            Line("    let Some(source) = get_by_id(pool, id).await? else {");
+            Line("    let Some(original_row) = get_by_id(pool, id).await? else {");
             Line("        return Ok(None);");
             Line("    };");
         }
@@ -403,9 +403,9 @@
             string name = f.Name.Replace("r#", "");
             string fitted = chars > 3 ? $"{{ let v = value.as_str(); if v.chars().count() > {chars - 3} {{ &v[..v.char_indices().nth({chars - 3}).map_or(v.len(), |(i, _)| i)] }} else {{ v }} }}" : "value.as_str()";
             if (f.IsOption)
-                Line($"    let {name} = match &source.{f.Name} {{ Some(value) => Some(suggest_{name}(pool, {fitted}).await?), None => None }};");
+                Line($"    let {name} = match &original_row.{f.Name} {{ Some(value) => Some(suggest_{name}(pool, {fitted}).await?), None => None }};");
             else
-                Line($"    let {name} = {{ let value = &source.{f.Name}; suggest_{name}(pool, {fitted}).await? }};");
+                Line($"    let {name} = {{ let value = &original_row.{f.Name}; suggest_{name}(pool, {fitted}).await? }};");
         }
         string bound = string.Concat(cloneStatement.Overrides.Select(f => $".bind({f.Name.Replace("r#", "")})"));
         if (mysql)

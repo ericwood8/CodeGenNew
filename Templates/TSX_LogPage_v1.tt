@@ -37,6 +37,7 @@
     {
         var form = FormModel.For(Model, Project);
         var queue = TableShapes.For(Model, Project).Queue;   // a work queue also shows the counts by status and a Retry button on a failed row
+        var inbound = TableShapes.For(Model, Project).Inbound;   // an inbound event table has a Processed button on a row that is not processed yet
         string baseName = form.BaseName;
         string stem = form.Stem;
         string apiVar = ReactNames.ApiVar(Model.TableName);
@@ -67,6 +68,8 @@
         T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
         if (queue is not null)
             T($"import type {{ QueueStats }} from '../{apiFolder}/{apiFile}';");
+        if (inbound is not null)
+            T($"import type {{ InboundStatus }} from '../{apiFolder}/{apiFile}';");
         T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
         T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort }} from '../{componentsFolder}/gridSort';");
         T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
@@ -105,6 +108,8 @@
         T($"  const [viewing, setViewing] = useState<{baseName} | null>(null); // the row the View dialog shows");
         if (queue is not null)
             T("  const [stats, setStats] = useState<QueueStats | null>(null);");
+        if (inbound is not null)
+            T("  const [inboundStatus, setInboundStatus] = useState<InboundStatus | null>(null); // the events that wait and what the generator was told about the table");
         T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
         T("  const show = (name: string) => chosen.includes(name);");
         T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns.filter((name) => chosen.includes(name)))); // none: the API lists newest first");
@@ -131,10 +136,22 @@
             T("  };");
             T();
         }
+        if (inbound is not null)
+        {
+            T($"  const loadInboundStatus = () => {{ {apiVar}.getInboundStatus().then(setInboundStatus).catch(() => {{}}); }};");
+            T();
+            T("  // an event that is not processed yet is marked processed; the page and the summary are read again");
+            T($"  const markProcessed = (id: {form.KeyType!.TypeScript}) => {{");
+            T($"    {apiVar}.markProcessed(id).then(() => {{ load(page); loadInboundStatus(); }}).catch(() => setError('{InboundScreens.FailedText(form.Words)}'));");
+            T("  };");
+            T();
+        }
         T("  useEffect(() => {");
         T("    load();");
         if (queue is not null)
             T("    loadStats();");
+        if (inbound is not null)
+            T("    loadInboundStatus();");
         foreach (var p in cellParents)
             T($"    {ReactNames.ApiVar(p.Table)}.{p.LoadMethod}().then({ReactNames.SetList(ReactNames.ParentList(p))}).catch(() => {{}});");
         T("  }, []);");
@@ -207,6 +224,8 @@
         T("      <ColumnPicker columns={columnList} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
         T();
         T("      {error && <p role=\"alert\">{error}</p>}");
+        if (inbound is not null)
+            T("      {inboundStatus && <p className=\"inbound-summary\">{inboundStatus.summary}</p>}");
         if (queue is not null)
         {
             T();
@@ -256,7 +275,8 @@
         foreach (var column in columnList)
             T("              " + Shown(column.Column, $"<td>{CellOf(column, variable, true)}</td>"));
         string retryButton = queue is null ? "" : $"{{{variable}.{JsonNames.Camel(queue.Status.Name)} === '{QueueStatus.Failed}' && <button type=\"button\" onClick={{() => retry({variable}.{keyProp}!)}}>Retry</button>}}";
-        T($"              <td><button type=\"button\" onClick={{() => setViewing({variable})}}>View</button>{retryButton}</td>");
+        string processedButton = inbound is null ? "" : $"{{{InboundScreens.UnprocessedTs(inbound, variable)} && <button type=\"button\" onClick={{() => markProcessed({variable}.{keyProp}!)}}>{InboundScreens.Button}</button>}}";
+        T($"              <td><button type=\"button\" onClick={{() => setViewing({variable})}}>View</button>{retryButton}{processedButton}</td>");
         T("            </tr>");
         T("          ))}");
         T("        </tbody>");
@@ -300,7 +320,7 @@
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
 
-        S("import { fireEvent, render, screen, within" + (queue is not null ? ", waitFor" : "") + " } from '@testing-library/react';");
+        S("import { fireEvent, render, screen, within" + (queue is not null || inbound is not null ? ", waitFor" : "") + " } from '@testing-library/react';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
         S($"import {{ {apiVar} }} from '../../{apiFolder}/{apiFile}';");
@@ -314,6 +334,8 @@
         S($"    vi.spyOn({apiVar}, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 }});");
         if (queue is not null)
             S($"    vi.spyOn({apiVar}, 'getQueueStats').mockResolvedValue({{ pending: 2, claimed: 1, done: 5, failed: 1, oldestPendingId: 4, oldestPendingOn: '2026-10-26T08:12:00' }});");
+        if (inbound is not null)
+            S($"    vi.spyOn({apiVar}, 'getInboundStatus').mockResolvedValue({{ summary: 'Unprocessed: 1 of 2. Oldest unprocessed: #7.', total: 2, unprocessed: 1, oldestUnprocessedId: 7 }});");
         foreach (var p in cellParents.Where(p => !p.IsSelf))
             S($"    vi.spyOn({ReactNames.ApiVar(p.Table)}, '{p.LoadMethod}').mockResolvedValue([]);");
         S("  });");
@@ -390,6 +412,23 @@
             S($"    await waitFor(() => expect({apiVar}.getQueueStats).toHaveBeenCalledTimes(2)); // the page and the counts are read again");
             S("  });");
         }
+        if (inbound is not null)
+        {
+            string Member(string name, string value) => $"{name}: {value}";
+            string waiting = InboundScreens.Row(inbound, Project, 7, false, Member), done = InboundScreens.Row(inbound, Project, 8, true, Member);
+            S();
+            S($"  it('marks an event that is not processed yet with {InboundScreens.Button}, and offers it on no other', async () => {{");
+            S($"    vi.spyOn({apiVar}, 'getPage').mockResolvedValue({{ items: [{waiting}, {done}], page: 1, pageSize: 20, totalCount: 2, totalPages: 1 }});");
+            S($"    vi.spyOn({apiVar}, 'markProcessed').mockResolvedValue({{}} as never);");
+            S($"    render(<{pageName} />);");
+            S($"    fireEvent.click(await screen.findByRole('button', {{ name: '{InboundScreens.Button}' }}));");
+            S($"    expect(screen.getAllByRole('button', {{ name: '{InboundScreens.Button}' }})).toHaveLength(1);");
+            S($"    expect({apiVar}.markProcessed).toHaveBeenCalledWith(7);");
+            S($"    await waitFor(() => expect({apiVar}.getPage).toHaveBeenCalledTimes(2)); // the page is read again");
+            S($"    await waitFor(() => expect({apiVar}.getInboundStatus).toHaveBeenCalledTimes(2)); // and so is the summary");
+            S("    expect(screen.getByText('Unprocessed: 1 of 2. Oldest unprocessed: #7.')).toBeInTheDocument();");
+            S("  });");
+        }
         S("});");
 
         Write($"@@@FILE {pagesFolder}/{pageName}.tsx@@@\n" + ts);
@@ -401,6 +440,14 @@
             testText = testText.Replace("    await screen.findByText('Nothing found.');\n", "    await screen.findByText('Nothing found.');\n" + counts)
                 .Replace("    expect(await screen.findByText('Nothing found.')).toBeInTheDocument();\n", "    expect(await screen.findByText('Nothing found.')).toBeInTheDocument();\n" + counts)
                 .Replace($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();\n", $"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();\n" + counts);
+        }
+        if (inbound is not null)
+        {
+            // the summary arrives after the page: every test waits for it too, so no state changes after it ends
+            const string summary = "    await screen.findByText(/Unprocessed: 1 of 2/);\n";
+            testText = testText.Replace("    await screen.findByText('Nothing found.');\n", "    await screen.findByText('Nothing found.');\n" + summary)
+                .Replace("    expect(await screen.findByText('Nothing found.')).toBeInTheDocument();\n", "    expect(await screen.findByText('Nothing found.')).toBeInTheDocument();\n" + summary)
+                .Replace($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();\n", $"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();\n" + summary);
         }
         Write($"@@@FILE {pagesFolder}/__tests__/{pageName}.test.tsx@@@\n" + testText);
     }

@@ -131,6 +131,7 @@
         }
         bool readOnly = form.ReadOnly && !odata && !nameActive && !oneRow;
         var queue = readOnly ? TableShapes.For(Model, Project).Queue : null;   // a work queue also shows the counts by status and a Retry button on a failed row
+        var inbound = readOnly ? TableShapes.For(Model, Project).Inbound : null;   // an inbound event table has a Processed button on a row that is not processed yet
         string rowsExpression = nameActive ? "visibleRows" : "rows";
         var formPages = form.Pages;
         bool tabbed = form.IsTabbed;
@@ -161,6 +162,8 @@
             string restoreBinding = softScreen ? (validOnScreen ? "shapeView === 'deleted' ? shapeRestore : undefined" : "shapeRestore") : "undefined";
             H($"    <app-row-shape-dialog *ngIf=\"shapeView\" [title]=\"shapeView === 'deleted' ? 'Deleted {title}' : '{title} valid on a day'\" [columns]=\"shapeColumns\" idKey=\"{keyProp}\" [load]=\"shapeLoad\" [restore]=\"{restoreBinding}\" [validOn]=\"shapeView === 'validOn'\" (closed)=\"shapeView = null\" (changed)=\"load()\"></app-row-shape-dialog>");
         }
+        if (inbound is not null)
+            H("    <p *ngIf=\"inboundStatus\" class=\"inbound-summary\">{{ inboundStatus.summary }}</p>");
         if (queue is not null)
             H($"    <p *ngIf=\"stats\" class=\"queue-summary\">Pending: {{{{ stats.pending }}}}, claimed: {{{{ stats.claimed }}}}, done: {{{{ stats.done }}}}, failed: {{{{ stats.failed }}}}<span *ngIf=\"stats.oldestPendingOn\"> . Oldest pending: #{{{{ stats.oldestPendingId }}}}, waiting since {{{{ stats.oldestPendingOn | date:'MM/dd/yyyy HH:mm' }}}}</span></p>");
         // The OData screen has the filter row under the headers (a control per column, Search and Clear in its last cell); only the one box of the Search list protocol stays above the grid.
@@ -300,7 +303,9 @@
         {
             string retryIf = queue is null ? "" : (writeRoles.Count > 0 ? "canWrite && " : "") + $"{variable}.{JsonNames.Camel(queue.Status.Name)} === '{QueueStatus.Failed}'";
             string retryButton = queue is null ? "" : $"<button *ngIf=\"{retryIf}\" (click)=\"retry({variable}.{keyProp}!)\" class=\"btn-action\">Retry</button>";
-            H($"                <td><button type=\"button\" (click)=\"view({variable})\" class=\"btn-action\">View</button>{retryButton}</td>");
+            string processedIf = inbound is null ? "" : (writeRoles.Count > 0 ? "canWrite && " : "") + InboundScreens.UnprocessedTs(inbound, variable);
+            string processedButton = inbound is null ? "" : $"<button *ngIf=\"{processedIf}\" (click)=\"markProcessed({variable}.{keyProp}!)\" class=\"btn-action\">{InboundScreens.Button}</button>";
+            H($"                <td><button type=\"button\" (click)=\"view({variable})\" class=\"btn-action\">View</button>{retryButton}{processedButton}</td>");
         }
         H("            </tr>");
         H("        </tbody>");
@@ -708,7 +713,7 @@
             // a row to show: the long text of the first text column is what the grid cuts and the dialog must show whole
             var longColumn = columnList.Select(c => c.Column).FirstOrDefault(c => c.IsStringColumn && c != queue?.Status && form.Field(c).IsPlainCell);
             string? viewRow = longColumn is null ? null : "{ " + string.Join(", ", Model.Columns.Select(c => c == form.KeyColumn ? $"{keyProp}: 7" : c == longColumn ? $"{JsonNames.Camel(c.Name)}: 'Long message. '.repeat(30).trim()" : $"{JsonNames.Camel(c.Name)}: {c.ValidExample(Project, Model.TableName)}")) + " }";
-            spec.Append(AngularLogSpec.Text(cls, screenStem, form.DateRange, queue, Project, viewRow));
+            spec.Append(AngularLogSpec.Text(cls, screenStem, form.DateRange, queue, Project, viewRow, inbound));
         }
 
         // ================= ts
@@ -717,7 +722,7 @@
         string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
         T(readOnly ? "import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, inject } from '@angular/core';" : "import { ChangeDetectionStrategy, Component, inject } from '@angular/core';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
-        T($"import {{ {serviceClass}{(queue is not null ? ", QueueStats" : "")} }} from '../../{servicesFolder}/{serviceFile}';");
+        T($"import {{ {serviceClass}{(queue is not null ? ", QueueStats" : "")}{(inbound is not null ? ", InboundStatus" : "")} }} from '../../{servicesFolder}/{serviceFile}';");
         if (writeRoles.Count > 0 || userScreen is not null) T($"import {{ AuthService }} from '../../{servicesFolder}/auth.service';");
         if (form.FeatureFlags.Count > 0) T($"import {{ FeatureService }} from '../../{servicesFolder}/features.service';");
         if (userScreen is not null)
@@ -888,12 +893,31 @@
                 T("  }");
                 T();
             }
-            if (parentsToLoad.Count > 0 || form.Guards.Count > 0 || queue is not null)
+            if (inbound is not null)
+            {
+                T("  inboundStatus: InboundStatus | null = null; // the events that wait and what the generator was told about the table (GET status)");
+                T();
+                T("  loadStatus(): void {");
+                T("    this.service.getInboundStatus().subscribe((data) => { this.inboundStatus = data; });");
+                T("  }");
+                T();
+                T("  // an event that is not processed yet is marked processed (InboundTables); the page and the summary are read again");
+                T($"  markProcessed(id: {keyType.TypeScript}): void {{");
+                T("    this.service.markProcessed(id).subscribe({");
+                T("      next: () => { this.load(); this.loadStatus(); },");
+                T("      error: (error) => this.showError('marking processed', error)");
+                T("    });");
+                T("  }");
+                T();
+            }
+            if (parentsToLoad.Count > 0 || form.Guards.Count > 0 || queue is not null || inbound is not null)
             {
                 T("  protected override start(): void {");
                 T("    super.start();");
                 if (queue is not null)
                     T("    this.loadStats();");
+                if (inbound is not null)
+                    T("    this.loadStatus();");
                 if (form.Guards.Count > 0)
                     T("    this.service.getGuards().subscribe((data) => { this.guards = data; });");
                 foreach (var p in parentsToLoad)

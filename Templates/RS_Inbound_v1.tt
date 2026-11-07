@@ -1,0 +1,31 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Inbound_v1.tt
+    // Generates: src/routes/inbound.rs   (whole-database; the path is written by the template)
+    // The Rust counterpart of API_Inbound: for each table of InboundTables the routes POST receive and POST receive/{source} (open to anyone; a signature instead of a login, a replay window, a size limit, an event id kept once, the
+    // raw body kept as text), GET unprocessed and POST {id}/processed, with the same sentences, problem types and status codes as the ASP.NET API (InboundWords and InboundWriter in Core). The receive routes are in
+    // public_router, which main.rs merges after the sign-in check.
+    // Full notes: Docs/TemplateNotes/API_Inbound_v1.md
+    // ==========================================================================================
+    var tables = Database.Tables.Select(t => TableShapes.For(t, Project).Inbound).OfType<InboundShape>()
+        .OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    var problems = Database.Tables.Select(t => InboundPlan.Problem(t, Project)).Where(p => p is not null).ToList();
+    problems.AddRange(InboundPlan.Entries(Project).Where(e => !Database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table)))
+        .Select(e => $"InboundTables: {e.Table} is not a table of the database."));
+    problems.AddRange(InboundPlan.ClientProblems(Database, Project));
+    problems.AddRange(InboundPlan.SourceSecretProblems(Project));
+    problems.AddRange(InboundPlan.EditProblems(Project));
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (tables.Count > 0)
+    {
+        Write("@@@FILE src/routes/inbound.rs@@@\n" + RustInboundWriter.File(tables, Project, Database.Dialect));
+    }
+#>

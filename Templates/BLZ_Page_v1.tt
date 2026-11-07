@@ -99,6 +99,7 @@
         bool nameActive = form.IsNameActive;
         bool logOnly = form.ReadOnly && !odata && !oneRow && !nameActive;   // a table in LogTables: no Add New, Actions column or editor
         var queue = logOnly ? TableShapes.For(Model, Project).Queue : null;   // a work queue also shows the counts by status and a Retry button on a failed row
+        var inbound = logOnly ? TableShapes.For(Model, Project).Inbound : null;   // an inbound event table has a Processed button on a row that is not processed yet
         string reload = oneRow || nameActive ? "LoadAsync()" : "LoadAsync(pageNumber)";
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
@@ -286,6 +287,13 @@
             L($"    <RowShapeDialog TRow=\"§T\" Title=\"@(shapeView == ShapeDeleted ? \"Deleted §N\" : \"§N valid on a day\")\" Columns=\"ShapeColumns\" Load=\"LoadShapeAsync\"{(softScreen ? (validOnScreen ? " Restore=\"@(shapeView == ShapeDeleted ? RestoreRowAsync : (Func<§T, Task>?)null)\"" : " Restore=\"RestoreRowAsync\"") : "")} ValidOn=\"@(shapeView == ShapeValidOn)\" OnClose=\"CloseShape\" OnChanged=\"ShapeChangedAsync\" />");
             L("}");
         }
+        if (inbound is not null)
+        {
+            L("@if (inboundStatus is not null)");
+            L("{");
+            L("    <p class=\"inbound-summary\">@inboundStatus.Summary</p>");
+            L("}");
+        }
         if (queue is not null)
         {
             L("@if (stats is not null)");
@@ -434,7 +442,8 @@
         else
         {
             string retryButton = queue is null ? "" : $"@if (item.{Prop(queue.Status)} == \"{QueueStatus.Failed}\") {{ <button type=\"button\" @onclick=\"() => RetryAsync(item)\">Retry</button> }}";
-            L($"                <td><button type=\"button\" @onclick=\"() => View(item)\">View</button>{retryButton}</td>");
+            string processedButton = inbound is null ? "" : $"@if ({InboundScreens.UnprocessedCs(inbound, "item", Prop(inbound.Processed))}) {{ <button type=\"button\" @onclick=\"() => MarkProcessedAsync(item)\">{InboundScreens.Button}</button> }}";
+            L($"                <td><button type=\"button\" @onclick=\"() => View(item)\">View</button>{retryButton}{processedButton}</td>");
         }
         L("            </tr>");
         L("        }");
@@ -889,6 +898,8 @@
         L("        await LoadAsync();");
         if (queue is not null)
             L("        await LoadStatsAsync();");
+        if (inbound is not null)
+            L("        await LoadInboundStatusAsync();");
         L(gated ? "        if (EditId is not null && CanWrite)" : "        if (EditId is not null)");
         L("        {");
         string openedRow = "Client.GetAsync(" + (keyColumn.CSharpBase() == "string" ? "EditId" : keyColumn.CSharpBase() + ".Parse(EditId)") + ")";
@@ -995,6 +1006,29 @@
             L("            await LoadStatsAsync();");
             L("        }");
             L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to retry the {form.Words}.\"; }}");
+            L("    }");
+        }
+        if (inbound is not null)
+        {
+            L();
+            L($"    private {type}InboundStatus? inboundStatus;   // the events that wait and what the generator was told about the table");
+            L();
+            L("    private async Task LoadInboundStatusAsync()");
+            L("    {");
+            L("        try { inboundStatus = await Client.GetInboundStatusAsync(); }");
+            L("        catch (Exception ex) when (ex is ApiException or HttpRequestException) { }");
+            L("    }");
+            L();
+            L("    // an event that is not processed yet is marked processed; the page and the summary are read again");
+            L($"    private async Task MarkProcessedAsync({type} item)");
+            L("    {");
+            L("        try");
+            L("        {");
+            L($"            await Client.MarkProcessedAsync(item.{Prop(inbound.Key)});");
+            L("            await LoadAsync(pageNumber);");
+            L("            await LoadInboundStatusAsync();");
+            L("        }");
+            L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"{InboundScreens.FailedText(form.Words)}\"; }}");
             L("    }");
         }
         }

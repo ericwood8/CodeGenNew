@@ -1,0 +1,23 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_PartitionJob_v1.tt
+    // Generates: PartitionJobs.sql   (see OutputName in SP_PartitionJob_v1.tt.config)
+    // For each table of PartitionTables (WebhookEvent, PageView:ViewedOn) the script that splits it into one partition for each month of its date column, in the dialect of the source database (SQL Server, PostgreSQL, MySQL;
+    // SQLite has no partitions), and a procedure that creates the coming PartitionMonthsAhead months (default 3) and drops the months older than PartitionKeepMonths (default: keep every month), with the commented text that
+    // schedules it. The date joins the primary key; a unique index without the date becomes a plain index. Review it, run it and schedule it yourself: codegen never applies it.
+    // Full notes: Docs/TemplateNotes/SP_PartitionJob_v1.md
+    // ==========================================================================================
+    var resolution = PartitionPlan.Resolve(Database, Project);
+    if (resolution.Problems.Count > 0)
+    {
+        Error(string.Join(" | ", resolution.Problems));
+    }
+    else
+    {
+        Write(PartitionScript.Text(Database, Project));
+    }
+#>

@@ -84,6 +84,11 @@
         Line();
         Line("        QueueApi.Register(app);");
     }
+    if (Database.Tables.Any(t => TableShapes.For(t, Project).Inbound is not null))
+    {
+        Line();
+        Line("        InboundApi.Register(app);");
+    }
     if (Project.ApiAuth && Database.Tables.Any(t => TableShapes.For(t, Project).Token is not null))
     {
         Line();

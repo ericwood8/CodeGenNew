@@ -218,6 +218,18 @@ impl Client {
         self.pool.clone()
     }
 <#
+        if (!tenants && Project.InboundTables.Length > 0)
+        {
+#>
+
+    /// The same client, its requests carrying one more header (the signature of an inbound message).
+    pub fn with_header(&self, name: &str, value: &str) -> Client {
+        let mut headers = self.headers.clone();
+        headers.push((name.to_string(), value.to_string()));
+        Client { headers, ..self.clone() }
+    }
+<#
+        }
         if (auth)
         {
 #>

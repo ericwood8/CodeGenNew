@@ -71,6 +71,7 @@
         var searchKeys = DesktopGridCode.KeyFilters(form);
         bool logOnly = form.ReadOnly && !isNameActive;   // a table in LogTables: a list with a first and a last day (the date boxes end searchFields) and no Add New, Edit, Clone or Delete
         var queue = logOnly ? TableShapes.For(Model, Project).Queue : null;   // a work queue also shows the counts by status and a Retry button on a failed row
+        var inbound = logOnly ? TableShapes.For(Model, Project).Inbound : null;   // an inbound event table has a Processed button on a row that is not processed yet
         // With a sign-in and WriteRoles the buttons that write show only to the roles that may write this table; the tenant table's Add New and Clone show only to a platform administrator, who onboards tenants
         var writeRoles = logOnly ? new List<string>() : WriteRolePlan.ForDesktop(Project, Model).ToList();
         bool tenantScreen = !logOnly && TenantPlan.HasDesktopTenants(Project) && TenantPlan.IsTenantTable(Model, Project);
@@ -108,7 +109,7 @@
         bool validOnScreen = effectivePlan is not null;
         bool shapeScreen = softScreen || validOnScreen;
         string validOnDay = effectivePlan is null ? "" : effectivePlan.From.CSharpBase() == "DateOnly" ? "DateOnly.FromDateTime((ValidOnDay ?? DateTimeOffset.Now).Date)" : "(ValidOnDay ?? DateTimeOffset.Now).Date";
-        string actionWidth = logOnly ? (queue is null ? "90" : "170") : canClone ? "250" : "175";
+        string actionWidth = logOnly ? (queue is null && inbound is null ? "90" : "170") : canClone ? "250" : "175";
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>ListPage.xaml@@@
 <Page
@@ -155,6 +156,9 @@
 <# } #>
 <# if (queue is not null) { #>
                 <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.QueueSummary, Mode=OneWay}" />
+<# } #>
+<# if (inbound is not null) { #>
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.InboundSummary, Mode=OneWay}" />
 <# } #>
             </StackPanel>
         </Border>
@@ -272,6 +276,9 @@
                                             <Button Content="View" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnViewClick" />
 <# if (queue is not null) { #>
                                             <Button Content="Retry" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnRetryClick" Visibility="{x:Bind RetryVisibility}" />
+<# } #>
+<# if (inbound is not null) { #>
+                                            <Button Content="<#= InboundScreens.Button #>" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnMarkProcessedClick" Visibility="{x:Bind ProcessedVisibility}" />
 <# } #>
                                         </StackPanel>
 <# } #>
@@ -460,6 +467,14 @@ public sealed partial class <#= table #>ListPage : Page
     }
 
 <# } #>
+<# if (inbound is not null) { #>
+    // Processed marks an event that is not processed yet; the page is read again.
+    private async void OnMarkProcessedClick(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.MarkProcessedAsync((<#= keyCs #>)((Button)sender).Tag);
+    }
+
+<# } #>
     // View opens the whole row, read-only: a long message that the grid cuts can be read here.
     private async void OnViewClick(object sender, RoutedEventArgs e)
     {
@@ -573,6 +588,10 @@ public class <#= table #>ListRow
     /// <summary> Whether the Retry button shows: only a failed row can be put back to pending. </summary>
     public Visibility RetryVisibility { get; init; } = Visibility.Collapsed;
 <# } #>
+<# if (inbound is not null) { #>
+    /// <summary> Whether the Processed button shows: only an event that is not processed yet can be marked. </summary>
+    public Visibility ProcessedVisibility { get; init; } = Visibility.Collapsed;
+<# } #>
 <# if (writeGated) { #>
     /// <summary> Whether the Edit and Delete buttons show: the signed-in role may write this table (WriteRoles). </summary>
     public Visibility WriteVisibility { get; init; }
@@ -661,6 +680,15 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     /// <summary> The counts by status and the oldest pending row, above the grid. </summary>
     [ObservableProperty]
     private string _queueSummary = "";
+
+<#
+        }
+        if (inbound is not null)
+        {
+#>
+    /// <summary> How many events wait and what the generator was told about the table, above the grid. </summary>
+    [ObservableProperty]
+    private string _inboundSummary = "";
 
 <#
         }
@@ -898,10 +926,13 @@ public partial class <#= table #>ListViewModel : ViewModelBase
             Write(DesktopGridCode.CellLines(form, Project, c, chosen.Offered.First(o => o.Column == c).Cut));
 #>
             ];
-            Rows.Add(new <#= table #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= softScreen ? ", NormalVisibility = ShowDeleted ? Visibility.Collapsed : Visibility.Visible, RestoreVisibility = ShowDeleted && " + (writeGated ? "DesktopSession.HasRole([\"" + Project.AuthAdminRole + "\"])" : "true") + " ? Visibility.Visible : Visibility.Collapsed" : "" #><#= writeGated ? ", WriteVisibility = WriteVisibility" : "" #><#= tenantScreen ? ", CreateVisibility = CreateVisibility" : "" #><#= queue is null ? "" :$", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #> });
+            Rows.Add(new <#= table #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= softScreen ? ", NormalVisibility = ShowDeleted ? Visibility.Collapsed : Visibility.Visible, RestoreVisibility = ShowDeleted && " + (writeGated ? "DesktopSession.HasRole([\"" + Project.AuthAdminRole + "\"])" : "true") + " ? Visibility.Visible : Visibility.Collapsed" : "" #><#= writeGated ? ", WriteVisibility = WriteVisibility" : "" #><#= tenantScreen ? ", CreateVisibility = CreateVisibility" : "" #><#= queue is null ? "" :$", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #><#= inbound is null ? "" : $", ProcessedVisibility = {InboundScreens.UnprocessedCs(inbound, "e", inbound.Processed.CSharpName())} ? Visibility.Visible : Visibility.Collapsed" #> });
         }
 <# if (queue is not null) { #>
         await LoadStatsAsync();
+<# } #>
+<# if (inbound is not null) { #>
+        await LoadInboundSummaryAsync();
 <# } #>
     }
 
@@ -924,6 +955,27 @@ public partial class <#= table #>ListViewModel : ViewModelBase
 <#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #>        await _context.Set<<#= table #>>().Where(x => x.<#= queue.Key.CSharpName() #> == id && x.<#= queue.Status.CSharpName() #> == "<#= QueueStatus.Failed #>")
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.<#= queue.Status.CSharpName() #>, "<#= QueueStatus.Pending #>").SetProperty(x => x.<#= queue.Retry.CSharpName() #>, (<#= queue.Retry.CSharpBase() #>)0)
                 .SetProperty(x => x.<#= queue.Processed.CSharpName() #>, (<#= queue.Processed.CSharpBase() #>?)null).SetProperty(x => x.<#= queue.Claimed.CSharpName() #>, (<#= queue.Claimed.CSharpBase() #>?)null)<#= queue.ClaimedBy is null ? "" : $".SetProperty(x => x.{queue.ClaimedBy.CSharpName()}, (string?)null)" #>);
+        await LoadAsync();
+    }
+
+<# } #>
+<# if (inbound is not null) { #>
+    /// <summary> How many events wait and the oldest one that waits (the same sentence as the API's status), with what the generator was told about the table. </summary>
+    private async Task LoadInboundSummaryAsync()
+    {
+        int total = await _context.Set<<#= table #>>().AsNoTracking().CountAsync();
+        int waiting = await _context.Set<<#= table #>>().AsNoTracking().CountAsync(x => <#= InboundScreens.UnprocessedCs(inbound, "x", inbound.Processed.CSharpName()) #>);
+        var oldest = await _context.Set<<#= table #>>().AsNoTracking().Where(x => <#= InboundScreens.UnprocessedCs(inbound, "x", inbound.Processed.CSharpName()) #>)
+            .OrderBy(x => x.<#= inbound.Received.CSharpName() #>).ThenBy(x => x.<#= inbound.Key.CSharpName() #>).Select(x => x.<#= inbound.Key.CSharpName() #>).Take(1).ToListAsync();
+        InboundSummary = $"<#= InboundScreens.UnprocessedLabel #>{waiting} of {total}" + (oldest.Count > 0 ? $"<#= InboundScreens.OldestLabel #>{oldest[0]}" : "") + "<#= InboundScreens.Tail(inbound, Project) #>.";
+    }
+
+    /// <summary> An event that is not processed yet is marked processed (the same guarded UPDATE as the API's); the page is read again. </summary>
+    public async Task MarkProcessedAsync(<#= keyCs #> id)
+    {
+        ErrorMessage = null;
+<#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #>        await _context.Set<<#= table #>>().Where(x => x.<#= inbound.Key.CSharpName() #> == id && <#= InboundScreens.UnprocessedCs(inbound, "x", inbound.Processed.CSharpName()) #>)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.<#= inbound.Processed.CSharpName() #>, <#= InboundScreens.ProcessedValue(inbound) #>));
         await LoadAsync();
     }
 

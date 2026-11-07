@@ -375,6 +375,9 @@ from app.routes.subscriptions import public_router as subscription_public_router
 <#
     }
 #>
+<# if (Project.InboundTables.Length > 0) { #>
+from app.routes.inbound import public_router as inbound_public_router
+<# } #>
 from app.support import register_error_handlers
 
 <#
@@ -410,6 +413,9 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], a
 #>
 # The sign-in is open; every other route needs a bearer token.
 app.include_router(auth_router)
+<# if (Project.InboundTables.Length > 0) { #>
+app.include_router(inbound_public_router)   # the signed receive routes of the inbound tables
+<# } #>
 <# if (TenantPlan.HasApiTenancy(Project)) { #>
 app.include_router(tenancy_public_router)
 <# } #>
@@ -430,6 +436,9 @@ for router in routes.routers:
     else
     {
 #>
+<# if (Project.InboundTables.Length > 0) { #>
+app.include_router(inbound_public_router)
+<# } #>
 for router in routes.routers:
     app.include_router(router)
 <#

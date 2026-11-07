@@ -41,7 +41,7 @@ axum = { version = "0.8.9", features = ["macros"] }
 chrono = { version = "0.4.45", features = ["serde"] }
 dotenvy = "0.15.7"
 <#
-    if (Project.ApiAuth)
+    if (Project.ApiAuth || Project.InboundTables.Length > 0)
     {
 #>
 hmac = "0.12"
@@ -60,7 +60,7 @@ rust_decimal = { version = "1.43.0", features = ["serde-with-float"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 <#
-    if (Project.ApiAuth)
+    if (Project.ApiAuth || Project.InboundTables.Length > 0)
     {
 #>
 sha2 = "0.10"
