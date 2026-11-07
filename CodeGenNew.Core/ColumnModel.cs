@@ -68,8 +68,6 @@ public class ColumnModel
     /// "Customer Item #"), and for a yes / no column a leading "Is" dropped and a question mark added (<c>IsTaxable</c> is "Taxable?"). </summary>
     public string Label => _label ??= CaptionOf();
 
-
-
     /// <summary> The name SQL text uses: the database's own name. </summary>
     public string DbName => DatabaseName ?? Name;
 
@@ -82,15 +80,12 @@ public class ColumnModel
     /// <summary> The generated name is a reserved word of C#. </summary>
     public bool IsCSharpReservedWordName => _isCSharpReservedWordName ??= Name.IsCSharpReservedWord();
 
-    /// <summary> What the database says the type is. Only the column reads it (the getter is not public): every question about the type is a property below. </summary>
-    public required SqlDbType SqlType { internal get; init; }
     public required string SqlTypeDeclaration { get; init; }
     public int? MaxLength { get; init; }
     public int? Precision { get; init; }
     public int? Scale { get; init; }
     public bool IsNullable { get; init; }
     public int OrdinalPosition { get; init; }
-
     public bool IsIdentity { get; init; }
     public int? IdentitySeed { get; init; }
     public int? IdentityIncrement { get; init; }
@@ -123,11 +118,6 @@ public class ColumnModel
     public bool IsDateColumn => _isDateColumn ??= SqlTypeKinds.IsDate(SqlType);
     public bool IsBooleanColumn => _isBooleanColumn ??= SqlTypeKinds.IsBoolean(SqlType);
 
-    /// <summary> An int column (not bigint, smallint or tinyint: see <see cref="IsIntegerColumn"/> for every whole-number type). </summary>
-    public bool IsInt32Column => SqlType == System.Data.SqlDbType.Int;
-
-
-
     /// <summary> A grid shows the value as Yes or No. </summary>
     public bool IsBooleanCell => Cell == CellKind.Boolean;
     /// <summary> A grid shows the value as a date. </summary>
@@ -147,8 +137,13 @@ public class ColumnModel
     /// <summary> A whole-number column (not a flag): edited in a number box limited to its range. </summary>
     public bool IsWholeNumberBox => IsIntegerColumn && !IsBooleanColumn;
 
-    public bool IsGuidColumn => SqlType == System.Data.SqlDbType.UniqueIdentifier;
+    #region SqlDbType Properties
+    /// <summary> What the database says the type is. Only the column reads it (the getter is not public): every question about the type is a property below. </summary>
+    public required SqlDbType SqlType { internal get; init; }
 
+    /// <summary> An int column (not bigint, smallint or tinyint: see <see cref="IsIntegerColumn"/> for every whole-number type). </summary>
+    public bool IsInt32Column => SqlType == SqlDbType.Int;
+    public bool IsGuidColumn => SqlType == SqlDbType.UniqueIdentifier;
     public bool IsBigIntColumn => SqlType == SqlDbType.BigInt;
     public bool IsSmallIntColumn => SqlType == SqlDbType.SmallInt;
     public bool IsTinyIntColumn => SqlType == SqlDbType.TinyInt;
@@ -156,18 +151,12 @@ public class ColumnModel
     public bool IsFloatColumn => SqlType == SqlDbType.Float;
     public bool IsRealColumn => SqlType == SqlDbType.Real;
     public bool IsSmallMoneyColumn => SqlType == SqlDbType.SmallMoney;
-
-    /// <summary> A date with no time of day. </summary>
-    public bool IsDateOnlyColumn => SqlType == SqlDbType.Date;
-    /// <summary> A datetime, datetime2 or smalldatetime. </summary>
+    public bool IsDateOnlyColumn => SqlType == SqlDbType.Date; /// A date with no time of day.                                                               
     public bool IsDateTimeColumn => SqlType is SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
     public bool IsDateTime2Column => SqlType == SqlDbType.DateTime2;
     public bool IsSmallDateTimeColumn => SqlType == SqlDbType.SmallDateTime;
     public bool IsDateTimeOffsetColumn => SqlType == SqlDbType.DateTimeOffset;
     public bool IsTimeColumn => SqlType == SqlDbType.Time;
-    /// <summary> A date or a date and time without an offset: the dates a form edits in a date box. </summary>
-    public bool IsLocalDateColumn => IsDateOnlyColumn || IsDateTimeColumn;
-
     /// <summary> A char, varchar, nchar or nvarchar column (not text, ntext or xml). </summary>
     public bool IsPlainTextColumn => SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
     public bool IsXmlColumn => SqlType == SqlDbType.Xml;
@@ -180,10 +169,14 @@ public class ColumnModel
     public bool IsVariantColumn => SqlType == SqlDbType.Variant;
     /// <summary> A type with no text form to search or sort by (binary, xml, a row version, a user-defined or structured type, a variant). </summary>
     public bool IsOpaqueColumn => IsBinaryColumn || SqlType is SqlDbType.Xml or SqlDbType.Timestamp or SqlDbType.Udt or SqlDbType.Structured or SqlDbType.Variant;
-
-    /// <summary> The column and <paramref name="other"/> have the same database type. </summary>
-    public bool HasSameTypeAs(ColumnModel other) => SqlType == other.SqlType;
-
+    /// <summary> A text column's length in characters. The schema reader states the length of a Unicode column (<c>nchar</c>, <c>nvarchar</c>) in bytes, so it is halved; 0 when the length is not known,
+    /// and a negative number for <c>varchar(max)</c> (callers test <c>&gt; 0</c>). </summary>
+    public int CharacterLength => MaxLength is null ? 0 : SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? MaxLength.Value / 2 : MaxLength.Value;
+    /// <summary> A text or ntext column: the large-object text types a table cannot copy, compare or index like an ordinary string. </summary>
+    public bool IsLargeTextColumn => SqlType is SqlDbType.Text or SqlDbType.NText;
+    /// <summary> SQL Server's timestamp (rowversion): a value the database sets on every write, never copied or supplied. In PostgreSQL, MySQL and SQLite a timestamp is an ordinary date and time, which
+    /// their schema readers map to a date type, so this is false for it. </summary>
+    public bool IsRowVersionColumn => SqlType == System.Data.SqlDbType.Timestamp;
     /// <summary> The C# type without nullability: <c>int</c>, <c>string</c>, <c>byte[]</c>; <c>object</c> for a type with no mapping. </summary>
     public string CSharpBase() => SqlType switch
     {
@@ -212,7 +205,6 @@ public class ColumnModel
         SqlDbType.Bit => "boolean",
         _ => "string"
     };
-
     /// <summary> The protobuf type: <c>int32</c>, <c>int64</c>, <c>bool</c>, <c>float</c>, <c>double</c>, <c>bytes</c>, <c>google.protobuf.Timestamp</c> for a date, and <c>string</c> for text, a decimal (protobuf has no decimal type), a time or a GUID. </summary>
     public string Proto() => SqlType switch
     {
@@ -245,16 +237,25 @@ public class ColumnModel
         _ => (null, null)
     };
 
+    /// <summary> The T-SQL expression for "now" in this date column's own precision: SYSDATETIME() for a datetime2 (GETDATE() would keep three milliseconds), SYSDATETIMEOFFSET() for a datetimeoffset,
+    /// GETDATE() for anything else. </summary>
+    public string SqlServerNow => SqlType switch
+    {
+        SqlDbType.DateTime2 => "SYSDATETIME()",
+        SqlDbType.DateTimeOffset => "SYSDATETIMEOFFSET()",
+        _ => "GETDATE()"
+    };
+    #endregion
+
+    /// <summary> A date or a date and time without an offset: the dates a form edits in a date box. </summary>
+    public bool IsLocalDateColumn => IsDateOnlyColumn || IsDateTimeColumn;
+
+    /// <summary> The column and <paramref name="other"/> have the same database type. </summary>
+    public bool HasSameTypeAs(ColumnModel other) => SqlType == other.SqlType;
+
+
     /// <summary> The smallest and largest value the type of a whole-number column holds. </summary>
     public NumericRange TypeRange => NumericClassifier.TypeRange(SqlType);
-
-    /// <summary> A text column's length in characters. The schema reader states the length of a Unicode column (<c>nchar</c>, <c>nvarchar</c>) in bytes, so it is halved; 0 when the length is not known,
-    /// and a negative number for <c>varchar(max)</c> (callers test <c>&gt; 0</c>). </summary>
-    public int CharacterLength =>
-        MaxLength is null ? 0 : SqlType is System.Data.SqlDbType.NChar or System.Data.SqlDbType.NVarChar ? MaxLength.Value / 2 : MaxLength.Value;
-
-    /// <summary> A text or ntext column: the large-object text types a table cannot copy, compare or index like an ordinary string. </summary>
-    public bool IsLargeTextColumn => SqlType is System.Data.SqlDbType.Text or System.Data.SqlDbType.NText;
 
     /// <summary> The values a text column may hold when the database lists them (a MySQL <c>enum('a','b')</c>); null for any other column. A generated form
     /// shows such a column as a drop-down of these values instead of a free text box. </summary>
@@ -356,7 +357,7 @@ public class ColumnModel
     /// note (ends in Note, Notes, Comment, Comments, Remarks or Memo). Grids list these columns last so a long value cannot push the others off screen; a form puts them on its own "Notes" tab. </summary>
     public bool IsLongTextColumn =>
         IsStringColumn
-        && (SqlType is System.Data.SqlDbType.Text or System.Data.SqlDbType.NText
+        && (SqlType is SqlDbType.Text or SqlDbType.NText
             || MaxLength is -1
             || CharacterLength >= 500
             || Array.Exists(LongTextNameEndings, s => Name.EndsWithIgnoreCase(s)));
@@ -443,22 +444,9 @@ public class ColumnModel
     /// unconditionally, same as IsModifiedDateColumn. </summary>
     public bool IsLastChangedDateColumn { get; init; }
 
-    /// <summary> SQL Server's timestamp (rowversion): a value the database sets on every write, never copied or supplied. In PostgreSQL, MySQL and SQLite a timestamp is an ordinary date and time, which
-    /// their schema readers map to a date type, so this is false for it. </summary>
-    public bool IsRowVersionColumn => SqlType == System.Data.SqlDbType.Timestamp;
-
     /// <summary> A column of one of the five stamp categories of SpecialLogicColumns.config (CreateDate, CreateUser, ModifiedDate, ModifiedUser, LastChangedDate): who made the row and when it
     /// changed. This is the one list of them; code asks here instead of repeating the five flags. </summary>
     public bool IsStampColumn => IsCreateDateColumn || IsCreateUserColumn || IsModifiedDateColumn || IsModifiedUserColumn || IsLastChangedDateColumn;
-
-    /// <summary> The T-SQL expression for "now" in this date column's own precision: SYSDATETIME() for a datetime2 (GETDATE() would keep three milliseconds), SYSDATETIMEOFFSET() for a datetimeoffset,
-    /// GETDATE() for anything else. </summary>
-    public string SqlServerNow => SqlType switch
-    {
-        System.Data.SqlDbType.DateTime2 => "SYSDATETIME()",
-        System.Data.SqlDbType.DateTimeOffset => "SYSDATETIMEOFFSET()",
-        _ => "GETDATE()"
-    };
 
     /// <summary> A date the routines write themselves on an insert (CreateDate, LastChangedDate): never a parameter, set to the current time. </summary>
     public bool IsInsertStampColumn => IsCreateDateColumn || IsLastChangedDateColumn;
