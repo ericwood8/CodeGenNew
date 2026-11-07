@@ -22,7 +22,7 @@ from common import cli_dir, cli_exe, home, run
 
 KINDS = {"mssql": "SqlServer", "pg": "PostgreSql", "mysql": "MySql"}
 PASSWORDS = {"pg": "PGPASSWORD", "mysql": "MYSQL_PWD"}
-STACKS = {"api": "Api", "python": "Python", "rust": "Rust", "react": "React"}
+STACKS = {"api": "Api", "python": "Python", "rust": "Rust", "react": "React", "winui3": "WinUI3", "uno": "Uno"}
 
 
 def connection_string(kind, host, db, user, password):

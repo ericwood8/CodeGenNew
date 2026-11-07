@@ -955,6 +955,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
 <#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #>        await _context.Set<<#= table #>>().Where(x => x.<#= queue.Key.CSharpName() #> == id && x.<#= queue.Status.CSharpName() #> == "<#= QueueStatus.Failed #>")
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.<#= queue.Status.CSharpName() #>, "<#= QueueStatus.Pending #>").SetProperty(x => x.<#= queue.Retry.CSharpName() #>, (<#= queue.Retry.CSharpBase() #>)0)
                 .SetProperty(x => x.<#= queue.Processed.CSharpName() #>, (<#= queue.Processed.CSharpBase() #>?)null).SetProperty(x => x.<#= queue.Claimed.CSharpName() #>, (<#= queue.Claimed.CSharpBase() #>?)null)<#= queue.ClaimedBy is null ? "" : $".SetProperty(x => x.{queue.ClaimedBy.CSharpName()}, (string?)null)" #>);
+        _context.ChangeTracker.Clear();   // the update bypassed the tracker, so the rows read next must not come from it
         await LoadAsync();
     }
 
@@ -976,6 +977,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
         ErrorMessage = null;
 <#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #>        await _context.Set<<#= table #>>().Where(x => x.<#= inbound.Key.CSharpName() #> == id && <#= InboundScreens.UnprocessedCs(inbound, "x", inbound.Processed.CSharpName()) #>)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.<#= inbound.Processed.CSharpName() #>, <#= InboundScreens.ProcessedValue(inbound) #>));
+        _context.ChangeTracker.Clear();   // the update bypassed the tracker, so the rows read next must not come from it
         await LoadAsync();
     }
 

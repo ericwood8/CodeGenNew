@@ -426,6 +426,7 @@ public class QueueArchiveTests
         }
         Assert.Contains("await Client.GetQueueStatsAsync()", uno.Read("ViewModels/JobQueueListViewModel.cs"));
         Assert.Contains("ExecuteUpdateAsync", winui3.Read("ViewModels/JobQueueListViewModel.cs"));
+        Assert.Contains("_context.ChangeTracker.Clear();", winui3.Read("ViewModels/JobQueueListViewModel.cs"), "the update bypasses the change tracker, so the reloaded rows must not come from it");
     }
 
     [TestMethod]
