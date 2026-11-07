@@ -128,8 +128,13 @@ public class InboundPlanTests
         Assert.Contains("flag=True", python, "the processed column of ErrorReport is a flag");
         Assert.Contains("@public_router.post(spec.route + \"/receive\"", python);
         Assert.Contains("SECRET_NAME = \"INBOUND_WEBHOOK_SECRET\"", python);
+        Assert.Contains("column == false()", python, "a flag that is not set is compared with false, which SQL Server writes as 0");
+        Assert.IsFalse(python.Contains("is_not(True)"), "IS NOT 1 is not valid SQL Server");
+        string sqlServerConftest = PythonInboundTests.Conftest(project, SqlDialect.SqlServer);
+        Assert.Contains("os.environ[\"DATABASE_URL\"] = url", sqlServerConftest, "the tests open the URL of a SQL Server copy as they do for PostgreSQL and MySQL");
+        Assert.IsFalse(sqlServerConftest.Contains("SKIP = \"the approval"), "SQL Server is not skipped");
 
-        string rust = RustInboundWriter.File(tables, project, SqlDialect.Sqlite);
+        string rust =RustInboundWriter.File(tables, project, SqlDialect.Sqlite);
         Assert.IsFalse(rust.Contains('§'), "every token is filled");
         Assert.Contains("const SQL_INSERT_webhook_event", rust);
         Assert.Contains("RETURNING", rust);
@@ -152,6 +157,7 @@ public class InboundPlanTests
         Assert.Contains("async fn an_event_id_is_kept_once()", rustTests);
         Assert.Contains("\"x\".repeat(4001)", rustTests);
         Assert.Contains("async fn without_a_sign_in_the_worker_routes_answer_401()", rustTests);
+        Assert.Contains("static ROWS: Mutex<()>", rustTests, "the tests of a table take turns over one shared database");
         Assert.IsFalse(RustInboundTests.File(tables[0], database, project).Contains("an_event_id_is_kept_once"));
         Assert.AreEqual("inbound_webhook_event_routes", RustInboundTests.Module(tables[1], project));
     }

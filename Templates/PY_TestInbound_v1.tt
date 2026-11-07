@@ -8,7 +8,7 @@
     // Generates: tests/conftest.py and tests/test_inbound_<table>.py   (whole-database; the output folder is the Python API's folder)
     // pytest tests of the routes PY_Inbound writes for InboundTables: a message with no signature, a wrong one or an old one is refused and stores nothing, a signed message is kept and listed as unprocessed, marking it
     // processed takes it out of the list, an event id is kept once, a body over the limit is refused and the worker routes need a sign-in. conftest.py is the one PY_TestApprovals writes. The tests set the shared secret in the
-    // environment themselves and remove the events they wrote. Written only for a project with PythonTests=true; not for SQL Server.
+    // environment themselves and remove the events they wrote. Written only for a project with PythonTests=true.
     // Full notes: Docs/TemplateNotes/API_Inbound_v1.md
     // ==========================================================================================
     if (PythonInboundTests.Applies(Database, Project))

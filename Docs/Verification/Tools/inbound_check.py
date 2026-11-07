@@ -1,11 +1,11 @@
 """Plays the inbound event landing tables against a running API (ASP.NET, Python or Rust) over a scratch copy of Schemas/inbound.sql.
 
-python inbound_check.py <base url> [--auth --login <user>:<password>] [--client-limit <requests a minute>] [--own <source>:<VARIABLE>]
+python inbound_check.py <base url> [--webhook-route <route> --error-route <route>] [--auth --login <user>:<password>] [--client-limit <requests a minute>] [--own <source>:<VARIABLE>]
 
 The API is a generated one with InboundTables=WebhookEvent,ErrorReport:Payload, started with the environment variable INBOUND_WEBHOOK_SECRET set to the same value this script has in its own
 environment (default test-secret-123). It checks, for WebhookEvent (an event id, a source, a processed time) and ErrorReport (a processed flag, no event id): a message with no signature, a wrong one and an
 old one are refused and store nothing; a body over the limit is a 413; a signed message is kept as it came and listed as unprocessed; marking it processed takes it out of the list, marking it again is harmless and
-an unknown id is a 404; an event id is kept once (in the body and in the header); and with --auth (the API has ApiAuth) the worker routes are a 401 without a token and the script signs in with --login (the bootstrap administrator of the API) to play the rest.
+an unknown id is a 404; the status route counts one more waiting after a message and the same as before once it is processed; an event id is kept once (in the body and in the header); and with --auth (the API has ApiAuth) the worker routes are a 401 without a token and the script signs in with --login (the bootstrap administrator of the API) to play the rest.
 With --client-limit N (the API has InboundClientTables=WebhookEvent,ErrorReport and InboundClientPerMinute=N) it also plays the write-only collect route of each table: a message with no signature is a 202 with no body and is listed,
 an empty body is a 400, a body over the limit is a 413, and a caller that goes past N requests in a minute gets a 429 with Retry-After.
 With --own stripe:STRIPE_SECRET (the API has InboundSourceSecrets=stripe:STRIPE_SECRET and both variables set; this script reads the sender's secret from its own environment variable of that name) it also plays a sender with a secret
@@ -25,6 +25,8 @@ auth = "--auth" in sys.argv
 client_limit = int(sys.argv[sys.argv.index("--client-limit") + 1]) if "--client-limit" in sys.argv else 0
 own_source, own_variable = sys.argv[sys.argv.index("--own") + 1].split(":", 1) if "--own" in sys.argv else (None, None)
 shared_source = "stripe-x" if own_source and own_source.lower() == "stripe" else "stripe"
+webhook_route = sys.argv[sys.argv.index("--webhook-route") + 1] if "--webhook-route" in sys.argv else "/api/webhookevents"
+error_route = sys.argv[sys.argv.index("--error-route") + 1] if "--error-route" in sys.argv else "/api/errorreports"
 secret = os.environ.get("INBOUND_WEBHOOK_SECRET", "test-secret-123")
 client = httpx.Client(base_url=base, timeout=30)
 failures = []
@@ -69,6 +71,7 @@ def play(route, body_name, limit, has_event, has_source):
 
     path = route + (f"/receive/{shared_source}" if has_source else "/receive")
     text = message(marker)
+    before = status(label, route, "before")
     received = signed(path, text)
     check(f"{label}: a signed message is kept", received.status_code == 200 and received.json().get("received") is True, received.text)
     if auth:
@@ -85,8 +88,16 @@ def play(route, body_name, limit, has_event, has_source):
     key_name = next((k for k in (rows[0] if rows else {}) if k.lower().endswith("id") and k.lower().startswith(label[:-1].lower())), None)
     event_id = received.json().get("id") if received.status_code == 200 else None
     check(f"{label}: the answer names the new id", event_id is not None and rows and event_id == rows[0].get(key_name))
+    during = status(label, route, "after a message")
+    if before and during:
+        check(f"{label}: the status counts one more waiting", during["unprocessed"] == before["unprocessed"] + 1 and during["total"] == before["total"] + 1, (before, during))
+        check(f"{label}: the status names an oldest waiting event", during["oldestUnprocessedId"] is not None, during)
+        check(f"{label}: the summary says how many wait", during["summary"].startswith(f"Unprocessed: {during['unprocessed']} of {during['total']}"), during["summary"])
     done = client.post(f"{route}/{event_id}/processed", headers=worker_headers())
     check(f"{label}: marking it processed", done.status_code == 200 and done.json().get("processed") is True, done.text)
+    after = status(label, route, "after processed")
+    if before and after:
+        check(f"{label}: the status counts it as processed", after["unprocessed"] == before["unprocessed"] and after["total"] == before["total"] + 1, (before, after))
     again = client.post(f"{route}/{event_id}/processed", headers=worker_headers())
     check(f"{label}: marking it again is harmless", again.status_code == 200 and again.json().get("alreadyProcessed") is True, again.text)
     gone = client.get(route + "/unprocessed", headers=worker_headers())
@@ -101,6 +112,20 @@ def play(route, body_name, limit, has_event, has_source):
         third = signed(route + "/receive", message(marker), event=event)
         check(f"{label}: an event id is kept once", first.json().get("duplicate") is False and second.json().get("duplicate") is True and second.json().get("id") == first.json().get("id"), (first.text, second.text))
         check(f"{label}: the id in the header counts the same", third.status_code == 200 and third.json().get("duplicate") is True, third.text)
+
+
+def status(label, route, when):
+    """GET status (a sign-in when the API has ApiAuth); the answer, or None after a failed check."""
+    answer = client.get(route + "/status", headers=worker_headers())
+    check(f"{label}: the status answers {when}", answer.status_code == 200 and "summary" in answer.json(), (answer.status_code, answer.text))
+    if answer.status_code != 200:
+        return None
+    body = answer.json()
+    check(f"{label}: the status tells the collect route and the senders", body["collect"]["enabled"] == bool(client_limit) and (not own_source or own_source in body["senders"]), body)
+    if auth and when == "before":
+        denied = client.get(route + "/status")
+        check(f"{label}: the status needs a sign-in", denied.status_code == 401, denied.status_code)
+    return body
 
 
 def play_client(route, body_name, has_source):
@@ -155,13 +180,13 @@ if "--login" in sys.argv:
     token_headers = {"Authorization": "Bearer " + response.json()["token"]} if response.status_code == 200 else {}
 
 
-play("/api/webhookevents", "body", 4000, True, True)
-play("/api/errorreports", "payload", 1048576, False, False)
+play(webhook_route, "body", 4000, True, True)
+play(error_route, "payload", 1048576, False, False)
 if client_limit:
-    play_client("/api/webhookevents", "body", True)
-    play_client("/api/errorreports", "payload", False)
+    play_client(webhook_route, "body", True)
+    play_client(error_route, "payload", False)
 if own_source:
-    play_own("/api/webhookevents", "body", True)
-    play_own("/api/errorreports", "payload", False)
+    play_own(webhook_route, "body", True)
+    play_own(error_route, "payload", False)
 print("\n" + ("ALL OK" if not failures else f"{len(failures)} FAILED: " + "; ".join(failures)))
 sys.exit(1 if failures else 0)

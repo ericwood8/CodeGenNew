@@ -6,9 +6,9 @@ public static class PythonInboundTests
 {
     public const string Marker = "zz-inbound-marker";
 
-    /// <summary> Whether the tests are written: <c>PythonTests</c> and an inbound table the plan accepts, over a database the shared conftest can open (not SQL Server). </summary>
+    /// <summary> Whether the tests are written: <c>PythonTests</c> and an inbound table the plan accepts. </summary>
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
-        project.PythonTests && DialectInfo.For(database.Dialect).RunsPythonTests && Tables(database, project).Count > 0;
+        project.PythonTests && Tables(database, project).Count > 0;
 
     public static IReadOnlyList<InboundShape> Tables(DatabaseModel database, ProjectSettings project) =>
         database.Tables.Select(t => TableShapes.For(t, project).Inbound).OfType<InboundShape>().OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase).ToList();

@@ -20,7 +20,6 @@ public static class PythonApprovalTests
         string open = dialect switch
         {
             SqlDialect.Sqlite => FillAll(SqliteOpen, ("§FILE", PythonNames.Str(project.DatabaseName ?? "")), ("§PREFIX", new string((project.ProjectName ?? "app").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray()))),
-            SqlDialect.SqlServer => "SKIP = \"the approval tests run over SQLite, PostgreSQL or MySQL\"\nFOLDER = None",
             _ => FillAll(UrlOpen, ("§VARIABLE", connection))
         };
         return FillAll(ConftestText, ("§OPEN", open), ("§CLEAN", dialect == SqlDialect.Sqlite ? "    engine.dispose()\n    shutil.rmtree(FOLDER, ignore_errors=True)" : "    engine.dispose()")) + "\n";

@@ -29,4 +29,6 @@ The generator reads one key column, so generate from the database before the scr
 
 No foreign keys, no filtered indexes, no `INCLUDE` columns. The months are the server's calendar months, with no time zone. A PostgreSQL month cannot be added while the default partition holds rows of it; keep the procedure scheduled ahead of the months. The schedule is not applied. Partitioning helps the purge and the oldest-first scans; it does not speed a query that does not filter on the date.
 
+The generated inbound tests (ASP.NET and Python on all three servers, Rust on PostgreSQL and MySQL) also pass over tables the script partitioned, and the add and drop procedure was called on each server (`Docs/Verification/Tools/live_inbound_run.py --partition`).
+
 Checked on SQL Server (a copy of the table in `InvoiceSystem_test`), PostgreSQL (an identity key and a serial key; the old table dropped, the next insert took the next number) and MySQL: the rows landed in the right months, the indexes followed, running the script again changed nothing, and the procedure added months and dropped the old ones with the newest rows kept.

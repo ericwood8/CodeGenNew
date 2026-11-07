@@ -138,7 +138,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
-from sqlalchemy import func, select, update
+from sqlalchemy import false, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -220,7 +220,7 @@ def json_event_id(text: str) -> str | None:
 
 §CLIENTCODEdef unprocessed_test(spec: InboundSpec) -> Any:
     column = spec.col("processed")
-    return column.is_not(True) if spec.flag else column.is_(None)
+    return or_(column.is_(None), column == false()) if spec.flag else column.is_(None)
 
 
 def find_event(session: Session, spec: InboundSpec, event: str, source: str | None) -> Any | None:
