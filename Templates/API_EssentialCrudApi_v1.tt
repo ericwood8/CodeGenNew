@@ -1011,8 +1011,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 <#= auth("        if (await RefuseOtherOwnersAsync(context, id) is { } refused)\n            return refused;\n") #><#= hooks("        if (await BeforeDeleteAsync(context, id) is { } refusedDelete)\n            return refusedDelete;\n\n") #>        var successNum = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
         if (successNum == 0)
         {
-            await AfterDeleteAsync(context, id);
-            return Results.Ok();
+<#= hooks("            await AfterDeleteAsync(context, id);\n") #>            return Results.Ok();
         }
         else if (successNum == -1)
             return Results.NotFound(); // cannot delete because does not exist
@@ -1441,9 +1440,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
     private async Task<IResult> DeleteAsync(<#= contextType #> context, int id)
     {
 <#= hooks("        if (await BeforeDeleteAsync(context, id) is { } refusedDelete)\n            return refusedDelete;\n\n") #>        int result = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
-        if (result == 0)
-            await AfterDeleteAsync(context, id);
-        return result switch
+<#= hooks("        if (result == 0)\n            await AfterDeleteAsync(context, id);\n") #>        return result switch
         {
             0 => Results.Ok(),
             -1 => Results.NotFound(),
