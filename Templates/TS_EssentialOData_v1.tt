@@ -503,6 +503,8 @@ export abstract class ODataPagedScreen<T, K extends number | string = number> ex
   abstract readonly filterFields: readonly ColumnFilterField[];
   /** The properties the grid shows; empty: the page reads every property. */
   protected readonly selectColumns: readonly string[] = [];
+  /** Properties the page asks for even when the grid hides their column (the state a row's buttons read). */
+  protected readonly alwaysSelected: readonly string[] = [];
 
   sorts: GridSort[] = [];
   columnFilters: Record<string, ColumnFilter> = {};
@@ -518,7 +520,7 @@ export abstract class ODataPagedScreen<T, K extends number | string = number> ex
   protected override load(): void {
     this.service.queryPage({
       pageNumber: this.pageIndex + 1, pageSize: this.pageSize, filters: this.filters, sorts: this.sorts, conditions: this.conditions(),
-      select: this.selectColumns.length > 0 ? this.selectColumns : undefined
+      select: this.selectColumns.length > 0 ? [...this.selectColumns, ...this.alwaysSelected] : undefined
     }).subscribe((result) => {
       // the last row of the last page was deleted: the page asked for is past the end, so show the last page there is
       if (result.items.length === 0 && result.totalCount > 0 && this.pageIndex > 0) {

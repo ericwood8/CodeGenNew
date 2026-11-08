@@ -124,6 +124,9 @@
         bool validOnScreen = effectivePlan is not null;
         bool shapeScreen = softScreen || validOnScreen;
         string actionWidth = logOnly ? (queue is null && inbound is null ? "90" : "170") : canClone ? "250" : "175";
+        var contentShape = logOnly ? null : TableShapes.For(Model, Project).Content;   // ContentTables: Publish, Unpublish and Archive buttons on a row (each shown only when it changes something)
+        if (contentShape is not null)
+            actionWidth = (int.Parse(actionWidth) + 170).ToString();
 #>
 @@@FILE <#= viewsFolder #>/<#= stemName #>ListPage.xaml@@@
 <Page
@@ -281,6 +284,17 @@
 #>
                                             <Button Content="Clone" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnCloneClick"<#= gated ? " Visibility=\"{x:Bind WriteVisibility}\"" : "" #> />
 <#
+        }
+#>
+<#
+        if (contentShape is not null)
+        {
+            foreach (var action in ContentScreens.Actions)
+            {
+#>
+                                            <Button Content="<#= action.Caption #>" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="On<#= action.Caption #>Click" Visibility="{x:Bind <#= action.Caption #>Visibility}" />
+<#
+            }
         }
 #>
                                             <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDeleteClick"<#= gated ? " Visibility=\"{x:Bind WriteVisibility}\"" : "" #> />
@@ -454,6 +468,18 @@ public sealed partial class <#= stemName #>ListPage : Page
 <#
         }
 #>
+<#
+        if (contentShape is not null)
+        {
+            foreach (var action in ContentScreens.Actions)
+            {
+#>
+    private async void On<#= action.Caption #>Click(object sender, RoutedEventArgs e) => await ViewModel.<#= ContentScreens.CsMethod(action) #>((<#= keyCs #>)((Button)sender).Tag);
+
+<#
+            }
+        }
+#>
     private async void OnDeleteClick(object sender, RoutedEventArgs e)
     {
         <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
@@ -607,6 +633,16 @@ public class <#= stemName #>ListRow
     /// <summary> Whether the Processed button shows: only an event that is not processed yet can be marked. </summary>
     public Visibility ProcessedVisibility { get; init; } = Visibility.Collapsed;
 <#
+        }
+        if (contentShape is not null)
+        {
+            foreach (var action in ContentScreens.Actions)
+            {
+#>
+    /// <summary> Whether the <#= action.Caption #> button shows: only a row whose state it would change. </summary>
+    public Visibility <#= action.Caption #>Visibility { get; init; } = Visibility.Collapsed;
+<#
+            }
         }
         if (gated)
         {
@@ -991,7 +1027,7 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
             Write(DesktopGridCode.CellLines(form, Project, c, chosen.Offered.First(o => o.Column == c).Cut));
 #>
             ];
-            Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= softScreen ? ", NormalVisibility = ShowDeleted ? Visibility.Collapsed : Visibility.Visible, RestoreVisibility = ShowDeleted && " + (gated ? "_api.Session.HasRole([\"" + Project.AuthAdminRole + "\"])" : "true") + " ? Visibility.Visible : Visibility.Collapsed" : "" #><#= gated ? ", WriteVisibility = WriteVisibility" : "" #><#= queue is null ? "" : $", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #><#= inbound is null ? "" : $", ProcessedVisibility = {InboundScreens.UnprocessedCs(inbound, "e", inbound.Processed.CSharpName())} ? Visibility.Visible : Visibility.Collapsed" #> });
+            Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= softScreen ? ", NormalVisibility = ShowDeleted ? Visibility.Collapsed : Visibility.Visible, RestoreVisibility = ShowDeleted && " + (gated ? "_api.Session.HasRole([\"" + Project.AuthAdminRole + "\"])" : "true") + " ? Visibility.Visible : Visibility.Collapsed" : "" #><#= gated ? ", WriteVisibility = WriteVisibility" : "" #><#= queue is null ? "" : $", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #><#= inbound is null ? "" : $", ProcessedVisibility = {InboundScreens.UnprocessedCs(inbound, "e", inbound.Processed.CSharpName())} ? Visibility.Visible : Visibility.Collapsed" #><#= contentShape is null ? "" : string.Concat(ContentScreens.Actions.Select(a => $", {a.Caption}Visibility = {ContentScreens.ShownCs(a, "e", contentShape.Status.CSharpName(), contentShape)}{(gated ? " && WriteVisibility == Visibility.Visible" : "")} ? Visibility.Visible : Visibility.Collapsed")) #> });
         }
 <# if (queue is not null) { #>
         await LoadStatsAsync();
@@ -1170,6 +1206,37 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     }
 
 <#
+        }
+#>
+<#
+        if (contentShape is not null)
+        {
+            foreach (var action in ContentScreens.Actions)
+            {
+#>
+    /// <summary> The API changes the state of the row (<#= action.Route #>); the page is read again. </summary>
+    public async Task <#= ContentScreens.CsMethod(action) #>(<#= keyCs #> id)
+    {
+        ErrorMessage = null;
+        try
+        {
+            await Client.<#= ContentScreens.CsMethod(action) #>(id);
+        }
+        catch (ApiException ex)
+        {
+            ErrorMessage = ex.Explain("<#= action.Gerund #>");
+            return;
+        }
+        catch (HttpRequestException)
+        {
+            ErrorMessage = "The server could not be reached.";
+            return;
+        }
+        await LoadAsync();
+    }
+
+<#
+            }
         }
 #>
     /// <summary> The person picked another page size under the grid: the first page is read again with it. </summary>

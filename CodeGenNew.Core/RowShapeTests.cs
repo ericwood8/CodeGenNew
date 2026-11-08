@@ -11,7 +11,8 @@ public static class RowShapeTests
         var tree = TableShapes.For(table, project).Tree;
         var soft = TableShapes.For(table, project).SoftDelete;
         var effective = TableShapes.For(table, project).Effective;
-        if (tree is null && soft is null && effective is null)
+        var content = TableShapes.For(table, project).Content;
+        if (tree is null && soft is null && effective is null && content is null)
             return "";
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
@@ -170,6 +171,121 @@ public static class RowShapeTests
             L($"        using var response = await ApiFixture.Client.PostAsync($\"{{Route}}/{{{plan.AbsentKey}}}/restore\", null);");
             L("        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);");
             L("    }");
+        }
+
+        if (content is not null)
+        {
+            string title = JsonNames.Camel(content.Title.Name), slug = JsonNames.Camel(content.Slug.Name), status = JsonNames.Camel(content.Status.Name);
+            string? publishedOn = content.PublishedOn is null ? null : JsonNames.Camel(content.PublishedOn.Name);
+            L();
+            L("    private static string Token() => Guid.NewGuid().ToString(\"N\")[..8];");
+            L();
+            L("    [TestMethod]");
+            L("    public async Task The_slug_is_made_from_the_title_and_numbered_when_it_is_taken()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        string token = Token();");
+            L($"        var first = await MakeAsync(b => {{ b[\"{title}\"] = \"W\\u00f6 \" + token; b[\"{slug}\"] = \"\"; }});");
+            L($"        Assert.AreEqual(\"wo-\" + token, first[\"{slug}\"]!.GetValue<string>(), \"lower case, no accent, a hyphen for the space\");");
+            L($"        var second = await MakeAsync(b => {{ b[\"{title}\"] = \"W\\u00f6 \" + token; b[\"{slug}\"] = \"\"; }});");
+            L($"        Assert.AreEqual(\"wo-\" + token + \"-2\", second[\"{slug}\"]!.GetValue<string>(), \"a made slug that is taken gets a number\");");
+            L("        var named = await NewBodyAsync();");
+            L($"        named[\"{slug}\"] = \"WO-\" + token;");
+            L("        using var refused = await ApiFixture.Client.PostAsJsonAsync(Route, named);");
+            L("        Assert.AreEqual(HttpStatusCode.Conflict, refused.StatusCode, await refused.Content.ReadAsStringAsync());");
+            L($"        Assert.AreEqual(\"{ContentWords.SlugTakenType}\", (await refused.Content.ReadFromJsonAsync<JsonObject>())![\"type\"]!.GetValue<string>());");
+            L("        await RemoveAsync(first, second);");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public async Task A_new_title_does_not_move_the_slug()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        string token = Token();");
+            L($"        var row = await MakeAsync(b => {{ b[\"{title}\"] = \"W\\u00f6 \" + token; b[\"{slug}\"] = \"\"; }});");
+            L($"        using var renamed = await PutAsync(row, b => b[\"{title}\"] = \"New \" + token);");
+            L("        Assert.IsTrue(renamed.IsSuccessStatusCode, await renamed.Content.ReadAsStringAsync());");
+            L($"        using var blank = await PutAsync(row, b => {{ b[\"{title}\"] = \"New \" + token; b[\"{slug}\"] = \"\"; }});");
+            L("        Assert.IsTrue(blank.IsSuccessStatusCode, await blank.Content.ReadAsStringAsync());");
+            L($"        var stored = (await ApiFixture.Client.GetFromJsonAsync<JsonObject>($\"{{Route}}/{{row[\"{id}\"]!.GetValue<long>()}}\"))!;");
+            L($"        Assert.AreEqual(\"New \" + token, stored[\"{title}\"]!.GetValue<string>());");
+            L($"        Assert.AreEqual(\"wo-\" + token, stored[\"{slug}\"]!.GetValue<string>(), \"the page keeps its address\");");
+            L("        await RemoveAsync(row);");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public async Task The_status_is_changed_by_the_routes_and_not_by_a_save()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L($"        var row = await MakeAsync(b => b[\"{status}\"] = \"{ContentWords.Published}\");");
+            L($"        Assert.AreEqual(\"{ContentWords.Draft}\", row[\"{status}\"]!.GetValue<string>(), \"a new row is a draft whatever it says\");");
+            if (publishedOn is not null)
+                L($"        Assert.IsNull(row[\"{publishedOn}\"], \"a draft has no published time\");");
+            L($"        using var edited = await PutAsync(row, b => b[\"{status}\"] = \"{ContentWords.Archived}\");");
+            L("        Assert.IsTrue(edited.IsSuccessStatusCode, await edited.Content.ReadAsStringAsync());");
+            L($"        var stored = (await ApiFixture.Client.GetFromJsonAsync<JsonObject>($\"{{Route}}/{{row[\"{id}\"]!.GetValue<long>()}}\"))!;");
+            L($"        Assert.AreEqual(\"{ContentWords.Draft}\", stored[\"{status}\"]!.GetValue<string>(), \"a save does not change the status\");");
+            L("        await RemoveAsync(row);");
+            L("    }");
+            if (!content.NeedsApproval)
+            {
+            L();
+            L("    [TestMethod]");
+            L("    public async Task Publish_unpublish_and_archive_change_the_status_and_only_a_published_row_is_public()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        string token = Token();");
+            L($"        var row = await MakeAsync(b => {{ b[\"{title}\"] = \"Pub \" + token; b[\"{slug}\"] = \"\"; }});");
+            L($"        long key = row[\"{id}\"]!.GetValue<long>();");
+            L($"        string address = row[\"{slug}\"]!.GetValue<string>();");
+            bool tenantOwned = content.TenantColumn is not null;   // the public routes read the tenant of the host, which TenantBypassApiTests plays
+            if (!tenantOwned)
+            {
+                L(project.ApiAuth ? "        using var reader = ApiFixture.Anonymous();" : "        var reader = ApiFixture.Client;   // the API has no sign-in, so this client reads as anyone would");
+                L("        async Task<HttpStatusCode> PublicAsync() { using var read = await reader.GetAsync($\"{Route}/public/{address}\"); return read.StatusCode; }");
+            }
+            L("        async Task<JsonObject> ChangeAsync(string action)");
+            L("        {");
+            L("            using var changed = await ApiFixture.Client.PostAsync($\"{Route}/{key}/{action}\", null);");
+            L("            Assert.AreEqual(HttpStatusCode.OK, changed.StatusCode, await changed.Content.ReadAsStringAsync());");
+            L("            return (await changed.Content.ReadFromJsonAsync<JsonObject>())!;");
+            L("        }");
+            if (!tenantOwned)
+                L("        Assert.AreEqual(HttpStatusCode.NotFound, await PublicAsync(), \"a draft is not public\");");
+            L("        var published = await ChangeAsync(\"publish\");");
+            L($"        Assert.AreEqual(\"{ContentWords.Published}\", published[\"{status}\"]!.GetValue<string>());");
+            if (publishedOn is not null)
+                L($"        Assert.IsNotNull(published[\"{publishedOn}\"], \"publishing stamps the time\");");
+            if (!tenantOwned)
+            {
+                L("        Assert.AreEqual(HttpStatusCode.OK, await PublicAsync(), \"a published row is public without a sign-in\");");
+                L("        var listed = (await reader.GetFromJsonAsync<JsonArray>($\"{Route}/public?pageSize=100\"))!;");
+                L($"        Assert.IsTrue(listed.Any(n => n![\"{slug}\"]!.GetValue<string>() == address), \"the published row is on the first page\");");
+            }
+            if (!tenantOwned && content.PublicColumns is not null && content.Table.Columns.FirstOrDefault(c => !content.PublicColumns.Contains(c)) is { } hidden)
+            {
+                L($"        Assert.IsNull(listed.First(n => n![\"{slug}\"]!.GetValue<string>() == address)![\"{JsonNames.Camel(hidden.Name)}\"], \"a column that is not in ContentPublicColumns stays out of the public list\");");
+                L($"        using var single = await reader.GetAsync($\"{{Route}}/public/{{address}}\");");
+                L($"        Assert.IsNull((await single.Content.ReadFromJsonAsync<JsonObject>())![\"{JsonNames.Camel(hidden.Name)}\"], \"nor from the public row\");");
+            }
+            L("        var unpublished = await ChangeAsync(\"unpublish\");");
+            L($"        Assert.AreEqual(\"{ContentWords.Draft}\", unpublished[\"{status}\"]!.GetValue<string>());");
+            if (!tenantOwned)
+                L("        Assert.AreEqual(HttpStatusCode.NotFound, await PublicAsync());");
+            if (publishedOn is not null)
+            {
+                L("        var again = await ChangeAsync(\"publish\");");
+                L($"        Assert.AreEqual(published[\"{publishedOn}\"]!.GetValue<DateTime>(), again[\"{publishedOn}\"]!.GetValue<DateTime>(), \"publishing again keeps the first time\");");
+            }
+            L("        var archived = await ChangeAsync(\"archive\");");
+            L($"        Assert.AreEqual(\"{ContentWords.Archived}\", archived[\"{status}\"]!.GetValue<string>());");
+            if (!tenantOwned)
+                L("        Assert.AreEqual(HttpStatusCode.NotFound, await PublicAsync(), \"an archived row is not public\");");
+            L($"        using var absent = await ApiFixture.Client.PostAsync($\"{{Route}}/{{{plan.AbsentKey}}}/publish\", null);");
+            L("        Assert.AreEqual(HttpStatusCode.NotFound, absent.StatusCode);");
+            L("        await RemoveAsync(row);");
+            L("    }");
+            }
         }
 
         if (effective is not null)

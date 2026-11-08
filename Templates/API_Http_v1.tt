@@ -129,6 +129,22 @@
             L("### Hand the children of a row to its own parent, so the row can be deleted");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/promote-children");
         }
+        if (TableShapes.For(Model, Project).Content is not null)
+        {
+            L();
+            L("### Publish a row (the first time stamps the published time), take it back to a draft, or archive it");
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/publish");
+            L();
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/unpublish");
+            L();
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/archive");
+            L();
+            L("### The published rows, newest first (no sign-in needed)");
+            L("GET {{host}}" + route + "/public?pageNumber=1&pageSize=20");
+            L();
+            L("### One published row by its slug (no sign-in needed)");
+            L("GET {{host}}" + route + "/public/the-slug");
+        }
         if (TableShapes.For(Model, Project).SoftDelete is not null)
         {
             L();

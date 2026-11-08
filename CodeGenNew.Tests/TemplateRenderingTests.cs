@@ -367,7 +367,7 @@ public class TemplateRenderingTests
         Expect.Contains(xaml, "x:Class=\"MyApp.Desktop.Views.E_DonateLeaveDetailDialog\"");
         Expect.Contains(xaml, "SelectedValue=\"{x:Bind ViewModel.DonateFrom_EmployeeId, Mode=TwoWay}\"");
         Expect.Contains(xaml, "SelectedValue=\"{x:Bind ViewModel.DonateTo_EmployeeId, Mode=TwoWay}\"");
-        Expect.Contains(xaml, "<CalendarDatePicker Header=\"When Donated\"" + RequiredMark.XamlAttributes(true, true) + " Date=\"{x:Bind ViewModel.WhenDonated, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "<CalendarDatePicker Header=\"When Donated\" Date=\"{x:Bind ViewModel.WhenDonated, Mode=TwoWay}\"");
         Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.Note, Mode=TwoWay}\"");
 
         Expect.Contains(codeBehind, "public sealed partial class E_DonateLeaveDetailDialog : ContentDialog");
@@ -394,7 +394,7 @@ public class TemplateRenderingTests
         Expect.Contains(viewModel, "else { entity.HoursDonated = (int)HoursDonated; }");
         // a date column is a calendar picker holding a nullable DateTimeOffset; saving keeps the stored time of day
         Expect.Contains(viewModel, "private DateTimeOffset? _whenDonated;");
-        Expect.Contains(viewModel, "if (WhenDonated is null)\n        {\n            ErrorMessage = \"When Donated is required.\"; return false;");
+        Expect.Contains(viewModel, "if (WhenDonated is null)\n        {\n            if (_editing is null) entity.WhenDonated = DateTime.Now;");   // the database fills a blank date
         Expect.Contains(viewModel, "entity.WhenDonated = WhenDonated.Value.Date + _whenDonatedTime;");
         Expect.Contains(viewModel, "entity.Note = string.IsNullOrWhiteSpace(Note) ? null : Note;"); // nullable text
         Expect.Contains(viewModel, "await _repo.AddAsync(entity);");

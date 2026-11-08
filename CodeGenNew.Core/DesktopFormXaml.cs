@@ -26,10 +26,12 @@ public static class DesktopFormXaml
         var formColumn = form.Field(column);
         string prop = column.Name;
         string label = column.Label;
-        string required = RequiredMark.XamlAttributes(form.IsRequired(column), form.IsMarked(column));
+        bool blankDate = DesktopFormCode.FillsBlankDate(column);   // a date the database fills is not required of a new row
+        string required = RequiredMark.XamlAttributes(form.IsRequired(column) && !blankDate, form.IsMarked(column) && !blankDate);
         var o = new StringBuilder();
         void L(string s) => o.Append(s).Append('\n');
         const string I = "            ";
+        string hint = ContentScreens.IsSlug(table, project, column) ? $" PlaceholderText=\"{ContentScreens.SlugHint}\"" : "";   // the server makes a blank slug from the title
 
         if (formColumn.IsSystemStampField)
         {
@@ -113,7 +115,7 @@ public static class DesktopFormXaml
         }
         else if (formColumn.IsMultilineField)
         {
-            L(I + $"<TextBox Header=\"{label}\"{required} Text=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
+            L(I + $"<TextBox Header=\"{label}\"{required} Text=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{hint}");
             L(I + $"         AcceptsReturn=\"True\" TextWrapping=\"Wrap\" Height=\"80\" MaxLength=\"{TemplateHelpers.Chars(column)}\" />");
         }
         else
@@ -121,7 +123,7 @@ public static class DesktopFormXaml
             string maxLen = TemplateHelpers.IsText(column) && TemplateHelpers.Chars(column) > 0 ? $" MaxLength=\"{TemplateHelpers.Chars(column)}\"" : "";
             // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
             string readOnly = textKey && column.IsPrimaryKey ? " IsReadOnly=\"{x:Bind ViewModel.IsExisting}\"" : "";
-            L(I + $"<TextBox Header=\"{label}\"{required} Text=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{maxLen}{readOnly} />");
+            L(I + $"<TextBox Header=\"{label}\"{required} Text=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{maxLen}{readOnly}{hint} />");
         }
         return o.ToString();
     }

@@ -88,7 +88,7 @@ public sealed class CrudApiPlan
         // ChangeGates and GuardedColumns (API_Gates): the table's checks run before a row is saved.
         HasGates = GatePlan.HasRules(project, model);
 
-        // TreeTables, SoftDeleteTables and EffectiveDatedTables (API_RowShapes): the table's checks run before a row is saved and before it is deleted.
+        // TreeTables, ContentTables, SoftDeleteTables and EffectiveDatedTables (API_RowShapes): the table's checks run before a row is saved and before it is deleted.
         // TenantTable: a tenant-owned table writes the caller's tenant into the row; the tenant table itself takes no create and no delete
         TenantColumn = TableShapes.For(model, project).Tenant?.Column;
         IsTenantTable = project.ApiAuth && TenantPlan.IsTenantTable(model, project);

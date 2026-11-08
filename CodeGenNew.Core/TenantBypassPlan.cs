@@ -62,6 +62,17 @@ public static class TenantBypassPlan
         return (plan, seed);
     }
 
+    /// <summary> A tenant-owned content table (<c>ContentTables</c>) of the ASP.NET API: its public routes read the tenant of the request host. </summary>
+    public sealed record ContentCase(TableModel Table, ContentShape Content);
+
+    public static IReadOnlyList<ContentCase> Contents(DatabaseModel database, ProjectSettings project)
+    {
+        if (HostColumn(database, project) is null)
+            return [];
+        return database.Tables.Where(t => !project.NoApiFor(t.TableName, t.LookupShape)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase)
+            .Select(t => TableShapes.For(t, project).Content is { TenantColumn: not null } content ? new ContentCase(t, content) : null).OfType<ContentCase>().ToList();
+    }
+
     /// <summary> The tenant table's column that holds the first label of a host name, or null when the project names none. </summary>
     public static ColumnModel? HostColumn(DatabaseModel database, ProjectSettings project) =>
         TenantPlan.HasApiTenancy(project) ? TenantPlan.HostColumnOf(database, project) : null;

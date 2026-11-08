@@ -144,6 +144,21 @@ public static class DesktopFormCode
         return o.ToString();
     }
 
+    /// <summary> The lines of <c>SaveAsync</c> that run the content rules of a table in <c>ContentTables</c> (the slug is made, a new row is a draft) on the row before it is saved (eight spaces in), for the app that reads the
+    /// database itself. A slug the person named that is taken is the dialog's error. Empty when the table is not a content table. </summary>
+    public static string ContentCheckLines(ProjectSettings project, TableModel table, string context)
+    {
+        if (TableShapes.For(table, project).Content is null)
+            return "";
+        var o = new StringBuilder();
+        o.Append($"        if (await {table.TableName}Content.PrepareAsync({context}, entity, _editing is null) is {{ }} contentRefusal)\n");
+        o.Append("        {\n");
+        o.Append("            ErrorMessage = contentRefusal;\n");
+        o.Append("            return false;\n");
+        o.Append("        }\n\n");
+        return o.ToString();
+    }
+
     /// <summary> The lines of the view model's load that ask the API which guarded columns the signed-in person may change (eight spaces in); until it answers, and when it cannot, the fields stay read-only.
     /// <paramref name="clientProperty"/> is the table's property of <c>ApiClients</c>. Empty when the table has no guarded column. </summary>
     public static string GuardLoadLines(FormModel form, string clientProperty)
@@ -166,12 +181,20 @@ public static class DesktopFormCode
 
     /// <summary> The lines of <c>SaveAsync</c> that check one field and copy it into <c>entity</c> (eight spaces in): a missing required value, a number that is not whole or out of range, a text
     /// that breaks a shape rule, a date after today, each setting <c>ErrorMessage</c> and returning false. </summary>
+    /// <summary> A NOT NULL date-and-time column that the database fills when no value is given (a DEFAULT): a new row may leave its box blank and gets the time of the save. The entity has no
+    /// database-default mapping, so the desktop apps give the value themselves. </summary>
+    public static bool FillsBlankDate(ColumnModel column) =>
+        !column.IsNullable && column.IsDateTimeColumn && !string.IsNullOrWhiteSpace(column.DatabaseDefaultSql);
+
     public static string SaveLines(FormModel form, ProjectSettings project, ColumnModel column)
     {
         var formColumn = form.Field(column);
         string prop = column.Name;
         string label = Labels.Column(column.Name);
         var table = form.Table;
+        // the status and published time of a content table are shown, not edited: the routes (and the content rules before the save) own them
+        if (ContentScreens.IsStateColumn(table, project, column))
+            return "";
         var o = new StringBuilder();
         void L(string s) => o.Append("        ").Append(s).Append('\n');
         // the branch taken for a blank value: refused when the column is NOT NULL, else stored as null
@@ -227,7 +250,10 @@ public static class DesktopFormCode
             {
                 L($"if ({prop} is null)");
                 L("{");
-                Blank();
+                if (FillsBlankDate(column))
+                    L("    if (_editing is null) entity." + prop + " = DateTime.Now;");   // the database would have filled it
+                else
+                    Blank();
                 L("}");
                 if (FutureCheck(project, table, column, prop, label) is { } futureCheck)
                     L(futureCheck);
@@ -256,7 +282,12 @@ public static class DesktopFormCode
             }
             else
             {
-                if (!column.IsNullable)
+                if (ContentScreens.IsSlug(table, project, column) && !column.IsNullable)
+                {
+                    // the slug of a content table may stay blank: the content rules make it from the title before the row is saved
+                    L($"entity.{prop} = ({prop} ?? \"\").Trim();");
+                }
+                else if (!column.IsNullable)
                 {
                     L($"if (string.IsNullOrWhiteSpace({prop})) {{ ErrorMessage = \"{label} is required.\"; return false; }}");
                     if (ShapeCheck(project, table, column, prop, label, false) is { } requiredShape)

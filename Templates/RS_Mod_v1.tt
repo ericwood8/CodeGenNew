@@ -80,6 +80,18 @@
     if (Project.ApiAuth && Project.UserTable is not null)
         Line("        .merge(crate::people::router())");
     Line("}");
+    // ContentTables: the public reads of a content table are left out of the sign-in check, so main.rs merges them after it
+    var contentModules = Project.ApiAuth ? modules.Where(m => Database.PythonRustApiTables(Project).Any(t => RustNames.Snake(t.TableName) == m && TableShapes.For(t, Project).Content is not null)).ToList() : [];
+    if (contentModules.Count > 0)
+    {
+        Line();
+        Line("/// The public reads of the content tables, merged after the sign-in check.");
+        Line("pub fn public_router() -> Router<Pool> {");
+        Line("    Router::new()");
+        foreach (string m in contentModules)
+            Line($"        .merge({m}::public_router())");
+        Line("}");
+    }
     if (Project.WantsUsageSchedule)
     {
         Line();

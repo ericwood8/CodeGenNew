@@ -327,7 +327,7 @@ public class WriteRolesTests
         Expect.DoesNotContain(open, "ClientInRole");
 
         string fixture = await Run("API_EssentialTests_v1.tt", new object(), Api, ("ApiTests", "true"));
-        Expect.Contains(fixture, "public static HttpClient ClientInRole(string role)");
+        Expect.Contains(fixture, "public static HttpClient ClientInRole(string role, string name = \"role-test\")");
         Expect.Contains(fixture, "new(\"role\", role)");
         Expect.Contains(fixture, "_jwtKey = Guid.NewGuid()");
     }

@@ -22,7 +22,7 @@ public sealed class FormColumn
 
     // The editor a column gets on the form. The order is the rule every stack follows: the first that fits wins.
     private FieldKind Editor => _editor ??=
-        Column.IsSystemStampColumn || _form.IsGuardStamp(Column) ? FieldKind.SystemStamp
+        Column.IsSystemStampColumn || _form.IsGuardStamp(Column) || ContentScreens.IsStateColumn(_form.Table, _project, Column) ? FieldKind.SystemStamp
         : _form.TypedKey && Column.IsPrimaryKey ? (_form.TextKey ? FieldKind.TypedKey : FieldKind.TypedNumberKey)
         : _form.LookupOf(Column) is not null ? FieldKind.Lookup
         : Column.HasChoices ? FieldKind.Choices
@@ -106,9 +106,12 @@ public sealed class FormColumn
     public bool IsMoneyInput => _isMoneyInput ??=
         Column.IsMoneyAmount && TemplateHelpers.IsNumber(Column) && !Column.IsSystemStampColumn && _form.LookupOf(Column) is null && !Column.HasChoices && !(_form.TypedKey && Column.IsPrimaryKey);
 
-    /// <summary> The person must give this column a value: a field of the form that is NOT NULL, other than the system's own stamps and a yes/no box (which always holds a value). Every stack's
+    /// <summary> The person must give this column a value: a field of the form that is NOT NULL, other than the system's own stamps, the slug of a content table (the server makes it) and a yes/no box (which always holds a value). Every stack's
     /// <c>required</c> check and red mark read this, so they cannot drift apart. </summary>
-    public bool IsRequired => !Column.IsNullable && !IsSystemStampField && !IsBooleanField;
+    public bool IsRequired => !Column.IsNullable && !IsSystemStampField && !IsBooleanField && !ContentScreens.IsSlug(_form.Table, _project, Column);
+
+    /// <summary> The hint inside an empty text box: what to enter, or for the slug of a content table that the server makes it from the title. </summary>
+    public string Placeholder => ContentScreens.IsSlug(_form.Table, _project, Column) ? ContentScreens.SlugHint : Labels.Placeholder(Column);
 
     /// <summary> The caption carries the red asterisk: <see cref="IsRequired"/>, unless the project turned <c>RequiredMarks</c> off. </summary>
     public bool IsMarked => _project.RequiredMarks && IsRequired;

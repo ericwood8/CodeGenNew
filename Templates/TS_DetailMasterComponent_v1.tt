@@ -75,6 +75,7 @@
         // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
         bool softScreen = TableShapes.For(Model, Project).SoftDelete is not null;
         bool validOnScreen = TableShapes.For(Model, Project).Effective is not null;
+        bool contentTable = TableShapes.For(Model, Project).Content is not null;
         var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
         var odataFilters = odata && !form.IsNameActive ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         string If(ColumnModel c) => chooseColumns ? $" *ngIf=\"columns.has('{c.Name}')\"" : "";   // the attribute that draws a cell only while its column is chosen
@@ -321,6 +322,9 @@
         H($"                    <button{writeOnly} (click)=\"{(odata && !nameActive ? "open" : "edit")}({variable})\" class=\"btn-action\">Edit</button>");
         if (canClone)
             H($"                    <button{writeOnly} (click)=\"clone({variable}.{keyProp}!)\" class=\"btn-action\">Clone</button>");
+        if (TableShapes.For(Model, Project).Content is { } contentButtons)
+            foreach (var action in ContentScreens.Actions)
+                H($"                    <button *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}{ContentScreens.ShownTs(contentButtons, action, variable)}\" (click)=\"{action.Route}({variable}.{keyProp}!)\" class=\"btn-action\">{action.Caption}</button>");
         H($"                    <button{writeOnly} (click)=\"delete({variable}.{keyProp}!)\" class=\"btn-action delete\">Delete</button>");
         H("                </td>");
         H("            </tr>");
@@ -351,6 +355,14 @@
         H("    <dialog *ngIf=\"selectedRow\" #editDialog class=\"form-container\" (cancel)=\"$event.preventDefault(); cancel()\">");
         string headingTest = textKey ? "adding ? 'Add' : 'Edit'" : "selectedRow." + keyProp + " ? 'Edit' : 'Add'";
         H($"        <h2>{{{{{headingTest}}}}} {title}</h2>");
+        if (TableShapes.For(Model, Project).Content is { } dialogContent)
+        {
+            // the same buttons as the row's, for the saved row the dialog holds
+            H("        <div>");
+            foreach (var action in ContentScreens.Actions)
+                H($"            <button type=\"button\" *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && {ContentScreens.ShownTs(dialogContent, action, "selectedRow")}\" (click)=\"{action.Route}(selectedRow.{keyProp}!)\" class=\"btn-action\">{action.Caption}</button>");
+            H("        </div>");
+        }
         H($"        <form id=\"{variable}Form\" (ngSubmit)=\"submitForm($event, selectedRow)\">");
         if (tabbed)
         {
@@ -366,7 +378,7 @@
         {
             string id = form.FieldId(c);
             string model = $"selectedRow.{JsonNames.Camel(c.Name)}";
-            string req = c.IsNullable ? "" : " required";
+            string req = form.Field(c).IsRequired ? " required" : "";
             var formColumn = form.Field(c);
             if (formColumn.IsSystemStampField)
             {
@@ -395,7 +407,7 @@
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 string max = Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
-                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} [readonly]=\"!adding\" placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} [readonly]=\"!adding\" placeholder=\"{form.Field(c).Placeholder}\"{req}>");
             }
             else if (formColumn.IsLookupField)
             {
@@ -458,17 +470,17 @@
             else if (formColumn.IsNumberBoxField)
             {
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...); a typed key is read-only once the row exists.
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html}{(formColumn.IsTypedNumberKeyField ? " [readonly]=\"!adding\"" : "")} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html}{(formColumn.IsTypedNumberKeyField ? " [readonly]=\"!adding\"" : "")} placeholder=\"{form.Field(c).Placeholder}\"{req}>");
             }
             else if (formColumn.IsMultilineField)
             {
-                H($"                <textarea id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\" maxlength=\"{Chars(c)}\" placeholder=\"{Labels.Placeholder(c)}\"{req}></textarea>");
+                H($"                <textarea id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\" maxlength=\"{Chars(c)}\" placeholder=\"{form.Field(c).Placeholder}\"{req}></textarea>");
             }
             else
             {
                 string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
                 string pattern = c.InputPattern(Project, Model.TableName) is { Length: > 0 } p ? " " + p : "";
-                H($"                <input type=\"{c.InputType(Project, Model.TableName)}\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max}{pattern} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+                H($"                <input type=\"{c.InputType(Project, Model.TableName)}\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max}{pattern} placeholder=\"{form.Field(c).Placeholder}\"{req}>");
             }
             if (guard is not null)
             {
@@ -832,7 +844,7 @@
         if (approvalSegment is not null) T("import { ApprovalPanelComponent } from '../approvals/approval-panel.component';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
         if (softScreen || validOnScreen) T("import { RowShapeDialogComponent, ShapeColumn } from '../row-shape-dialog';");
-        if (odata && (softScreen || validOnScreen)) T($"import {{ {AngularNames.ServiceClass(Model.TableName)} }} from '../../{servicesFolder}/{AngularNames.ServiceFile(Model.TableName)}';");   // the REST service: the OData one has no deleted rows, restore or rows valid on a day
+        if (odata && (softScreen || validOnScreen || contentTable)) T($"import {{ {AngularNames.ServiceClass(Model.TableName)} }} from '../../{servicesFolder}/{AngularNames.ServiceFile(Model.TableName)}';");   // the REST service: the OData one has no deleted rows, restore, rows valid on a day or publish
         if (chooseColumns) T($"import {{ GridColumns{(columnList.Any(c => c.Cut) ? ", cutText" : "")} }} from '../../grid-columns';");
         T(odata && !nameActive ? "import { ColumnFilterField, ODataPagedScreen, saveSorts } from '../odata-screen';" : $"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
         if (gridChildren.Any(ch => ch.KeyJson is not null)) T($"import {{ apiMessage }} from '../../{servicesFolder}/api-error';");
@@ -861,10 +873,10 @@
         }
         T($"  protected readonly noun = '{form.Words}';");
         T($"  protected readonly idKey = '{keyProp}';");
+        if (odata && (softScreen || validOnScreen || contentTable)) T($"  private readonly shapeService = inject({AngularNames.ServiceClass(Model.TableName)});");
         if (softScreen || validOnScreen)
         {
             T("  shapeView: 'deleted' | 'validOn' | null = null; // the dialog of the deleted rows, or of the rows valid on a day");
-            if (odata) T($"  private readonly shapeService = inject({AngularNames.ServiceClass(Model.TableName)});");
             T("  readonly shapeColumns: ShapeColumn[] = [");
             T(string.Join(",\n", columnList.Select(c =>
             {
@@ -914,6 +926,8 @@
             }
             T("  ];");
             T("  protected override readonly selectColumns = this.columns.properties; // the grid asks for the shown columns and the key (one array, kept up to date); a row is read whole when it is opened");
+            if (TableShapes.For(Model, Project).Content is { } stateShape)
+                T($"  protected override readonly alwaysSelected = ['{JsonNames.Camel(stateShape.Status.Name)}']; // the buttons read the status even when its column is hidden");
         }
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
         foreach (var p in parents.Where(p => !Ahead(p)))
@@ -1319,6 +1333,17 @@
             T("    // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.");
             T("    return typeof value === 'string' ? value.replace(/^(\\d{4}-\\d{2}-\\d{2})T.*$/, '$1') : String(value);");
             T("  }");
+        }
+        if (contentTable)
+        {
+            // Publish, Unpublish and Archive change the state on the server (the form shows the state as text); the grid is read again.
+            foreach (var action in ContentScreens.Actions)
+            {
+                T();
+                T($"  {action.Route}(id: {keyType.TypeScript}): void {{");
+                T($"    this.{(odata ? "shapeService" : "service")}.{action.Route}(id).subscribe({{ next: (saved) => {{ if (this.selectedRow?.{keyProp} === id) this.selectedRow = {{ ...this.selectedRow, {ContentScreens.StateCopyTs(TableShapes.For(Model, Project).Content!, "saved")} }}; this.load(); }}, error: (error) => this.showError('{action.Gerund}', error) }});");
+                T("  }");
+            }
         }
         T("}");
 

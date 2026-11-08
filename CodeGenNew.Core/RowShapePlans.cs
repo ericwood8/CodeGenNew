@@ -213,13 +213,13 @@ public static class EffectiveDatePlan
     }
 }
 
-/// <summary> Whether a table has any row shape (tree, soft delete, effective dating) and the reasons the project's lists cannot be served. </summary>
+/// <summary> Whether a table has any row shape (tree, content, soft delete, effective dating) and the reasons the project's lists cannot be served. </summary>
 public static class RowShapePlan
 {
-    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0;
+    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.ContentTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0;
 
     public static bool Has(TableModel table, ProjectSettings project) =>
-        TreePlan.For(table, project) is not null || SoftDeletePlan.For(table, project) is not null || EffectiveDatePlan.For(table, project) is not null;
+        TreePlan.For(table, project) is not null || ContentPlan.For(table, project) is not null || SoftDeletePlan.For(table, project) is not null || EffectiveDatePlan.For(table, project) is not null;
 
     /// <summary> Every reason the three settings cannot be served by <paramref name="database"/>. </summary>
     public static List<string> Problems(DatabaseModel database, ProjectSettings project)
@@ -227,15 +227,16 @@ public static class RowShapePlan
         var problems = new List<string>();
         foreach (var table in database.Tables)
         {
-            foreach (string? problem in new[] { TreePlan.Problem(table, project), SoftDeletePlan.Problem(table, project), EffectiveDatePlan.Problem(table, project) })
+            foreach (string? problem in new[] { TreePlan.Problem(table, project), ContentPlan.Problem(table, project), SoftDeletePlan.Problem(table, project), EffectiveDatePlan.Problem(table, project) })
                 if (problem is not null)
                     problems.Add(problem);
         }
         problems.AddRange(TreePlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"TreeTables: {e.Table} is not a table of the database."));
+        problems.AddRange(ContentPlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"ContentTables: {e.Table} is not a table of the database."));
         problems.AddRange(SoftDeletePlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"SoftDeleteTables: {e.Table} is not a table of the database."));
         problems.AddRange(EffectiveDatePlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"EffectiveDatedTables: {e.Table} is not a table of the database."));
         if (Any(project) && project.AccessModeFor(database.Dialect) != AccessMode.Ef)
-            problems.Add("TreeTables, SoftDeleteTables and EffectiveDatedTables need AccessMode=Ef.");
+            problems.Add("TreeTables, ContentTables, SoftDeleteTables and EffectiveDatedTables need AccessMode=Ef.");
         return problems;
     }
 }

@@ -64,6 +64,10 @@
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
     // TreeTables: the checks and routes of a tree (not for a table that is scoped to an owner or a tenant, whose rows the tree routes would have to limit)
     var treePlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).Tree : null;
+    // ContentTables: the slug and status rules on create and update, publish, unpublish and archive, and the public reads (a table of a tenant, or with a second person's approval, is only written by the ASP.NET API)
+    var contentPlan = log ? null : TableShapes.For(Model, Project).Content;
+    if (contentPlan is not null && ContentApiWords.NotBuilt(contentPlan) is { } contentNotBuilt)
+        Error(contentNotBuilt);
     // EffectiveDatedTables: the period check on create and update and GET current (not for a table limited to an owner or a tenant)
     var effPlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).Effective : null;
     var effNames = effPlan is null ? null : new RustEffectiveWriter.Names(t.Struct, t.FieldOf(effPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.Key.DbName), keyType, t.FieldOf(effPlan.From).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.From.DbName),
@@ -100,14 +104,14 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
-    bool usesPost = t.Clone is not null || treePlan is not null || softRoutes;
-    bool usesDb = treePlan is not null || effNames is not null;
+    bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null;
     Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -193,6 +197,12 @@
         sb.Append(RustTreeWriter.RouteLines(t.Route, readLayer, writeLayer, roles));
     if (effNames is not null)
         sb.Append(RustEffectiveWriter.RouteLine(t.Route, readLayer));
+    if (contentPlan is not null)
+    {
+        sb.Append(RustContentWriter.StatusRouteLines(t.Route, writeLayer));
+        if (!auth)
+            sb.Append(RustContentWriter.PublicRouteLines(t.Route));
+    }
     if (softRoutes)
     {
         string adminLayer = softAdmin ? ".route_layer(middleware::from_fn(|request, next| check_roles(SOFT_ADMIN_ROLES, true, request, next)))" : "";
@@ -201,6 +211,15 @@
     }
     Line("}");
     Line();
+    if (contentPlan is not null && auth)
+    {
+        Line("/// The public reads of the content table: the sign-in check leaves them out.");
+        Line("pub fn public_router() -> Router<Pool> {");
+        Line("    Router::new()");
+        sb.Append(RustContentWriter.PublicRouteLines(t.Route));
+        Line("}");
+        Line();
+    }
     if (effNames is not null)
         Line(RustEffectiveWriter.Code(effNames, t.LiveAnd()));
     if (softRoutes)
@@ -224,6 +243,8 @@
     }
     if (treePlan is not null)
         Line(RustTreeWriter.Code(treePlan, DialectInfo.For(Model.Dialect), keyType, treePlan.Text is not null, t.LiveAnd(), t.LiveWhere()));
+    if (contentPlan is not null)
+        Line(RustContentWriter.Code(t, contentPlan, DialectInfo.For(Model.Dialect), t.LiveAnd(), scoped, userArgument));
     if (scoped)
     {
         // who owns a row: its own owner column, or the owner of the parent row it belongs to
@@ -395,7 +416,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -454,6 +475,8 @@
         Line($"    check_tree(&pool, None, row.{t.FieldOf(treePlan.Parent).Name}).await?;");
     if (effNames is not null)
         Line("    check_effective(&pool, None, &row).await?;");
+    if (contentPlan is not null)
+        Line("    new_content(&pool, &mut row).await?;");
     Line("    let row = repo::insert(&pool, &row).await?;");
     if (tenantTable)
         Line($"    attach_creator(&pool, &user, row.{t.Key.Name}).await?;");
@@ -502,7 +525,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -537,6 +560,11 @@
         Line($"    check_tree(&pool, Some(id), row.{t.FieldOf(treePlan.Parent).Name}).await?;");
     if (effNames is not null)
         Line("    check_effective(&pool, Some(id), &row).await?;");
+    if (contentPlan is not null)
+    {
+        Line($"    let stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+        Line("    change_content(&pool, id, &mut row, &stored).await?;");
+    }
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();

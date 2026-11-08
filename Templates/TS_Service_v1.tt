@@ -166,6 +166,25 @@
             L("        return this.http.post<{ moved: number }>(`${this.apiUrl}/${id}/promote-children`, null);");
             L("    }");
         }
+        if (TableShapes.For(Model, Project).Content is not null)
+        {
+            L();
+            L("    // a content table (ContentTables): the state is changed by these calls, never by a save; the public reads need no sign-in and answer only published rows");
+            foreach (var action in ContentScreens.Actions)
+            {
+                L($"    {action.Route}(id: {keyTs}): Observable<{baseName}> {{");
+                L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/{action.Route}`, null);");
+                L("    }");
+                L();
+            }
+            L($"    getPublic(pageNumber = 1, pageSize = 20): Observable<{baseName}[]> {{");
+            L($"        return this.http.get<{baseName}[]>(`${{this.apiUrl}}/public?pageNumber=${{pageNumber}}&pageSize=${{pageSize}}`);");
+            L("    }");
+            L();
+            L($"    getPublicBySlug(slug: string): Observable<{baseName}> {{");
+            L($"        return this.http.get<{baseName}>(`${{this.apiUrl}}/public/${{encodeURIComponent(slug)}}`);");
+            L("    }");
+        }
         if (TableShapes.For(Model, Project).SoftDelete is not null)
         {
             L();

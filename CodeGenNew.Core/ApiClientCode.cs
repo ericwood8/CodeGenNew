@@ -157,6 +157,20 @@ public static class ApiClientCode
             L();
             L($"    public async Task PromoteChildrenAsync({keyType} id) => (await http.PostAsync($\"{{Url}}/{{{id}}}/promote-children\", null)).EnsureSuccessStatusCode();");
         }
+        if (!nameActive && TableShapes.For(table, project).Content is not null)
+        {
+            L();
+            L("    // A content table (ContentTables): the state is changed by these calls, never by a save; the row comes back. Public reads need no sign-in and answer only published rows.");
+            L($"    public async Task<{type}> PublishAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/publish\", null)).ReadAsync<{type}>();");
+            L();
+            L($"    public async Task<{type}> UnpublishAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/unpublish\", null)).ReadAsync<{type}>();");
+            L();
+            L($"    public async Task<{type}> ArchiveAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/archive\", null)).ReadAsync<{type}>();");
+            L();
+            L($"    public async Task<List<{type}>> GetPublicAsync(int page = 1, int pageSize = 20) => await (await http.GetAsync($\"{{Url}}/public?pageNumber={{page}}&pageSize={{pageSize}}\")).ReadAsync<List<{type}>>();");
+            L();
+            L($"    public async Task<{type}> GetPublicBySlugAsync(string slug) => await (await http.GetAsync($\"{{Url}}/public/{{Uri.EscapeDataString(slug)}}\")).ReadAsync<{type}>();");
+        }
         if (TableShapes.For(table, project).SoftDelete is not null)
         {
             L();

@@ -149,6 +149,24 @@ public class SmallFindingsTests
     }
 
     [TestMethod]
+    public async Task OnlyTables_leaves_every_other_table_out_of_the_run()
+    {
+        var (report, files) = await Generate(["Api"], "CS_Entity", ("OnlyTables", "Region,Country"));
+        Assert.IsTrue(report.Success, string.Join(" | ", report.Errors));
+        CollectionAssert.AreEquivalent(new[] { "Shop.Api/Entities/Region.cs", "Shop.Api/Entities/Country.cs" }, files.Keys.Where(f => f.Contains("/Entities/")).ToArray());
+        Assert.IsEmpty(report.Warnings);
+    }
+
+    [TestMethod]
+    public async Task OnlyTables_reports_a_kept_table_that_points_at_a_left_out_one_and_a_name_that_is_not_a_table()
+    {
+        var (report, _) = await Generate(["Api"], "CS_Entity", ("OnlyTables", "Customer,Nothing"));
+        string warnings = string.Join(" | ", report.Warnings);
+        Expect.Contains(warnings, "OnlyTables: no such table in [main]: Nothing.");
+        Expect.Contains(warnings, "OnlyTables: Customer has a foreign key to Region, which is left out; add it to OnlyTables.");
+    }
+
+    [TestMethod]
     public async Task SeedTables_writes_a_seed_class_per_table_and_the_class_that_runs_them()
     {
         var (report, files) = await Generate(["Api"], "CS_Seed,CS_SeedData", ("SeedTables", "Region,Country"));

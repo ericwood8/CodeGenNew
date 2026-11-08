@@ -14,6 +14,49 @@ public static class DesktopApprovalTests
         return "{ " + string.Join(", ", members) + " }";
     }
 
+    /// <summary> The tests of a content table (ContentTables) that is also in RowApprovals: asking makes the row pending, an approval publishes it and a rejection makes it a draft again; or nothing. </summary>
+    private static string ContentTests(ApprovalTableShape table, ProjectSettings project)
+    {
+        if (TableShapes.For(table.Table, project).Content is not { NeedsApproval: true } content)
+            return "";
+        string name = table.Table.TableName, key = content.Key.CSharpName(), status = content.Status.CSharpName();
+        string stamp = content.PublishedOn is null ? "" : $"        Assert.IsNotNull(await db.Context.Set<{name}>().AsNoTracking().Where(x => x.{key} == 1).Select(x => x.{content.PublishedOn.CSharpName()}).SingleAsync(), \"the approval stamps the time\"); \n";
+        return $$"""
+
+    private static async Task<string> StatusAsync(TestDb db) =>
+        await db.Context.Set<{{name}}>().AsNoTracking().Where(x => x.{{key}} == 1).Select(x => x.{{status}}).SingleAsync();
+
+    [TestMethod]
+    public async Task Asking_makes_a_content_row_pending_and_an_approval_publishes_it()
+    {
+        var (db, service) = await OpenAsync("ann");
+        await using var scope = db;
+        Assert.AreEqual("{{ContentWords.Draft}}", await StatusAsync(db));
+        await service.RequestAsync("{{name}}", 1, null);
+        Assert.AreEqual("{{ContentWords.Pending}}", await StatusAsync(db));
+        DesktopCaller.Name = "bob";
+        await service.DecideAsync("{{name}}", 1, true, "fine");
+        Assert.AreEqual("{{ContentWords.Published}}", await StatusAsync(db));
+{{stamp}}    }
+
+    [TestMethod]
+    public async Task A_rejection_or_a_withdrawal_makes_a_pending_content_row_a_draft_again()
+    {
+        var (db, service) = await OpenAsync("ann");
+        await using var scope = db;
+        await service.RequestAsync("{{name}}", 1, null);
+        DesktopCaller.Name = "bob";
+        await service.DecideAsync("{{name}}", 1, false, "not yet");
+        Assert.AreEqual("{{ContentWords.Draft}}", await StatusAsync(db));
+        DesktopCaller.Name = "ann";
+        await service.RequestAsync("{{name}}", 1, null);
+        await service.WithdrawAsync("{{name}}", 1);
+        Assert.AreEqual("{{ContentWords.Draft}}", await StatusAsync(db));
+    }
+
+""";
+    }
+
     public static string WinUI3(ApprovalPlan plan, ProjectSettings project, string testNamespace, IEnumerable<string> usings)
     {
         var user = plan.User!;
@@ -28,6 +71,7 @@ public static class DesktopApprovalTests
             return SampleJson(user.Table, project, overrides);
         }
         var (approverConstants, approverRows, approverTests) = ApproverParts(plan, project, table.Table.TableName);
+        string contentTests = ContentTests(table, project);
         var o = new StringBuilder();
         foreach (string u in usings)
             o.Append($"using {u};\n");
@@ -181,7 +225,7 @@ public class ApprovalServiceTests
         }
         Assert.AreEqual("reject", seen);
     }
-{{approverTests}}}
+{{approverTests}}{{contentTests}}}
 """");
         return o.ToString();
     }

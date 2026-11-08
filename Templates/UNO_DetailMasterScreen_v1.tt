@@ -46,6 +46,7 @@
     // code-behind (CurrencyNumberFormatter.cs, written alongside, since XAML cannot declare a NumberFormatter) and rounded to the column's scale;
     // any other decimal, float or real is limited to NumericClassifier.DecimalRange.
 
+    var contentShape = TableShapes.For(Model, Project).Content;   // ContentTables: Publish, Unpublish and Archive in the dialog of a saved row
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
     var userScreen = UserScreenPlan.ForUno(Model, Project);   // the user table: a Set password box, the administrator flag for administrators only
     var keyColumn = form.KeyColumn;
@@ -128,7 +129,7 @@
     <!-- The error bar is above the scrolling area so a validation message is never scrolled out of sight. -->
     <StackPanel Spacing="12">
         <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" /><#= contentShape is not null ? ContentScreens.DialogXaml("        ") : "" #>
     <ScrollViewer MinWidth="560" MaxHeight="620" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto">
         <!-- The bottom padding stops the last child-grid row being cut off at the end of the scroll. -->
         <StackPanel Spacing="12" Padding="0,0,0,24">
@@ -422,7 +423,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         {
             deferral.Complete();
         }
-    }
+    }<#= contentShape is not null ? ContentScreens.DialogHandlers() : "" #>
 <#
         foreach (var c in shown.Where(c => form.Field(c).IsDateValue && c.IsNullable))
         {
@@ -835,7 +836,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         }
 #>
 
-    public <#= table #>DetailMasterViewModel(ApiClients api, <#= type #>? editing)
+<#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, type, "_api." + UnoNames.ClientProperty(table)) : "" #>    public <#= table #>DetailMasterViewModel(ApiClients api, <#= type #>? editing)
     {
         _api = api;
         _editing = editing;
@@ -846,7 +847,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         foreach (var c in shown)
             Write(DesktopFormCode.LoadLines(form, c));
 #>
-        }
+<#= contentShape is not null ? "            RefreshContentButtons();\n" : "" #>        }
     }
 
     /// <summary> Loads the drop-downs, and the child grids when editing an existing row. </summary>

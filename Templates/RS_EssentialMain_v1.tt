@@ -120,6 +120,9 @@ pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
 <# if (Project.InboundTables.Length > 0) { #>
     let router = router.merge(routes::inbound::public_router());   // the signed receive routes of the inbound tables: not signed in
 <# } #>
+<# if (auth && Project.ContentTables.Length > 0) { #>
+    let router = router.merge(routes::public_router());   // the public reads of the content tables: not signed in
+<# } #>
 <#
     if (Project.ApiDocs)
     {

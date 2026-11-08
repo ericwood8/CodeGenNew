@@ -157,6 +157,15 @@
             L("  // an inbound event table: one event marked processed (InboundTables); the answer says whether this call did it or it was done already");
             L($"  markProcessed: (id: {keyTs}) => request<{{ processed: boolean; alreadyProcessed: boolean; row: {baseName} }}>(`${{apiUrl}}/{keyPath}/processed`, {{ method: 'POST' }}),");
         }
+        if (TableShapes.For(Model, Project).Content is not null)
+        {
+            L();
+            L("  // a content table (ContentTables): the state is changed by these calls, never by a save; the public reads need no sign-in and answer only published rows");
+            foreach (var action in ContentScreens.Actions)
+                L($"  {action.Route}: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/{action.Route}`, {{ method: 'POST' }}),");
+            L($"  getPublic: (pageNumber = 1, pageSize = 20) => request<{baseName}[]>(`${{apiUrl}}/public?pageNumber=${{pageNumber}}&pageSize=${{pageSize}}`),");
+            L($"  getPublicBySlug: (slug: string) => request<{baseName}>(`${{apiUrl}}/public/${{encodeURIComponent(slug)}}`),");
+        }
         if (TableShapes.For(Model, Project).Tree is not null)
         {
             L();

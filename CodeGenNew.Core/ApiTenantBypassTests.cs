@@ -8,7 +8,7 @@ public static class ApiTenantBypassTests
 {
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
         project.ApiTests && project.ApiAuth && TenantPlan.IsEnabled(project) && TenantPlan.TenantTableOf(database, project) is not null
-        && (TenantBypassPlan.Dashboard(database, project).Count > 0 || TenantBypassPlan.Junctions(database, project).Count > 0 || TenantBypassPlan.Approvals(database, project) is not null || TenantBypassPlan.HostColumn(database, project) is not null);
+        && (TenantBypassPlan.Dashboard(database, project).Count > 0 || TenantBypassPlan.Junctions(database, project).Count > 0 || TenantBypassPlan.Approvals(database, project) is not null || TenantBypassPlan.HostColumn(database, project) is not null || TenantBypassPlan.Contents(database, project).Count > 0);
 
     /// <summary> The route and the key property of a table's API as its own test class uses them. </summary>
     private static (string Route, string Key) RouteOf(TableModel table, ProjectSettings project)
@@ -234,6 +234,85 @@ public static class ApiTenantBypassTests
             L("        {");
             L("            await RunAsync(ApprovalCleanup);");
             L("            await RemoveTenantAsync(other);");
+            L("        }");
+            L("    }");
+        }
+
+        foreach (var c in TenantBypassPlan.Contents(database, project))
+        {
+            var (route, key) = RouteOf(c.Table, project);
+            string title = JsonNames.Camel(c.Content.Title.Name), slug = JsonNames.Camel(c.Content.Slug.Name), type = c.Table.TableName;
+            L();
+            L("    [TestMethod]");
+            L($"    public async Task {type}_the_public_routes_read_the_tenant_of_the_host_and_the_other_routes_stay_in_the_callers_tenant()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        string token = Guid.NewGuid().ToString(\"N\")[..10];");
+            L("        string labelA = \"a\" + token, labelB = \"b\" + token, address = \"same-\" + token;");
+            L("        int a = await MakeTenantAsync(labelA);");
+            L("        int b = await MakeTenantAsync(labelB);");
+            L("        JsonObject? rowA = null, rowB = null;");
+            L($"        using var inA = ApiFixture.ClientInTenant(a, \"{admin}\");");
+            L($"        using var inB = ApiFixture.ClientInTenant(b, \"{admin}\");");
+            L("        try");
+            L("        {");
+            L("            async Task<JsonObject> MakeAsync(HttpClient client, string text)");
+            L("            {");
+            L($"                var body = await {type}ApiTests.NewBodyAsync();");
+            L($"                body[\"{title}\"] = text;");
+            L($"                body[\"{slug}\"] = address;");
+            L($"                using var made = await client.PostAsJsonAsync(\"{route}\", body);");
+            L("                Assert.AreEqual(HttpStatusCode.Created, made.StatusCode, await made.Content.ReadAsStringAsync());");
+            L("                return (await made.Content.ReadFromJsonAsync<JsonObject>())!;");
+            L("            }");
+            L("            rowA = await MakeAsync(inA, \"A \" + token);");
+            L("            rowB = await MakeAsync(inB, \"B \" + token);");
+            L($"            Assert.AreEqual(address, rowA[\"{slug}\"]!.GetValue<string>(), \"a slug is unique per tenant, so both tenants keep it\");");
+            L($"            Assert.AreEqual(address, rowB[\"{slug}\"]!.GetValue<string>());");
+            L("            var named = await " + type + "ApiTests.NewBodyAsync();");
+            L($"            named[\"{slug}\"] = address;");
+            L($"            using var taken = await inA.PostAsJsonAsync(\"{route}\", named);");
+            L("            Assert.AreEqual(HttpStatusCode.Conflict, taken.StatusCode, \"a slug the tenant already uses is refused\");");
+            L();
+            L($"            string KeyOf(JsonObject row) => row[\"{key}\"]!.ToString();");
+            L($"            using var rival = await inB.PostAsync($\"{route}/{{KeyOf(rowA)}}/publish\", null);");
+            L("            Assert.AreEqual(HttpStatusCode.NotFound, rival.StatusCode, \"another tenant cannot publish a row it does not see\");");
+            L($"            using var own = await inA.PostAsync($\"{route}/{{KeyOf(rowA)}}/publish\", null);");
+            L("            Assert.AreEqual(HttpStatusCode.OK, own.StatusCode, await own.Content.ReadAsStringAsync());");
+            L($"            using var ownB = await inB.PostAsync($\"{route}/{{KeyOf(rowB)}}/publish\", null);");
+            L("            Assert.AreEqual(HttpStatusCode.OK, ownB.StatusCode, await ownB.Content.ReadAsStringAsync());");
+            L();
+            L("            using var reader = ApiFixture.Anonymous();");
+            L("            async Task<HttpResponseMessage> ReadAsync(string host, string path) => await reader.SendAsync(new HttpRequestMessage(HttpMethod.Get, \"http://\" + host + path));");
+            L("            foreach (var (label, expected) in new[] { (labelA, \"A \" + token), (labelB, \"B \" + token) })");
+            L("            {");
+            L($"                using var single = await ReadAsync(label + \".example.test\", $\"{route}/public/{{address}}\");");
+            L("                Assert.AreEqual(HttpStatusCode.OK, single.StatusCode, await single.Content.ReadAsStringAsync());");
+            L($"                Assert.AreEqual(expected, (await single.Content.ReadFromJsonAsync<JsonObject>())![\"{title}\"]?.GetValue<string>(), \"the host names the tenant whose row is answered\");");
+            L($"                using var listing = await ReadAsync(label + \".example.test\", \"{route}/public?pageSize=100\");");
+            L("                var listed = (await listing.Content.ReadFromJsonAsync<JsonArray>())!;");
+            L($"                Assert.AreEqual(1, listed.Count(n => n![\"{slug}\"]!.GetValue<string>() == address), \"the list holds the host's tenant only\");");
+            L("            }");
+            L($"            using var noHost = await ReadAsync(\"localhost\", $\"{route}/public/{{address}}\");");
+            L("            Assert.AreEqual(HttpStatusCode.NotFound, noHost.StatusCode, \"a host that names no tenant answers no row\");");
+            L($"            using var noHostList = await ReadAsync(\"nobody\" + token + \".example.test\", \"{route}/public?pageSize=100\");");
+            L("            Assert.AreEqual(0, (await noHostList.Content.ReadFromJsonAsync<JsonArray>())!.Count);");
+            L();
+            L($"            using var unpublished = await inA.PostAsync($\"{route}/{{KeyOf(rowA)}}/unpublish\", null);");
+            L("            Assert.AreEqual(HttpStatusCode.OK, unpublished.StatusCode);");
+            L($"            using var goneA = await ReadAsync(labelA + \".example.test\", $\"{route}/public/{{address}}\");");
+            L("            Assert.AreEqual(HttpStatusCode.NotFound, goneA.StatusCode, \"unpublishing hides the row of that tenant only\");");
+            L($"            using var stillB = await ReadAsync(labelB + \".example.test\", $\"{route}/public/{{address}}\");");
+            L("            Assert.AreEqual(HttpStatusCode.OK, stillB.StatusCode);");
+            L("        }");
+            L("        finally");
+            L("        {");
+            L($"            if (rowA is not null)");
+            L($"                using (await inA.DeleteAsync($\"{route}/{{rowA[\"{key}\"]}}\")) {{ }}");
+            L($"            if (rowB is not null)");
+            L($"                using (await inB.DeleteAsync($\"{route}/{{rowB[\"{key}\"]}}\")) {{ }}");
+            L("            await RemoveTenantAsync(a);");
+            L("            await RemoveTenantAsync(b);");
             L("        }");
             L("    }");
         }

@@ -24,7 +24,7 @@
     string baseNameActiveEntity = options.BaseNameActiveEntity;
     string validation(string when) => options.Validation ? when : "";
     string auth(string when) => options.Auth ? when : "";
-    // the BeforeSaveAsync and BeforeDeleteAsync hooks run with ApiAuth, and also when the project lists a TreeTables, SoftDeleteTables or EffectiveDatedTables table (their checks are hooks)
+    // the BeforeSaveAsync and BeforeDeleteAsync hooks run with ApiAuth, and also when the project lists a TreeTables, ContentTables, SoftDeleteTables or EffectiveDatedTables table (their checks are hooks)
     string hooks(string when) => options.Hooks ? when : "";
     // TenantTable: a create writes the caller's tenant into a tenant-owned row and an update keeps it (the context filter hides the other tenants' rows)
     string tenants(string when) => options.Tenants ? when : "";

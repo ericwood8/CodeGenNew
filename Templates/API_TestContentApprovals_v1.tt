@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // API_TestContentApprovals_v1.tt
+    // Generates: <Table>ApprovalPublishApiTests.cs   (the test project; see OutputRoot in API_TestContentApprovals_v1.tt.config)
+    // The tests of a content table that is also in RowApprovals: publishing asks for a second person and the row waits as pending, the requester cannot approve their own request, another person's approval
+    // publishes the row, a rejection or leaving the pending state ends the request, and a person who is not in the user table is refused. Each test puts its people and a draft row in the scratch database
+    // and removes them again. Writes nothing without ContentTables, RowApprovals, ApiAuth and ApiTests, or when the people and the row cannot be made from the schema.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+
+    foreach (var (content, seed) in ApiContentApprovalTests.Tables(Database, Project))
+        Write("@@@FILE " + content.Table.TableName + "ApprovalPublishApiTests.cs@@@\n" + ApiContentApprovalTests.ClassText(content, seed, Project));
+#>

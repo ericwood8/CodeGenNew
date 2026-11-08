@@ -1,0 +1,13 @@
+# a tenant-owned content table: the public routes read the tenant of the request host
+@schema=tenants_content
+@stack=api
+ApiAuth=true
+TenantTable=Tenant
+TenantMembership=EmployeeTenant:EmployeeId:TenantId:Role
+TenantHostColumn=Slug
+UserTable=Employee
+UserNameColumn=Login
+UserRoleColumn=IsManager
+UserAdminColumn=IsAdministrator
+ContentTables=Post
+ApiTests=true

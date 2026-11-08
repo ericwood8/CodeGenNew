@@ -429,6 +429,10 @@ app.include_router(people_router)
 <# if (Project.ApiAuth && Project.TokenTables.Length > 0 && Project.TokenAnonymousSpend.Length > 0) { #>
 app.include_router(token_public_router)
 <# } #>
+<# if (Project.ContentTables.Length > 0) { #>
+for router in getattr(routes, "public_routers", []):
+    app.include_router(router)   # the public reads of the content tables
+<# } #>
 for router in routes.routers:
     app.include_router(router, dependencies=[Depends(require_user)])
 <#

@@ -253,8 +253,8 @@
         if (Project.Auth)
             L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");
         L($"@inject {clientType} Client");
-        if (odata && (softScreen || validOnScreen))
-            L($"@inject {type}Client ShapeClient");   // the REST client: the OData one has no deleted rows, restore or rows valid on a day
+        if (odata && (softScreen || validOnScreen || TableShapes.For(Model, Project).Content is not null))
+            L($"@inject {type}Client ShapeClient");   // the REST client: the OData one has no deleted rows, restore, rows valid on a day or publish
         if (gated || children.Any(ch => ch.WriteGate is not null) || userScreen is not null)
             L("@inject AuthSession Session");
         if (userScreen is not null)
@@ -436,6 +436,14 @@
         L(Gate("                    ", odata ? "<button type=\"button\" @onclick=\"() => OpenAsync(item)\">Edit</button>" : "<button type=\"button\" @onclick=\"() => Edit(item)\">Edit</button>"));
         if (canClone)
             L(Gate("                    ", "<button type=\"button\" @onclick=\"() => CloneAsync(item)\">Clone</button>"));
+        if (TableShapes.For(Model, Project).Content is { } contentShape)
+            foreach (var action in ContentScreens.Actions)
+            {
+                L($"                    @if ({(gated ? "CanWrite && " : "")}{ContentScreens.ShownCs(action, "item", contentShape.Status.CSharpName(), contentShape)})");
+                L("                    {");
+                L($"                        <button type=\"button\" @onclick=\"() => {ContentScreens.CsMethod(action)}(item)\">{action.Caption}</button>");
+                L("                    }");
+            }
         L(Gate("                    ", "<button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>"));
         L("                </td>");
         }
@@ -478,6 +486,22 @@
         L("{");
         L("    <div class=\"editor\" role=\"dialog\" aria-label=\"@(isNew ? \"Add\" : \"Edit\") §N\">");
         L("        <h2>@(isNew ? \"Add\" : \"Edit\") §N</h2>");
+        if (TableShapes.For(Model, Project).Content is { } dialogContent)
+        {
+            // the same buttons as the row's, for the saved row the editor holds
+            L("        @if (!isNew)");
+            L("        {");
+            L("            <div>");
+            foreach (var action in ContentScreens.Actions)
+            {
+                L($"                @if ({(gated ? "CanWrite && " : "")}{ContentScreens.ShownCs(action, "row!", dialogContent.Status.CSharpName(), dialogContent)})");
+                L("                {");
+                L($"                    <button type=\"button\" @onclick=\"() => {ContentScreens.CsMethod(action)}(row!)\">{action.Caption}</button>");
+                L("                }");
+            }
+            L("            </div>");
+            L("        }");
+        }
         L("        @if (message is not null)");
         L("        {");
         L("            <p class=\"error\" role=\"alert\">@message</p>");
@@ -503,7 +527,7 @@
             string label = c.Label;
             string bind = $"row.{c.CSharpName()}";
             // a required field on a tab that is not open would stop the Save with no message (the browser cannot show it), so it is checked by the browser only while its tab is open
-            string required = c.IsNullable ? "" : pageIndex > 0 ? $" required=\"@(editTab == {pageIndex})\"" : " required";
+            string required = c.IsNullable || ContentScreens.IsSlug(Model, Project, c) ? "" : pageIndex > 0 ? $" required=\"@(editTab == {pageIndex})\"" : " required";
             string input;
             var formColumn = form.Field(c);
             if (formColumn.IsSystemStampField)
@@ -965,7 +989,7 @@
         L("    {");
         L("        try");
         L("        {");
-        L(odata ? "            var result = await Client.QueryPageAsync(new ODataPageQuery(target, PageSize, null, sorts, applied, AllColumns.Where(c => Shown(c.Name)).Select(c => c.Property).ToList()));"
+        L(odata ? $"            var result = await Client.QueryPageAsync(new ODataPageQuery(target, PageSize, null, sorts, applied, AllColumns.Where(c => Shown(c.Name)).Select(c => c.Property){(TableShapes.For(Model, Project).Content is { } stateShape ? $".Append(\"{JsonNames.Camel(stateShape.Status.Name)}\").Distinct()" : "")}.ToList()));"
                 : "            var result = await Client.GetPageAsync(target, PageSize, Filters(), sortBy, descending);");
         L("            // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
         L("            if (result.Items.Count == 0 && result.TotalCount > 0 && target > 1)");
@@ -1513,6 +1537,31 @@
             L("        catch (HttpRequestException) { message = \"Problem while cloning!\"; }");
             L("    }");
         }
+        if (TableShapes.For(Model, Project).Content is { } contentStateColumns)
+            foreach (var action in ContentScreens.Actions)
+            {
+                L();
+                L($"    // The API changes the state ({action.Route}); the page is read again.");
+                L($"    private async Task {ContentScreens.CsMethod(action)}(§T item)");
+                L("    {");
+                L("        try");
+                L("        {");
+                L($"            var saved = await {(odata ? "ShapeClient" : "Client")}.{ContentScreens.CsMethod(action)}(item.§K);");
+                L($"            if (row is not null && !isNew && row.§K == item.§K)   // an open editor shows the new state and keeps what was typed");
+                L("            {");
+                foreach (var stateColumn in new[] { contentStateColumns.Status, contentStateColumns.PublishedOn }.OfType<ColumnModel>())
+                    L($"                row.{stateColumn.CSharpName()} = saved.{stateColumn.CSharpName()};");
+                L("            }");
+                L("            await LoadAsync(pageNumber);");
+                L("        }");
+                L("        catch (ApiException ex)");
+                L("        {");
+                L($"            message = ex.{ExplainCall}(\"{action.Gerund}\");");
+                L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
+                L("        }");
+                L($"        catch (HttpRequestException) {{ message = \"{ContentScreens.FailedText(action)}\"; }}");
+                L("    }");
+            }
         }
         L("}");
         Write(o.ToString());

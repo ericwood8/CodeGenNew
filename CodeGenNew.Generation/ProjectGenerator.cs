@@ -76,6 +76,7 @@ public static class ProjectGenerator
         var database = await provider.BuildAsync(options.DatabaseName, options.Schema, cancellationToken);
         project = project.ForServer(database.ServerVersion);
         progress?.Invoke($"Read {database.Tables.Count} tables of [{options.Schema}].");
+        var keptTables = LeaveOutTables(database, project, report);
 
         if (options.Stacks.Contains("Rust", StringComparer.OrdinalIgnoreCase) && database.Dialect == SqlDialect.SqlServer)
         {
@@ -88,6 +89,9 @@ public static class ProjectGenerator
         foreach (var table in withEntity)
             foreach (var column in table.Columns.Where(c => c.Name == table.TableName))
                 report.Warnings.Add($"column {table.DbTableName}.{column.DbName} has the name of its table, which C# does not allow for a member of the class; list {table.DbTableName}.{column.DbName} in IgnoredColumns to leave it out.");
+        foreach (var table in database.Tables)
+            if (ContentPlan.For(table, project) is { } content && !table.Indexes.Any(i => i.IsUnique && i.Columns.Count == 1 && i.Columns[0].EqualsIgnoreCase(content.Slug.DbName)))
+                report.Warnings.Add($"{table.DbTableName}.{content.Slug.DbName} is a content table's slug without a unique index: two requests at once can still store the same slug. Add a unique index on it; the server then refuses the second one.");
         bool desktop = options.Stacks.Any(s => s.EqualsIgnoreCase("WinUI3") || s.EqualsIgnoreCase("Uno"));
         if (desktop && project.Naming != NamingStyle.Pascal)
         {
@@ -142,6 +146,8 @@ public static class ProjectGenerator
             var model = !rows && !display
                 ? tablesByName[tableName]
                 : await provider.BuildTableModelAsync(options.Schema, tablesByName[tableName].DbTableName, rows, display, cancellationToken);
+            if (keptTables is not null)
+                model.ChildForeignKeys.RemoveAll(c => !keptTables.Contains(c.ReferencingTable) && !keptTables.Contains(c.ReferencingDbTable));
             return models[key] = model;
         }
 
@@ -192,6 +198,25 @@ public static class ProjectGenerator
             report.Essentials = await EssentialsCatalog.GenerateAsync(groups, project, options.OutputDirectory, options.ReplaceEssentials, options.DryRun, options.WithDiff, cancellationToken, cache);
         }
         return report;
+    }
+
+    /// <summary> Applies the project's <c>OnlyTables</c>: every other table is taken out of the model before any template sees it. A kept table with a foreign key to a table that was left out is reported,
+    /// since the screens and the SQL would point at a table the run does not write. </summary>
+    internal static HashSet<string>? LeaveOutTables(DatabaseModel database, ProjectSettings project, GenerateReport report)
+    {
+        if (project.OnlyTables.Length == 0)
+            return null;
+        var wanted = project.OnlyTables.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in wanted.Where(n => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(n) || t.DbTableName.EqualsIgnoreCase(n))))
+            report.Warnings.Add($"OnlyTables: no such table in [{database.SchemaName}]: {name}.");
+        database.Tables.RemoveAll(t => !wanted.Contains(t.TableName) && !wanted.Contains(t.DbTableName));
+        var kept = database.Tables.SelectMany(t => new[] { t.TableName, t.DbTableName }).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var table in database.Tables)
+            table.ChildForeignKeys.RemoveAll(c => !kept.Contains(c.ReferencingTable) && !kept.Contains(c.ReferencingDbTable));
+        foreach (var table in database.Tables)
+            foreach (var fk in table.ForeignKeys.Where(f => !kept.Contains(f.ReferencedTable)))
+                report.Warnings.Add($"OnlyTables: {table.DbTableName} has a foreign key to {fk.ReferencedTable}, which is left out; add it to OnlyTables.");
+        return kept;
     }
 
     /// <summary> Compares what this run produced with the manifest of the last one: files that are no longer produced are stale; then saves the new manifest (not on a dry run). </summary>

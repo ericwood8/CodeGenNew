@@ -13,6 +13,7 @@ public static class ApiSampleValues
     /// <summary> The text a string column's example is made of, before it is cut to the column's length. </summary>
     public static string Text(ColumnModel column, ProjectSettings? project = null, string? table = null) =>
         column.HasChoices ? column.Choices![0]
+        : project is not null && table is not null && ContentPlan.SampleText(table, column, project) is { } content ? content
         : column.Notation is { } notation ? notation.Sample
         : column.ShapeOf(project ?? ProjectSettings.FromValues([]), table) switch
         {

@@ -76,6 +76,16 @@
     foreach (string module in modules)
         Line($"    {module}.router,");
     Line("]");
+    var contentModules = Project.ApiAuth ? tables.Where(t => TableShapes.For(t.Model, Project).Content is not null).Select(t => t.Module).ToList() : [];
+    if (contentModules.Count > 0)
+    {
+        Line();
+        Line("# The public reads of the content tables: main.py includes them without the sign-in check.");
+        Line("public_routers = [");
+        foreach (string module in contentModules)
+            Line($"    {module}.public_router,");
+        Line("]");
+    }
     if (Project.WantsUsageSchedule)
     {
         Line();

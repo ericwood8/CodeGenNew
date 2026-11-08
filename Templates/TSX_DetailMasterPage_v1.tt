@@ -169,6 +169,7 @@
         string shapeApi = ReactNames.ApiVar(Model.TableName);   // the REST api module: the OData one has no deleted rows, restore or rows valid on a day
         bool softScreen = TableShapes.For(Model, Project).SoftDelete is not null;
         bool validOnScreen = TableShapes.For(Model, Project).Effective is not null;
+        bool contentScreen = TableShapes.For(Model, Project).Content is not null;
 
         // ================= imports
         T("import { useEffect, useRef, useState } from 'react';");
@@ -188,7 +189,7 @@
         if (approvalSegment is not null) T("import { ApprovalPanel } from './ApprovalPanel';");
         if (!nameActive) T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
         if (softScreen || validOnScreen) T($"import {{ RowShapeDialog }} from '../{componentsFolder}/RowShapeDialog';");
-        if (odata && (softScreen || validOnScreen)) T($"import {{ {shapeApi} }} from '../{apiFolder}/{ReactNames.ApiFile(Model.TableName)}';");   // the OData page reads the deleted rows and the rows valid on a day from the REST api
+        if (odata && (softScreen || validOnScreen || contentScreen)) T($"import {{ {shapeApi} }} from '../{apiFolder}/{ReactNames.ApiFile(Model.TableName)}';");   // the OData page reads the deleted rows and the rows valid on a day, and publishes, through the REST api
         if (shown.Any(form.IsMoneyInput) || editableChildren.Any(ch => ch.EditColumns.Any(c => ch.IsMoneyInput(c))))
             T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
         if (nameActive)
@@ -485,7 +486,7 @@
             if (canSearch) T("      filters: over.filters ?? filters,");
             T("      sorts: over.sorts ?? sorts,");
             T("      conditions: conditionsOf(filterFields, over.columnFilters ?? columnFilters),");
-            T("      select: (over.columns ?? chosen).map((name) => columnProperty[name]),");
+            T("      select: (over.columns ?? chosen).map((name) => columnProperty[name])" + (TableShapes.For(Model, Project).Content is { } stateShape ? $".concat('{JsonNames.Camel(stateShape.Status.Name)}')," : ","));   // the buttons need the status even when its column is hidden
             T("    }).then((result) => {");
             T("      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
             T("      if (result.items.length === 0 && result.totalCount > 0 && targetPage > 1) { load(result.totalPages, over); return; }");
@@ -629,6 +630,28 @@
             T("      }");
             T("    }");
             T("  };");
+        }
+        if (contentScreen)
+        {
+            // Publish, Unpublish and Archive change the state on the server (the form shows the state as text); the grid is read again.
+            foreach (var action in ContentScreens.Actions)
+            {
+                T();
+                T($"  const {action.Route} = async (id: {keyTs}): Promise<void> => {{");
+                T("    try {");
+                T($"      const saved = await {shapeApi}.{action.Route}(id);");
+                T($"      setSelectedRow((current) => current && current.{keyProp} === id ? {{ ...current, {ContentScreens.StateCopyTs(TableShapes.For(Model, Project).Content!, "saved")} }} : current);");   // an open dialog shows the new state and keeps what was typed
+                T("      load(page);");
+                T("    } catch (err) {");
+                T($"      if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{");
+                T("        setError('It no longer exists!');");
+                T("        load(page);");
+                T("      } else {");
+                T($"        setError('{ContentScreens.FailedText(action)}');");
+                T("      }");
+                T("    }");
+                T("  };");
+            }
         }
         T();
         var adds = form.NewRowTypeScript;
@@ -1019,6 +1042,9 @@
         T("                " + Gate($"<button type=\"button\" onClick={{() => {(odata && !nameActive ? "open" : "edit")}({variable})}}>Edit</button>"));
         if (canClone)
             T("                " + Gate($"<button type=\"button\" onClick={{() => void clone({variable}.{keyProp}!)}}>Clone</button>"));
+        if (TableShapes.For(Model, Project).Content is { } contentButtons)
+            foreach (var action in ContentScreens.Actions)
+                T("                {" + (gated ? "canWrite && " : "") + $"{ContentScreens.ShownTs(contentButtons, action, variable)} && <button type=\"button\" onClick={{() => void {action.Route}({variable}.{keyProp}!)}}>{action.Caption}</button>}}");
         T("                " + Gate($"<button type=\"button\" onClick={{() => void remove({variable}.{keyProp}!)}}>Delete</button>"));
         T("              </td>");
         T("            </tr>");
@@ -1072,6 +1098,14 @@
         T("        >");
         T("          {error && <p role=\"alert\">{error}</p>}");
         T($"          <h2>{{{(textKey ? "adding ? 'Add' : 'Edit'" : $"selectedRow.{keyProp} ? 'Edit' : 'Add'")}}} {title}</h2>");
+        if (TableShapes.For(Model, Project).Content is { } dialogContent )
+        {
+            // the same buttons as the row's, for the saved row the dialog holds
+            T("          <div>");
+            foreach (var action in ContentScreens.Actions)
+                T("            {" + (gated ? "canWrite && " : "") + (textKey ? "!adding" : $"selectedRow.{keyProp}") + $" && {ContentScreens.ShownTs(dialogContent, action, "selectedRow")} && <button type=\"button\" onClick={{() => void {action.Route}(selectedRow.{keyProp}!)}}>{action.Caption}</button>}}");
+            T("          </div>");
+        }
         T("          <form noValidate ref={(form) => { if (form && storedValues.current === null) storedValues.current = snapshotOf(form); }} onSubmit={handleSubmit}>");
         if (tabbed)
         {
@@ -1134,7 +1168,7 @@
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (Chars(c) > 0) T($"              maxLength={{{Chars(c)}}}");
                 T("              readOnly={!adding}");
-                T($"              placeholder=\"{Labels.Placeholder(c)}\"");
+                T($"              placeholder=\"{form.Field(c).Placeholder}\"");
                 T("              required");
                 T("            />");
             }
@@ -1150,7 +1184,7 @@
                     T($"              names={{{NamesOf(p)}}}");
                     T($"              find={{(query) => {ReactNames.ApiVar(p.Table)}.getLookup(query)}}");
                     T($"              onChange={{(key) => setSelectedRow({{ ...selectedRow, {prop}: {(c.IsNullable ? "key ?? undefined" : (p.KeyTs == "number" ? "key ?? 0" : "key ?? ''"))} }})}}");
-                    if (!c.IsNullable) T("              required");
+                    if (form.Field(c).IsRequired) T("              required");
                     T("            />");
                 }
                 else
@@ -1166,7 +1200,7 @@
                 T($"              aria-label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop} {blankTest} ''}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: {numeric} }})}}");
-                if (!c.IsNullable) T("              required");
+                if (form.Field(c).IsRequired) T("              required");
                 T("            >");
                 T("              <option value=\"\"></option>");
                 T($"              {{{ReactNames.ParentList(p)}.map((p) => (");
@@ -1183,7 +1217,7 @@
                 T($"              aria-label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop} ?? ''}}");
                 T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
-                if (!c.IsNullable) T("              required");
+                if (form.Field(c).IsRequired) T("              required");
                 T("            >");
                 T("              <option value=\"\"></option>");
                 foreach (string choice in c.Choices!)
@@ -1213,7 +1247,7 @@
                 T($"              aria-label=\"{c.Label}\"");
                 T(c.IsNullable ? $"              value={{selectedRow.{prop} ?? ''}}" : $"              value={{selectedRow.{prop}}}");
                 T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
-                if (!c.IsNullable) T("              required");
+                if (form.Field(c).IsRequired) T("              required");
                 T("            />");
                 if (c.IsNullable)
                 {
@@ -1234,7 +1268,7 @@
                 T($"              currency=\"{money.Currency}\"");
                 if (money.Min is { } lo) T($"              min={{{lo}}}");
                 if (money.Max is { } hi) T($"              max={{{hi}}}");
-                if (!c.IsNullable) T("              required");
+                if (form.Field(c).IsRequired) T("              required");
                 T("            />");
             }
             else if (formColumn.IsNumberBoxField)
@@ -1252,8 +1286,8 @@
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
                 if (formColumn.IsTypedNumberKeyField) T("              readOnly={!adding}");   // the key of a new row is typed; once the row exists it is read-only
-                T($"              placeholder=\"{Labels.Placeholder(c)}\"");
-                if (!c.IsNullable) T("              required");
+                T($"              placeholder=\"{form.Field(c).Placeholder}\"");
+                if (form.Field(c).IsRequired) T("              required");
                 T("            />");
             }
             else if (formColumn.IsMultilineField)
@@ -1264,8 +1298,8 @@
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 T($"              maxLength={{{Chars(c)}}}");
-                T($"              placeholder=\"{Labels.Placeholder(c)}\"");
-                if (!c.IsNullable) T("              required");
+                T($"              placeholder=\"{form.Field(c).Placeholder}\"");
+                if (form.Field(c).IsRequired) T("              required");
                 T("            />");
             }
             else
@@ -1278,8 +1312,8 @@
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (IsText(c) && Chars(c) > 0) T($"              maxLength={{{Chars(c)}}}");
-                T($"              placeholder=\"{Labels.Placeholder(c)}\"");
-                if (!c.IsNullable) T("              required");
+                T($"              placeholder=\"{form.Field(c).Placeholder}\"");
+                if (form.Field(c).IsRequired) T("              required");
                 T("            />");
             }
             if (guard is not null)
@@ -1600,7 +1634,7 @@
         {
             // the Columns list: a column cleared leaves the grid (and the $select of an OData page), a column ticked joins it, a sort on a hidden column is dropped, Reset puts the starting columns back
             string storageKey = "gridColumns:" + gridId;
-            string select(ChosenColumn c, bool has) => odata ? $"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ select: expect.{(has ? "arrayContaining" : "not.arrayContaining")}(['{c.Property}']) }}));" : "";
+            string select(ChosenColumn c, bool has) => odata && !(!has && TableShapes.For(Model, Project).Content is { } kept && kept.Status.Name.EqualsIgnoreCase(c.Column.Name)) ? $"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ select: expect.{(has ? "arrayContaining" : "not.arrayContaining")}(['{c.Property}']) }}));" : "";
             void Headers()
             {
                 S("    const headers = () => screen.getAllByRole('columnheader').map((header) => header.textContent ?? '');");
