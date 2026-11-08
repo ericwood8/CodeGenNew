@@ -75,7 +75,7 @@ public class GatedChangesTests
 
         var guard = plan.Guards.Single();
         Assert.AreEqual("IgnoreBadStatus", guard.Column.Name);
-        Assert.AreEqual("IsManager", guard.By.Name);
+        Assert.AreEqual("IsManager", guard.By!.Name);
         Assert.AreEqual("IgnoreBadStatusBy", guard.StampBy!.Name);
         Assert.AreEqual("IgnoreBadStatusOn", guard.StampOn!.Name);
     }

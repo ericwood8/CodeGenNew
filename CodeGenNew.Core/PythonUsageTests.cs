@@ -20,7 +20,6 @@ public static class PythonUsageTests
         string Str(string value) => PythonNames.Str(value);
         var (q1, q2, q3, sum) = UsageTestPlan.Units(t);
         bool units = t.Quantity is not null;
-        string Body(string extra) => units ? extra : "";
         string months = UsageTestPlan.RemoveMonths(database, rollup, ":tenant", ":kind") is { } removeMonths ? $"REMOVE_MONTHS = {Str(removeMonths)}\n" : "";
         var o = new StringBuilder();
         o.Append(FillAll(Head, ("§TABLE", t.Table.TableName), ("§ADMIN", Str(project.AuthAdminRole)), ("§FIRST", Str(TenantTestPlan.FirstTenantsSql(database, project))),
