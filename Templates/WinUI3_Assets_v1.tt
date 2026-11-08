@@ -1,0 +1,39 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string repositoryNamespace = "MyApp.Common.Repositories";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_Assets_v1.tt
+    // Generates: Assets.cs   (see OutputName in WinUI3_Assets_v1.tt.config)
+    // The rules of the project's AssetTables for the desktop app, which reads the database itself and so never meets the API's routes: the store (IAssetStore, a local folder: AssetStoreFolder), the key rules and
+    // the limits (AssetMaxBytes, AssetAllowedTypes), and one static class per table, <Table>Assets, with PrepareAsync (a new row holds an unattached key, an edit keeps the stored key, type and size), UploadAsync and
+    // ExportAsync (the list page's Upload and Download buttons) and RememberFileAsync / AfterDeleteAsync (a delete removes the file once the row is gone). Written only when the project lists an asset table.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+
+    var problems = Database.Tables.Select(t => AssetPlan.Problem(t, Project)).OfType<string>().ToList();
+    problems.AddRange(AssetPlan.Entries(Project).Where(e => !Database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"AssetTables: {e.Table} is not a table of the database."));
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (Database.Tables.Any(t => TableShapes.For(t, Project).Asset is not null))
+    {
+        Write(AssetDesktopCode.File(Database, Project, repositoryNamespace, contextType, usings));
+    }
+#>

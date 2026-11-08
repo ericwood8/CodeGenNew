@@ -42,6 +42,8 @@
             modules.Add("approval_routes");
         if (RustQueueTests.Applies(Database, Project))
             modules.Add("queue_routes");
+        if (RustAssetTests.Applies(Database, Project))
+            modules.Add("asset_routes");
         if (RustInboundTests.Applies(Database, Project))
             modules.AddRange(RustInboundTests.Tables(Database, Project).Select(inbound => RustInboundTests.Module(inbound, Project)));
         if (RustTokenTests.Applies(Database, Project))

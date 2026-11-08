@@ -48,6 +48,9 @@
     // the queue routes (RS_Queue) too; axum prefers their fixed paths (stats, claim) to a table's /{id}
     if (Database.Tables.Any(t => TableShapes.For(t, Project).Queue is not null))
         routeModules.Add("queue");
+    // and the upload and download routes of the asset tables (RS_Assets)
+    if (Database.Tables.Any(t => TableShapes.For(t, Project).Asset is not null))
+        routeModules.Add("asset_files");
     // and the inbound event routes (RS_Inbound); its receive routes are merged by main.rs after the sign-in check
     if (Database.Tables.Any(t => TableShapes.For(t, Project).Inbound is not null))
         routeModules.Add("inbound");

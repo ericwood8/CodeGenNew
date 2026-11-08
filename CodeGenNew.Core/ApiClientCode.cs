@@ -157,6 +157,29 @@ public static class ApiClientCode
             L();
             L($"    public async Task PromoteChildrenAsync({keyType} id) => (await http.PostAsync($\"{{Url}}/{{{id}}}/promote-children\", null)).EnsureSuccessStatusCode();");
         }
+        if (!nameActive && TableShapes.For(table, project).Asset is not null)
+        {
+            L();
+            L("    // An asset table (AssetTables): a file is sent to the upload route (the server makes the storage key; the new row comes back) and a row's file is fetched with the name and type the server gives it.");
+            L($"    public async Task<{type}> UploadAsync(Stream content, string fileName, string? contentType)");
+            L("    {");
+            L("        using var form = new MultipartFormDataContent();");
+            L("        var part = new StreamContent(content);");
+            L("        if (!string.IsNullOrEmpty(contentType))");
+            L("            part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);");
+            L("        form.Add(part, \"file\", fileName);");
+            L($"        return await (await http.PostAsync($\"{{Url}}/{AssetScreens.UploadRoute}\", form)).ReadAsync<{type}>();");
+            L("    }");
+            L();
+            L($"    public async Task<(byte[] Content, string FileName, string ContentType)> DownloadAsync({keyType} id)");
+            L("    {");
+            L($"        using var response = await http.GetAsync($\"{{Url}}/{{{id}}}/{AssetScreens.DownloadRoute}\");");
+            L("        await response.EnsureSuccessAsync();");
+            L("        var disposition = response.Content.Headers.ContentDisposition;");
+            L($"        string name = disposition?.FileNameStar ?? disposition?.FileName?.Trim('\"') ?? \"{AssetScreens.FallbackFileName}\";");
+            L("        return (await response.Content.ReadAsByteArrayAsync(), name, response.Content.Headers.ContentType?.MediaType ?? \"application/octet-stream\");");
+            L("    }");
+        }
         if (!nameActive && TableShapes.For(table, project).Content is not null)
         {
             L();

@@ -77,6 +77,7 @@
         bool softScreen = !oneRow && TableShapes.For(Model, Project).SoftDelete is not null;
         bool validOnScreen = !oneRow && TableShapes.For(Model, Project).Effective is not null;
         bool contentTable = TableShapes.For(Model, Project).Content is not null;
+        var assetTable = TableShapes.For(Model, Project).Asset;
         var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
         var odataFilters = odata && !form.IsNameActive ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         string If(ColumnModel c) => chooseColumns ? $" *ngIf=\"columns.has('{c.Name}')\"" : "";   // the attribute that draws a cell only while its column is chosen
@@ -156,6 +157,11 @@
         H("    <!-- Heading -->");
         H($"    <h1>{SingleRowPlan.Heading(title, oneRow)}</h1>");
         if (!oneRow && !readOnly) H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New</button>");
+        if (assetTable is not null)
+        {
+            H($"    <input #uploadInput type=\"file\" accept=\"{AssetScreens.Accept(Project)}\" hidden (change)=\"upload($event)\" />");
+            H($"    <button{writeOnly} type=\"button\" (click)=\"uploadInput.click()\" class=\"btn\">{AssetScreens.UploadCaption}</button>");
+        }
         if (softScreen) H("    <button type=\"button\" (click)=\"shapeView = 'deleted'\" class=\"btn\">Show deleted</button>");
         if (validOnScreen) H("    <button type=\"button\" (click)=\"shapeView = 'validOn'\" class=\"btn\">Valid on...</button>");
         if (softScreen || validOnScreen)
@@ -300,6 +306,8 @@
             if (TableShapes.For(Model, Project).Content is { } contentButtons)
                 foreach (var action in ContentScreens.Actions)
                     H($"                    <button *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}{ContentScreens.ShownTs(contentButtons, action, variable)}\" (click)=\"{action.Route}({variable}.{keyProp}!)\" class=\"btn-action\">{action.Caption}</button>");
+            if (assetTable is not null)
+                H($"                    <button (click)=\"download({variable}.{keyProp}!, {variable}.{JsonNames.Camel(assetTable.FileName.Name)})\" class=\"btn-action\">{AssetScreens.DownloadCaption}</button>");
             H($"                    <button{writeOnly} (click)=\"delete({variable}.{keyProp}!)\" class=\"btn-action delete\">Delete</button>");
             H("                </td>");
         }
@@ -783,7 +791,7 @@
         }
         T($"  protected readonly noun = '{form.Words}';");
         T($"  protected readonly idKey = '{keyProp}';");
-        if (odata && (softScreen || validOnScreen || contentTable)) T($"  private readonly shapeService = inject({AngularNames.ServiceClass(Model.TableName)});");
+        if (odata && (softScreen || validOnScreen || contentTable || assetTable is not null)) T($"  private readonly shapeService = inject({AngularNames.ServiceClass(Model.TableName)});");
         if (softScreen || validOnScreen)
         {
             T("  shapeView: 'deleted' | 'validOn' | null = null; // the dialog of the deleted rows, or of the rows valid on a day");
@@ -1059,6 +1067,23 @@
                 T($"    this.{(odata ? "shapeService" : "service")}.{action.Route}(id).subscribe({{ next: (saved) => {{ if (this.selectedRow?.{keyProp} === id) this.selectedRow = {{ ...this.selectedRow, {ContentScreens.StateCopyTs(TableShapes.For(Model, Project).Content!, "saved")} }}; this.load(); }}, error: (error) => this.showError('{action.Gerund}', error) }});");
                 T("  }");
             }
+        }
+        if (assetTable is not null)
+        {
+            // Upload sends the chosen file to the server, which makes the storage key and the row; Download saves the file of a row. The grid is read again after an upload.
+            string assetService = odata ? "shapeService" : "service";
+            T();
+            T("  upload(event: Event): void {");
+            T("    const input = event.target as HTMLInputElement;");
+            T("    const file = input.files?.[0];");
+            T("    input.value = '';");
+            T("    if (!file) return;");
+            T($"    this.{assetService}.{AssetScreens.UploadRoute}(file).subscribe({{ next: () => this.load(), error: (error) => this.showError('uploading', error) }});");
+            T("  }");
+            T();
+            T($"  {AssetScreens.DownloadRoute}(id: {keyType.TypeScript}, fileName: string): void {{");
+            T($"    this.{assetService}.{AssetScreens.DownloadRoute}(id, fileName).subscribe({{ error: (error) => this.showError('downloading', error) }});");
+            T("  }");
         }
         T("}");
 

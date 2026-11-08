@@ -12,7 +12,8 @@ public static class RowShapeTests
         var soft = TableShapes.For(table, project).SoftDelete;
         var effective = TableShapes.For(table, project).Effective;
         var content = TableShapes.For(table, project).Content;
-        if (tree is null && soft is null && effective is null && content is null)
+        var asset = TableShapes.For(table, project).Asset;
+        if (tree is null && soft is null && effective is null && content is null && asset is null)
             return "";
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
@@ -286,6 +287,111 @@ public static class RowShapeTests
             L("        await RemoveAsync(row);");
             L("    }");
             }
+        }
+
+        if (asset is not null)
+        {
+            string storageKey = JsonNames.Camel(asset.StorageKey.Name), fileName = JsonNames.Camel(asset.FileName.Name), mimeName = JsonNames.Camel(asset.MimeType.Name), sizeName = JsonNames.Camel(asset.Size.Name);
+            string[] allowed = AssetPlan.AllowedTypes(project);
+            string sampleType = allowed.Length == 0 ? "text/plain" : allowed[0].Replace("/*", "/x-sample");
+            L();
+            L("    private static async Task<HttpResponseMessage> UploadFileAsync(byte[] bytes, string name, string type)");
+            L("    {");
+            L("        using var form = new MultipartFormDataContent();");
+            L("        var part = new ByteArrayContent(bytes);");
+            L("        part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(type);");
+            L("        form.Add(part, \"file\", name);");
+            L("        return await ApiFixture.Client.PostAsync($\"{Route}/upload\", form);");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public async Task An_uploaded_file_can_be_downloaded_and_a_delete_removes_it()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(\"asset \" + Guid.NewGuid().ToString(\"N\"));");
+            L($"        using var uploaded = await UploadFileAsync(bytes, \"hello.txt\", \"{sampleType}\");");
+            L("        Assert.AreEqual(HttpStatusCode.Created, uploaded.StatusCode, await uploaded.Content.ReadAsStringAsync());");
+            L("        var row = (await uploaded.Content.ReadFromJsonAsync<JsonObject>())!;");
+            L($"        Assert.AreEqual(\"hello.txt\", row[\"{fileName}\"]!.GetValue<string>());");
+            L($"        Assert.AreEqual(bytes.Length, row[\"{sizeName}\"]!.GetValue<long>());");
+            L($"        Assert.AreEqual(\"{sampleType}\", row[\"{mimeName}\"]!.GetValue<string>());");
+            L($"        string key = row[\"{storageKey}\"]!.GetValue<string>();");
+            L($"        Assert.IsFalse(key.StartsWith(\"{AssetWords.UnattachedPrefix}\", StringComparison.Ordinal) || key.Contains('/') || key.Contains('\\\\'), \"the server made the key\");");
+            L($"        string address = $\"{{Route}}/{{row[\"{id}\"]!.GetValue<long>()}}\";");
+            string store = (project.ApiNamespace ?? "") + ".AssetStores.Current";
+            L($"        using (var inStore = await {store}.OpenAsync(key, CancellationToken.None))");
+            L("            Assert.IsNotNull(inStore, \"the file is in the store\");");
+            L("        using (var download = await ApiFixture.Client.GetAsync(address + \"/download\"))");
+            L("        {");
+            L("            Assert.AreEqual(HttpStatusCode.OK, download.StatusCode, await download.Content.ReadAsStringAsync());");
+            L("            CollectionAssert.AreEqual(bytes, await download.Content.ReadAsByteArrayAsync());");
+            L("            Assert.AreEqual(\"hello.txt\", download.Content.Headers.ContentDisposition?.FileNameStar ?? download.Content.Headers.ContentDisposition?.FileName?.Trim('\"'));");
+            L("        }");
+            if (project.ApiAuth)
+            {
+                L("        using (var anonymous = ApiFixture.Anonymous())");
+                L("        using (var refused = await anonymous.GetAsync(address + \"/download\"))");
+                L("            Assert.AreEqual(HttpStatusCode.Unauthorized, refused.StatusCode, \"a download needs a sign-in\");");
+            }
+            L("        using (var deleted = await ApiFixture.Client.DeleteAsync(address))");
+            L("            Assert.IsTrue(deleted.IsSuccessStatusCode, await deleted.Content.ReadAsStringAsync());");
+            L("        using (var gone = await ApiFixture.Client.GetAsync(address + \"/download\"))");
+            L("            Assert.AreEqual(HttpStatusCode.NotFound, gone.StatusCode);");
+            L($"        using (var removed = await {store}.OpenAsync(key, CancellationToken.None))");
+            L("            Assert.IsNull(removed, \"the delete removed the file\");");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public async Task An_upload_with_no_file_a_file_too_large_or_a_type_that_is_not_allowed_is_refused()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        using var form = new MultipartFormDataContent { { new StringContent(\"x\"), \"note\" } };");
+            L("        using (var none = await ApiFixture.Client.PostAsync($\"{Route}/upload\", form))");
+            L("        {");
+            L("            Assert.AreEqual(HttpStatusCode.BadRequest, none.StatusCode, await none.Content.ReadAsStringAsync());");
+            L($"            Assert.AreEqual(\"{AssetWords.NoFileType}\", (await none.Content.ReadFromJsonAsync<JsonObject>())![\"type\"]!.GetValue<string>());");
+            L("        }");
+            if (project.AssetMaxBytes <= 2_000_000)
+            {
+                L($"        using (var big = await UploadFileAsync(new byte[{project.AssetMaxBytes + 1}], \"big.bin\", \"{sampleType}\"))");
+                L("        {");
+                L("            Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, big.StatusCode, await big.Content.ReadAsStringAsync());");
+                L($"            Assert.AreEqual(\"{AssetWords.TooLargeType}\", (await big.Content.ReadFromJsonAsync<JsonObject>())![\"type\"]!.GetValue<string>());");
+                L("        }");
+            }
+            if (allowed.Length > 0)
+            {
+                L("        using (var wrong = await UploadFileAsync(new byte[] { 1, 2, 3 }, \"x.bin\", \"application/x-never-allowed\"))");
+                L("        {");
+                L("            Assert.AreEqual(HttpStatusCode.UnsupportedMediaType, wrong.StatusCode, await wrong.Content.ReadAsStringAsync());");
+                L($"            Assert.AreEqual(\"{AssetWords.TypeNotAllowedType}\", (await wrong.Content.ReadFromJsonAsync<JsonObject>())![\"type\"]!.GetValue<string>());");
+                L("        }");
+            }
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public async Task The_storage_key_cannot_be_named_by_a_save_and_a_row_with_no_upload_has_no_file()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L($"        var bare = await MakeAsync(b => b[\"{storageKey}\"] = \"../../escape\");");
+            L($"        Assert.IsTrue(bare[\"{storageKey}\"]!.GetValue<string>().StartsWith(\"{AssetWords.UnattachedPrefix}\", StringComparison.Ordinal), \"a row made without an upload holds an unattached key\");");
+            L($"        using (var none = await ApiFixture.Client.GetAsync($\"{{Route}}/{{bare[\"{id}\"]!.GetValue<long>()}}/download\"))");
+            L("        {");
+            L("            Assert.AreEqual(HttpStatusCode.NotFound, none.StatusCode);");
+            L($"            Assert.AreEqual(\"{AssetWords.FileMissingType}\", (await none.Content.ReadFromJsonAsync<JsonObject>())![\"type\"]!.GetValue<string>());");
+            L("        }");
+            L("        await RemoveAsync(bare);");
+            L($"        using var uploaded = await UploadFileAsync(new byte[] {{ 7, 7, 7 }}, \"k.txt\", \"{sampleType}\");");
+            L("        Assert.AreEqual(HttpStatusCode.Created, uploaded.StatusCode, await uploaded.Content.ReadAsStringAsync());");
+            L("        var row = (await uploaded.Content.ReadFromJsonAsync<JsonObject>())!;");
+            L($"        using (var edited = await PutAsync(row, b => {{ b[\"{storageKey}\"] = \"other\"; b[\"{sizeName}\"] = 99; b[\"{mimeName}\"] = \"x/y\"; b[\"{fileName}\"] = \"renamed.txt\"; }}))");
+            L("            Assert.IsTrue(edited.IsSuccessStatusCode, await edited.Content.ReadAsStringAsync());");
+            L($"        var stored = (await ApiFixture.Client.GetFromJsonAsync<JsonObject>($\"{{Route}}/{{row[\"{id}\"]!.GetValue<long>()}}\"))!;");
+            L($"        Assert.AreEqual(row[\"{storageKey}\"]!.GetValue<string>(), stored[\"{storageKey}\"]!.GetValue<string>(), \"a save keeps the stored key\");");
+            L($"        Assert.AreEqual(3, stored[\"{sizeName}\"]!.GetValue<long>());");
+            L($"        Assert.AreEqual(\"renamed.txt\", stored[\"{fileName}\"]!.GetValue<string>(), \"the name may be changed\");");
+            L("        await RemoveAsync(row);");
+            L("    }");
         }
 
         if (effective is not null)

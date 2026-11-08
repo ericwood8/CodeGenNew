@@ -110,6 +110,7 @@
         bool shapeScreen = softScreen || validOnScreen;
         string validOnDay = effectivePlan is null ? "" : effectivePlan.From.CSharpBase() == "DateOnly" ? "DateOnly.FromDateTime((ValidOnDay ?? DateTimeOffset.Now).Date)" : "(ValidOnDay ?? DateTimeOffset.Now).Date";
         string actionWidth = logOnly ? (queue is null && inbound is null ? "90" : "170") : canClone ? "250" : "175";
+        var assetShape = logOnly ? null : TableShapes.For(Model, Project).Asset;   // AssetTables: an Upload button in the bar and a Download button on a row
         var contentShape = logOnly ? null : TableShapes.For(Model, Project).Content;   // ContentTables: Publish, Unpublish and Archive buttons on a row (each shown only when it changes something)
         if (contentShape is not null)
             actionWidth = (int.Parse(actionWidth) + 170).ToString();
@@ -147,6 +148,9 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
 <# if (!logOnly) { #>
                 <Button Content="Add New" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnAddClick"<#= createBinding.Replace("{x:Bind ", "{x:Bind ViewModel.") #> />
+<# } #>
+<# if (assetShape is not null) { #>
+                <Button Content="<#= AssetScreens.UploadCaption #>" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnUploadClick"<#= createBinding.Replace("{x:Bind ", "{x:Bind ViewModel.") #> />
 <# } #>
                 <Button Content="Refresh" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnRefreshClick" />
                 <Button Content="Columns" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnColumnsClick" />
@@ -283,6 +287,9 @@
             }
         }
 #>
+<# if (assetShape is not null) { #>
+                                            <Button Content="<#= AssetScreens.DownloadCaption #>" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDownloadClick" />
+<# } #>
                                             <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDeleteClick"<#= writeBinding #> />
                                         </StackPanel>
 <# } else { #>
@@ -454,6 +461,33 @@ public sealed partial class <#= table #>ListPage : Page
 <#
         }
 #>
+<# if (assetShape is not null) { #>
+    // Upload: the chosen file is copied into the store and its row added. Download: the file of the row is written where the person chooses.
+    private async void OnUploadClick(object sender, RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, GetActiveWindow());
+        picker.FileTypeFilter.Add("*");
+        var file = await picker.PickSingleFileAsync();
+        if (file is not null)
+            await ViewModel.UploadAsync(file.Path, file.ContentType);
+    }
+
+    private async void OnDownloadClick(object sender, RoutedEventArgs e)
+    {
+        <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, GetActiveWindow());
+        picker.FileTypeChoices.Add("File", new List<string> { "." });
+        var target = await picker.PickSaveFileAsync();
+        if (target is not null)
+            await ViewModel.ExportAsync(id, target.Path);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetActiveWindow();
+
+<# } #>
 <# if (contentShape is not null) { foreach (var action in ContentScreens.Actions) { #>
     private async void On<#= action.Caption #>Click(object sender, RoutedEventArgs e) => await ViewModel.<#= ContentScreens.CsMethod(action) #>((<#= keyCs #>)((Button)sender).Tag);
 
@@ -1026,7 +1060,14 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     public async Task DeleteAsync(<#= keyCs #> id)
     {
         ErrorMessage = null;
-<#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #>        int result = await _repo.DeleteAsync("<#= table #>", id);
+<#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #><# if (assetShape is not null) { #>
+        await <#= table #>Assets.RememberFileAsync(_context, id);
+<# } #>
+        int result = await _repo.DeleteAsync("<#= table #>", id);
+<# if (assetShape is not null) { #>
+        if (result == 0)
+            await <#= table #>Assets.AfterDeleteAsync(_context);
+<# } #>
         if (result == 0)
             await LoadAsync();
         else if (result == -1)
@@ -1035,6 +1076,23 @@ public partial class <#= table #>ListViewModel : ViewModelBase
             ErrorMessage = "This row cannot be deleted because it is in use.";
     }
 
+<# if (assetShape is not null) { #>
+    /// <summary> Copies the chosen file into the store and adds its row; the page is read again. </summary>
+    public async Task UploadAsync(string path, string? contentType)
+    {
+        ErrorMessage = null;
+        string? refused = await <#= table #>Assets.UploadAsync(_context, path, contentType);
+        await LoadAsync();
+        ErrorMessage = refused;
+    }
+
+    /// <summary> Writes the file of a row to the place the person chose. </summary>
+    public async Task ExportAsync(<#= keyCs #> id, string destination)
+    {
+        ErrorMessage = await <#= table #>Assets.ExportAsync(_context, id, destination);
+    }
+
+<# } #>
 <# if (contentShape is not null) { foreach (var action in ContentScreens.Actions) { #>
     /// <summary> The row's state is changed (<#= action.Route #>) by the same guarded UPDATE as the API's; the page is read again. </summary>
     public async Task <#= ContentScreens.CsMethod(action) #>(<#= keyCs #> id)

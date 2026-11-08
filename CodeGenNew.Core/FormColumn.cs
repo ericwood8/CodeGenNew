@@ -22,7 +22,7 @@ public sealed class FormColumn
 
     // The editor a column gets on the form. The order is the rule every stack follows: the first that fits wins.
     private FieldKind Editor => _editor ??=
-        Column.IsSystemStampColumn || _form.IsGuardStamp(Column) || ContentScreens.IsStateColumn(_form.Table, _project, Column) ? FieldKind.SystemStamp
+        Column.IsSystemStampColumn || _form.IsGuardStamp(Column) || ContentScreens.IsStateColumn(_form.Table, _project, Column) || AssetScreens.IsUploadColumn(_form.Table, _project, Column) ? FieldKind.SystemStamp
         : _form.TypedKey && Column.IsPrimaryKey ? (_form.TextKey ? FieldKind.TypedKey : FieldKind.TypedNumberKey)
         : _form.LookupOf(Column) is not null ? FieldKind.Lookup
         : Column.HasChoices ? FieldKind.Choices

@@ -520,6 +520,9 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     /// <summary> Runs before a row is deleted; a result refuses the delete. The default accepts. </summary>
     protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, TKey id) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs after a row was deleted (not after a refused or failed delete): the place to remove what lived outside the database, such as the stored file of an asset row. The default does nothing. </summary>
+    protected virtual Task AfterDeleteAsync(<#= contextType #> context, TKey id) => Task.CompletedTask;
 <# if (options.Tenants) { #>
 
     /// <summary> Runs after a create saved the row (TenantTable: the tenant table attaches the person who created a tenant to it). The default does nothing. </summary>
@@ -541,6 +544,9 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     /// <summary> Runs before a row is deleted; a result answers the request instead (a refusal, or the soft delete itself). The default accepts. </summary>
     protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, TKey id) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs after a row was deleted (not after a refused or failed delete): the place to remove what lived outside the database, such as the stored file of an asset row. The default does nothing. </summary>
+    protected virtual Task AfterDeleteAsync(<#= contextType #> context, TKey id) => Task.CompletedTask;
 <#
     }
 #>
@@ -1004,7 +1010,10 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     {
 <#= auth("        if (await RefuseOtherOwnersAsync(context, id) is { } refused)\n            return refused;\n") #><#= hooks("        if (await BeforeDeleteAsync(context, id) is { } refusedDelete)\n            return refusedDelete;\n\n") #>        var successNum = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
         if (successNum == 0)
+        {
+            await AfterDeleteAsync(context, id);
             return Results.Ok();
+        }
         else if (successNum == -1)
             return Results.NotFound(); // cannot delete because does not exist
         else
@@ -1186,6 +1195,9 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 
     /// <summary> Runs before a row is deleted; a result refuses the delete. The default accepts. </summary>
     protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, int id) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs after a row was deleted (not after a refused or failed delete): the place to remove what lived outside the database, such as the stored file of an asset row. The default does nothing. </summary>
+    protected virtual Task AfterDeleteAsync(<#= contextType #> context, int id) => Task.CompletedTask;
 <# if (options.Tenants) { #>
 
     /// <summary> Runs after a create saved the row (TenantTable: the tenant table attaches the person who created a tenant to it). The default does nothing. </summary>
@@ -1204,6 +1216,9 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 
     /// <summary> Runs before a row is deleted; a result answers the request instead (a refusal, or the soft delete itself). The default accepts. </summary>
     protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, int id) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs after a row was deleted (not after a refused or failed delete): the place to remove what lived outside the database, such as the stored file of an asset row. The default does nothing. </summary>
+    protected virtual Task AfterDeleteAsync(<#= contextType #> context, int id) => Task.CompletedTask;
 <#
     }
 #>
@@ -1426,6 +1441,8 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
     private async Task<IResult> DeleteAsync(<#= contextType #> context, int id)
     {
 <#= hooks("        if (await BeforeDeleteAsync(context, id) is { } refusedDelete)\n            return refusedDelete;\n\n") #>        int result = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
+        if (result == 0)
+            await AfterDeleteAsync(context, id);
         return result switch
         {
             0 => Results.Ok(),

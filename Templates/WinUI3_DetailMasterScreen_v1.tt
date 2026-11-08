@@ -1229,6 +1229,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         Write(DesktopSubscriptionCode.CheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.ContentCheckLines(Project, Model, "_context"));
+        Write(AssetDesktopCode.CheckLines(Project, Model, "_context"));
         if (isNameActive)
         {
             // NameActiveRepo refuses a name that another active row has: AddAsync answers false and UpdateAsync null

@@ -55,6 +55,58 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+// An asset table (AssetTables): a file is sent as a multipart form (no JSON content type: the browser adds the boundary), and the file of a row is fetched and saved under the name the server gives it.
+export async function uploadFile<T>(path: string, file: File): Promise<T> {
+<# if (Project.Auth) { #>
+  const token = getToken();
+<# } #>
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    body: form,
+<# if (Project.Auth) { #>
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+<# } #>
+  });
+<# if (Project.Auth) { #>
+  if (response.status === <#= HttpStatus.Unauthorized #> && token) logout();
+<# } #>
+  if (!response.ok) {
+    const body = await response.text();
+    throw new ApiError(response.status, body || response.statusText);
+  }
+  return (await response.json()) as T;
+}
+
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+<# if (Project.Auth) { #>
+  const token = getToken();
+<# } #>
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+<# if (Project.Auth) { #>
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+<# } #>
+  });
+<# if (Project.Auth) { #>
+  if (response.status === <#= HttpStatus.Unauthorized #> && token) logout();
+<# } #>
+  if (!response.ok) {
+    const body = await response.text();
+    throw new ApiError(response.status, body || response.statusText);
+  }
+  const named = /filename\*=UTF-8''([^;]+)/i.exec(response.headers.get('Content-Disposition') ?? '');
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = named ? decodeURIComponent(named[1]) : fallbackName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 // The query string of a lookup call (GET <route>/lookup): the text a type-ahead sends, the keys whose names a page shows, and how many matches to list.
 export function lookupQuery(query: { search?: string; ids?: (number | string)[]; take?: number }): string {
   const params = new URLSearchParams();

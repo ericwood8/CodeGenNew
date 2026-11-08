@@ -124,6 +124,7 @@
         bool validOnScreen = effectivePlan is not null;
         bool shapeScreen = softScreen || validOnScreen;
         string actionWidth = logOnly ? (queue is null && inbound is null ? "90" : "170") : canClone ? "250" : "175";
+        var assetShape = logOnly ? null : TableShapes.For(Model, Project).Asset;   // AssetTables: an Upload button in the bar and a Download button on a row
         var contentShape = logOnly ? null : TableShapes.For(Model, Project).Content;   // ContentTables: Publish, Unpublish and Archive buttons on a row (each shown only when it changes something)
         if (contentShape is not null)
             actionWidth = (int.Parse(actionWidth) + 170).ToString();
@@ -161,6 +162,9 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
 <# if (!logOnly) { #>
                 <Button Content="Add New" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnAddClick"<#= gated ? " Visibility=\"{x:Bind ViewModel.WriteVisibility}\"" : "" #> />
+<# } #>
+<# if (assetShape is not null) { #>
+                <Button Content="<#= AssetScreens.UploadCaption #>" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnUploadClick"<#= gated ? " Visibility=\"{x:Bind ViewModel.WriteVisibility}\"" : "" #> />
 <# } #>
                 <Button Content="Refresh" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnRefreshClick" />
                 <Button Content="Columns" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnColumnsClick" />
@@ -295,6 +299,14 @@
                                             <Button Content="<#= action.Caption #>" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="On<#= action.Caption #>Click" Visibility="{x:Bind <#= action.Caption #>Visibility}" />
 <#
             }
+        }
+#>
+<#
+        if (assetShape is not null)
+        {
+#>
+                                            <Button Content="<#= AssetScreens.DownloadCaption #>" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDownloadClick" />
+<#
         }
 #>
                                             <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDeleteClick"<#= gated ? " Visibility=\"{x:Bind WriteVisibility}\"" : "" #> />
@@ -469,6 +481,43 @@ public sealed partial class <#= stemName #>ListPage : Page
         }
 #>
 <#
+        if (assetShape is not null)
+        {
+#>
+    // Upload: the chosen file goes to the API, which makes the storage key and the row. Download: the file of the row is fetched and written where the person chooses.
+    private async void OnUploadClick(object sender, RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+#if WINDOWS
+        if (App.MainWindow is { } window)
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+#endif
+        picker.FileTypeFilter.Add("*");
+        var file = await picker.PickSingleFileAsync();
+        if (file is null)
+            return;
+        await using var content = (await file.OpenReadAsync()).AsStreamForRead();
+        await ViewModel.UploadAsync(content, file.Name, file.ContentType);
+    }
+
+    private async void OnDownloadClick(object sender, RoutedEventArgs e)
+    {
+        if (await ViewModel.DownloadAsync((<#= keyCs #>)((Button)sender).Tag) is not { } downloaded)
+            return;
+        var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = Path.GetFileNameWithoutExtension(downloaded.FileName) };
+#if WINDOWS
+        if (App.MainWindow is { } window)
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+#endif
+        string extension = Path.GetExtension(downloaded.FileName);
+        picker.FileTypeChoices.Add("File", [extension.Length > 1 ? extension : ".bin"]);
+        var target = await picker.PickSaveFileAsync();
+        if (target is not null)
+            await Windows.Storage.FileIO.WriteBytesAsync(target, downloaded.Content);
+    }
+
+<#
+        }
         if (contentShape is not null)
         {
             foreach (var action in ContentScreens.Actions)
@@ -1209,6 +1258,52 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
         }
 #>
 <#
+        if (assetShape is not null)
+        {
+#>
+    /// <summary> The chosen file is sent to the upload route (the server makes the storage key and the row); the page is read again. </summary>
+    public async Task UploadAsync(Stream content, string fileName, string? contentType)
+    {
+        ErrorMessage = null;
+        try
+        {
+            await Client.UploadAsync(content, fileName, contentType);
+        }
+        catch (ApiException ex)
+        {
+            ErrorMessage = ex.Explain("uploading");
+            return;
+        }
+        catch (HttpRequestException)
+        {
+            ErrorMessage = "The server could not be reached.";
+            return;
+        }
+        await LoadAsync();
+    }
+
+    /// <summary> The file of a row with the name and type the server gives it, or null (with the reason in ErrorMessage) when it cannot be fetched. </summary>
+    public async Task<(byte[] Content, string FileName, string ContentType)?> DownloadAsync(<#= keyCs #> id)
+    {
+        ErrorMessage = null;
+        try
+        {
+            return await Client.DownloadAsync(id);
+        }
+        catch (ApiException ex)
+        {
+            ErrorMessage = ex.Explain("downloading");
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            ErrorMessage = "The server could not be reached.";
+            return null;
+        }
+    }
+
+<#
+        }
         if (contentShape is not null)
         {
             foreach (var action in ContentScreens.Actions)

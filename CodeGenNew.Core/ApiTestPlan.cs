@@ -47,7 +47,7 @@ public sealed class ApiTestPlan
         SortNames = model.HasSearchApi(project) ? SearchPlan.For(model, []).Sorts.Select(s => s.Name.ToLowerInvariant()).Distinct().ToList() : [];
         CanClone = IntKey && CloneShape.CanClone(model, project);
         UniqueText = model.Indexes.Where(i => i.IsUnique && i.Columns.Count == 1)
-            .Select(i => BodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && (c.Name == i.Columns[0] || c.DbName == i.Columns[0])))
+            .Select(i => BodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && (c.Name == i.Columns[0] || c.DbName == i.Columns[0]) && !(TableShapes.For(model, project).Asset is { } asset && asset.StorageKey.Name == c.Name)))
             .FirstOrDefault(c => c is not null);
 
         // ReadRoles and WriteRoles: the roles a rule lists (the administrator role first); a table scoped to a person is not written by a role with no owner

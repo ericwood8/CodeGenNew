@@ -253,7 +253,7 @@
         if (Project.Auth)
             L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");
         L($"@inject {clientType} Client");
-        if (odata && (softScreen || validOnScreen || TableShapes.For(Model, Project).Content is not null))
+        if (odata && (softScreen || validOnScreen || TableShapes.For(Model, Project).Content is not null || TableShapes.For(Model, Project).Asset is not null))
             L($"@inject {type}Client ShapeClient");   // the REST client: the OData one has no deleted rows, restore, rows valid on a day or publish
         if (gated || children.Any(ch => ch.WriteGate is not null) || userScreen is not null)
             L("@inject AuthSession Session");
@@ -277,6 +277,8 @@
             L($"<DashboardStrip Table=\"{Model.TableName}\" />");   // BLZ_Dashboard: shows nothing for a table with no cards
         L($"<h1>{heading}</h1>");
         if (!oneRow && !logOnly) L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
+        if (TableShapes.For(Model, Project).Asset is not null)
+            L(Gate("", $"<label>{AssetScreens.UploadCaption} <InputFile OnChange=\"UploadAsync\"{(AssetScreens.Accept(Project).Length > 0 ? $" accept=\"{AssetScreens.Accept(Project)}\"" : "")} /></label>"));
         if (softScreen) L("<button type=\"button\" @onclick=\"ShowDeleted\">Show deleted</button>");
         if (validOnScreen) L("<button type=\"button\" @onclick=\"ShowValidOn\">Valid on...</button>");
         if (softScreen || validOnScreen)
@@ -444,6 +446,8 @@
                 L($"                        <button type=\"button\" @onclick=\"() => {ContentScreens.CsMethod(action)}(item)\">{action.Caption}</button>");
                 L("                    }");
             }
+        if (TableShapes.For(Model, Project).Asset is not null)
+            L($"                    <button type=\"button\" @onclick=\"() => DownloadAsync(item)\">{AssetScreens.DownloadCaption}</button>");
         L(Gate("                    ", "<button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>"));
         L("                </td>");
         }
@@ -1562,6 +1566,44 @@
                 L($"        catch (HttpRequestException) {{ message = \"{ContentScreens.FailedText(action)}\"; }}");
                 L("    }");
             }
+        if (TableShapes.For(Model, Project).Asset is not null)
+        {
+            string assetClient = odata ? "ShapeClient" : "Client";
+            L();
+            L("    // The chosen file is sent to the upload route (the server makes the storage key and the row); the page is read again.");
+            L("    private async Task UploadAsync(InputFileChangeEventArgs e)");
+            L("    {");
+            L("        try");
+            L("        {");
+            L($"            await using var content = e.File.OpenReadStream({Project.AssetMaxBytes});");
+            L($"            await {assetClient}.UploadAsync(content, e.File.Name, e.File.ContentType);");
+            L("            await LoadAsync(pageNumber);");
+            L("        }");
+            L($"        catch (IOException) {{ message = \"{AssetWords.TooLarge(Project.AssetMaxBytes)}\"; }}");
+            L("        catch (ApiException ex)");
+            L("        {");
+            L($"            message = ex.{ExplainCall}(\"uploading\");");
+            L("        }");
+            L($"        catch (HttpRequestException) {{ message = \"{AssetScreens.UploadFailed}\"; }}");
+            L("    }");
+            L();
+            L("    // The file of a row is fetched with the name and type the server gives it and saved by the browser (wwwroot/index.html defines codegenSaveFile).");
+            L("    private async Task DownloadAsync(§T item)");
+            L("    {");
+            L("        try");
+            L("        {");
+            L($"            var (content, name, type) = await {assetClient}.DownloadAsync(item.§K);");
+            L("            using var reference = new DotNetStreamReference(new MemoryStream(content));");
+            L("            await Js.InvokeVoidAsync(\"codegenSaveFile\", name, type, reference);");
+            L("        }");
+            L("        catch (ApiException ex)");
+            L("        {");
+            L($"            message = ex.{ExplainCall}(\"downloading\");");
+            L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
+            L("        }");
+            L($"        catch (HttpRequestException) {{ message = \"{AssetScreens.DownloadFailed}\"; }}");
+            L("    }");
+        }
         }
         L("}");
         Write(o.ToString());

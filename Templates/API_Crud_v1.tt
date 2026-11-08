@@ -458,6 +458,14 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
     // TreeTables or SoftDeleteTables: a row with children is not deleted, and a soft-delete table sets its flag instead of removing the row (API_RowShapes writes <#= entity #>Shape).
     protected override Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, <#= keyCSharp #> id) => <#= entity #>Shape.CheckDeleteAsync(context, id, <#= Project.ApiAuth ? "Caller" : "null" #>);
 <#
+            if (TableShapes.For(Model, Project).Asset is not null)
+            {
+#>
+
+    // AssetTables: the stored file is removed once the row is gone (API_RowShapes writes <#= entity #>Shape).
+    protected override Task AfterDeleteAsync(<#= contextType #> context, <#= keyCSharp #> id) => <#= entity #>Shape.AfterDeleteAsync(context, id);
+<#
+            }
         }
 #>
 }

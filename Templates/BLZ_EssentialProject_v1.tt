@@ -125,6 +125,22 @@ await builder.Build().RunAsync();
     <div id="app">Loading...</div>
     <div id="blazor-error-ui">An unhandled error has occurred. <a href=".">Reload</a></div>
     <script src="_framework/blazor.webassembly.js"></script>
+<# if (Project.AssetTables.Length > 0) { #>
+    <script>
+        // An asset table (AssetTables): the page hands the bytes of a downloaded file over and the browser saves them under the name the server gave.
+        window.codegenSaveFile = async (fileName, contentType, stream) => {
+            const blob = new Blob([await stream.arrayBuffer()], { type: contentType });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        };
+    </script>
+<# } #>
 </body>
 </html>
 @@@FILE wwwroot/appsettings.json@@@

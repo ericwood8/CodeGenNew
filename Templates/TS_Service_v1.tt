@@ -68,7 +68,7 @@
         L("import { Injectable } from '@angular/core';");
         L("import { HttpClient } from '@angular/common/http';");
         bool guarded = GatePlan.GuardsOf(Project, Model).Count > 0;
-        if (!Model.IsNameActiveTable || guarded || TableShapes.For(Model, Project).SoftDelete is not null || TableShapes.For(Model, Project).Effective is not null) L("import { Observable } from 'rxjs';");
+        if (!Model.IsNameActiveTable || guarded || TableShapes.For(Model, Project).SoftDelete is not null || TableShapes.For(Model, Project).Effective is not null) L(TableShapes.For(Model, Project).Asset is not null ? "import { Observable, map } from 'rxjs';" : "import { Observable } from 'rxjs';");
         L($"import {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         L(nameActive ? $"import {{ {serviceBase} }} from './crud.service';" : $"import {{ {serviceBase}, PagedResult }} from './crud.service';");
         L();
@@ -139,6 +139,30 @@
             L();
             L($"    retry(id: {keyTs}): Observable<{baseName}> {{");
             L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/retry`, null);");
+            L("    }");
+        }
+        if (TableShapes.For(Model, Project).Asset is not null)
+        {
+            L();
+            L("    // an asset table (AssetTables): a file is sent to the upload route (the new row comes back) and the file of a row is fetched with the name the server gives it");
+            L($"    {AssetScreens.UploadRoute}(file: File): Observable<{baseName}> {{");
+            L("        const form = new FormData();");
+            L("        form.append('file', file, file.name);");
+            L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/{AssetScreens.UploadRoute}`, form);");
+            L("    }");
+            L();
+            L($"    {AssetScreens.DownloadRoute}(id: {keyTs}, fallbackName: string): Observable<void> {{");
+            L($"        return this.http.get(`${{this.apiUrl}}/${{id}}/{AssetScreens.DownloadRoute}`, {{ observe: 'response', responseType: 'blob' }}).pipe(map((response) => {{");
+            L("            const named = /filename\\*=UTF-8''([^;]+)/i.exec(response.headers.get('Content-Disposition') ?? '');");
+            L("            const url = URL.createObjectURL(response.body as Blob);");
+            L("            const link = document.createElement('a');");
+            L("            link.href = url;");
+            L("            link.download = named ? decodeURIComponent(named[1]) : fallbackName;");
+            L("            document.body.appendChild(link);");
+            L("            link.click();");
+            L("            link.remove();");
+            L("            URL.revokeObjectURL(url);");
+            L("        }));");
             L("    }");
         }
         if (TableShapes.For(Model, Project).Inbound is not null)

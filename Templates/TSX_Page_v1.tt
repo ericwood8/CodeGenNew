@@ -129,7 +129,7 @@
         string shapeApi = ReactNames.ApiVar(Model.TableName);   // the REST api module: the OData one has no deleted rows, restore or rows valid on a day
         bool softScreen = !oneRow && TableShapes.For(Model, Project).SoftDelete is not null;
         bool validOnScreen = !oneRow && TableShapes.For(Model, Project).Effective is not null;
-        bool contentScreen = TableShapes.For(Model, Project).Content is not null;
+        bool contentScreen = TableShapes.For(Model, Project).Content is not null || TableShapes.For(Model, Project).Asset is not null;
 
         // ================= imports
         T("import { useEffect, useRef, useState } from 'react';");
@@ -505,6 +505,36 @@
                 T("  };");
             }
         }
+        if (TableShapes.For(Model, Project).Asset is { } assetShape)
+        {
+            // Upload sends the chosen file to the server, which makes the storage key and the row; Download saves the file of a row. The grid is read again after an upload.
+            string fileProp = JsonNames.Camel(assetShape.FileName.Name);
+            T();
+            T("  const uploadInput = useRef<HTMLInputElement>(null);");
+            T();
+            T("  const upload = async (file: File | undefined): Promise<void> => {");
+            T("    if (!file) return;");
+            T("    try {");
+            T($"      await {shapeApi}.{AssetScreens.UploadRoute}(file);");
+            T("      load(page);");
+            T("    } catch (err) {");
+            T($"      setError('{AssetScreens.UploadFailed}');");
+            T("    }");
+            T("  };");
+            T();
+            T($"  const download = async (id: {keyTs}, fileName: string): Promise<void> => {{");
+            T("    try {");
+            T($"      await {shapeApi}.{AssetScreens.DownloadRoute}(id, fileName);");
+            T("    } catch (err) {");
+            T($"      if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{");
+            T("        setError('It no longer exists!');");
+            T("        load(page);");
+            T("      } else {");
+            T($"        setError('{AssetScreens.DownloadFailed}');");
+            T("      }");
+            T("    }");
+            T("  };");
+        }
         T();
         // add(): every required property gets a starting value
         var adds = form.NewRowTypeScript;
@@ -670,6 +700,11 @@
         T("    <div className=\"rail\">");
         T($"      <h1>{SingleRowPlan.Heading(title, oneRow)}</h1>");
         if (!oneRow) T("      " + Gate("<button type=\"button\" onClick={add}>Add New</button>"));
+        if (TableShapes.For(Model, Project).Asset is not null)
+        {
+            T($"      <input ref={{uploadInput}} type=\"file\" accept=\"{AssetScreens.Accept(Project)}\" hidden onChange={{(e) => {{ void upload(e.target.files?.[0]); e.target.value = ''; }}}} />");
+            T("      " + Gate($"<button type=\"button\" onClick={{() => uploadInput.current?.click()}}>{AssetScreens.UploadCaption}</button>"));
+        }
         if (softScreen) T("      <button type=\"button\" onClick={() => setShapeView('deleted')}>Show deleted</button>");
         if (validOnScreen) T("      <button type=\"button\" onClick={() => setShapeView('validOn')}>Valid on...</button>");
         if (nameActive)
@@ -808,6 +843,8 @@
         if (TableShapes.For(Model, Project).Content is { } contentButtons)
             foreach (var action in ContentScreens.Actions)
                 T("                {" + (gated ? "canWrite && " : "") + $"{ContentScreens.ShownTs(contentButtons, action, variable)} && <button type=\"button\" onClick={{() => void {action.Route}({variable}.{keyProp}!)}}>{action.Caption}</button>}}");
+        if (TableShapes.For(Model, Project).Asset is { } assetRow)
+            T($"                <button type=\"button\" onClick={{() => void download({variable}.{keyProp}!, {variable}.{JsonNames.Camel(assetRow.FileName.Name)})}}>{AssetScreens.DownloadCaption}</button>");
         T("                " + Gate($"<button type=\"button\" onClick={{() => void remove({variable}.{keyProp}!)}}>Delete</button>"));
         T("              </td>");
         T("            </tr>");

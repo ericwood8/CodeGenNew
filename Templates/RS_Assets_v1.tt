@@ -1,0 +1,29 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Assets_v1.tt
+    // Generates: src/routes/asset_files.rs   (whole-database; the path is written by the template)
+    // The Rust counterpart of the asset part of API_RowShapes: for each table of AssetTables POST <route>/upload (a multipart form with a field named file; 400 with no file, 413 over AssetMaxBytes,
+    // 415 for a type outside AssetAllowedTypes) and GET <route>/{id}/download (the file as an attachment; 404 when the row or its file is missing), with the same sentences and problem types as the
+    // ASP.NET API (AssetWords and RustAssetWriter in Core). The file is kept by AssetStore (a local folder: AssetStoreFolder, or ASSET_STORE_FOLDER); call use_store() once to keep it elsewhere.
+    // The storage key is made by the server: RS_Routes gives a row made by the ordinary create an unattached key, makes an update keep the stored key, type and size, and removes the file after a delete.
+    // RS_Mod merges this router with the tables'; Cargo.toml gets axum's multipart feature.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    var tables = RustAssetWriter.Shapes(Database, Project);
+    var problems = Database.Tables.Select(t => AssetPlan.Problem(t, Project)).Where(p => p is not null).ToList();
+    problems.AddRange(AssetPlan.Entries(Project).Where(e => !Database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table)))
+        .Select(e => $"AssetTables: {e.Table} is not a table of the database."));
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (tables.Count > 0)
+    {
+        Write("@@@FILE src/routes/asset_files.rs@@@\n" + RustAssetWriter.File(tables, Project, Database.Dialect));
+    }
+#>

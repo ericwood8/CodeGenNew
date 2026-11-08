@@ -66,6 +66,7 @@
     var treePlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).Tree : null;
     // ContentTables: the slug and status rules on create and update, publish, unpublish and archive, and the public reads (a table of a tenant, or with a second person's approval, is only written by the ASP.NET API)
     var contentPlan = log ? null : TableShapes.For(Model, Project).Content;
+    var assetPlan = log ? null : TableShapes.For(Model, Project).Asset;
     if (contentPlan is not null && ContentApiWords.NotBuilt(contentPlan) is { } contentNotBuilt)
         Error(contentNotBuilt);
     // EffectiveDatedTables: the period check on create and update and GET current (not for a table limited to an owner or a tenant)
@@ -416,7 +417,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -477,6 +478,8 @@
         Line("    check_effective(&pool, None, &row).await?;");
     if (contentPlan is not null)
         Line("    new_content(&pool, &mut row).await?;");
+    if (assetPlan is not null)
+        Line(RustAssetWriter.CreateLine(t, assetPlan).TrimEnd((char)10));
     Line("    let row = repo::insert(&pool, &row).await?;");
     if (tenantTable)
         Line($"    attach_creator(&pool, &user, row.{t.Key.Name}).await?;");
@@ -525,7 +528,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -560,11 +563,12 @@
         Line($"    check_tree(&pool, Some(id), row.{t.FieldOf(treePlan.Parent).Name}).await?;");
     if (effNames is not null)
         Line("    check_effective(&pool, Some(id), &row).await?;");
-    if (contentPlan is not null)
-    {
+    if (contentPlan is not null || assetPlan is not null)
         Line($"    let stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+    if (contentPlan is not null)
         Line("    change_content(&pool, id, &mut row, &stored).await?;");
-    }
+    if (assetPlan is not null)
+        Line(RustAssetWriter.UpdateLines(t, assetPlan).TrimEnd((char)10));
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
@@ -600,6 +604,8 @@
     }
     if (treePlan is not null)
         Line("    refuse_children(&pool, id).await?;");
+    if (assetPlan is not null)
+        Line(RustAssetWriter.DeleteLines(t, assetPlan).TrimEnd((char)10));
     if (soft && softByUser)
     {
         int byLength = t.SoftBy!.Column.CharacterLength;
@@ -609,7 +615,15 @@
     else
         Line(soft ? (t.SoftBy is not null ? $"    match repo::soft_delete(&pool, {idArg}, None).await? {{" : $"    match repo::soft_delete(&pool, {idArg}).await? {{") : $"    match repo::delete(&pool, {idArg}).await? {{");
     Line("        0 => Err(ApiError::NotFound),");
-    Line("        _ => Ok(StatusCode::OK),");
+    if (assetPlan is not null)
+    {
+        Line("        _ => {");
+        Line("            crate::routes::asset_files::remove_file(file_key);");
+        Line("            Ok(StatusCode::OK)");
+        Line("        }");
+    }
+    else
+        Line("        _ => Ok(StatusCode::OK),");
     Line("    }");
     Line("}");
     }

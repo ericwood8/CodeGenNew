@@ -1,0 +1,20 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestAssets_v1.tt
+    // Generates: tests/conftest.py and tests/test_assets.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of the routes PY_Assets writes for AssetTables. conftest.py is the one PY_TestApprovals writes (the application over a scratch database). test_assets.py uploads a file to a temporary store
+    // and downloads it, deletes the row and checks that the file is gone, plays the refusals (no file, a file over AssetMaxBytes, a type outside AssetAllowedTypes, a download without a sign-in) and checks that a
+    // save cannot name the storage key and that a row made without an upload has no file. The words are AssetWords, as in the other stacks' tests.
+    // Written only for a project with PythonTests=true and an asset table; not for SQL Server. Run them with pytest from the API's folder.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (PythonAssetTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/conftest.py@@@\n" + PythonAssetTests.Conftest(Project, Database.Dialect));
+        Write("@@@FILE tests/test_assets.py@@@\n" + PythonAssetTests.File(Database, Project));
+    }
+#>

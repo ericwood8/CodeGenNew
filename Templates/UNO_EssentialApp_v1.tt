@@ -40,6 +40,9 @@ public partial class App : Application
 {
     private Window? _window;
 
+    /// <summary> The main window, which a file picker of the Windows head needs to attach itself to. </summary>
+    public static Window? MainWindow { get; private set; }
+
     public App()
     {
         InitializeComponent();
@@ -48,6 +51,7 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         _window = new Window { Title = "<#= Project.ProjectTitle #>", Content = new MainPage() };
+        MainWindow = _window;
         _window.Activate();
     }
 }

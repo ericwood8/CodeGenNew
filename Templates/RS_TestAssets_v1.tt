@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestAssets_v1.tt
+    // Generates: tests/api/asset_routes.rs   (whole-database; the output folder is the Rust API's folder)
+    // Integration tests of the routes RS_Assets writes for AssetTables: an upload to a temporary store and its download, the delete that removes the file, the refusals (no file, a file over AssetMaxBytes,
+    // a type outside AssetAllowedTypes) and a save that cannot name the storage key. The words are AssetWords, as in the other stacks' tests.
+    // Written only for a project with RustTests=true and an asset table. Run them with cargo test from the API's folder.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (RustAssetTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/asset_routes.rs@@@\n" + RustAssetTests.File(Database, Project));
+    }
+#>
