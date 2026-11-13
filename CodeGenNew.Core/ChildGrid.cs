@@ -67,7 +67,7 @@ public sealed partial class ChildGrid
 
         // The grid's own foreign key (always this row), the child's own key, every other id column that is not resolved to a name and a row version are left out.
         var resolved = Lookups.Select(l => l.ColumnName).ToList();
-        HiddenColumns = link.ReferencingColumns.Concat(link.ReferencingPrimaryKeyColumns)
+        HiddenColumns = link.ReferencingColumns.Concat(link.ReferencingPrimaryKeyColumns).Concat(link.TypeColumn is null ? [] : [link.TypeColumn])
             .Concat(link.ReferencingTableForeignKeys.SelectMany(o => o.ReferencingColumns).Except(resolved, StringComparer.OrdinalIgnoreCase))
             .Concat(link.ReferencingTableColumns.Where(c => c.IsRowVersionColumn).Select(c => c.Name))   // a row version is a number for the database, nothing a person reads
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -87,7 +87,7 @@ public sealed partial class ChildGrid
         return links.Select(fk =>
         {
             string role = RoleOf(fk);
-            string title = project.ChildGridTitle(table.TableName, fk.ReferencingTable, Labels.Words(TemplateHelpers.BaseName(fk.ReferencingTable)) + (role == "" ? "" : " (" + Labels.Words(role) + ")"));
+            string title = project.ChildGridTitle(table.TableName, fk.ReferencingTable, (fk.IsPolymorphic ? Labels.Words(TemplateHelpers.BaseName(fk.ReferencingTable)).Pluralize() : Labels.Words(TemplateHelpers.BaseName(fk.ReferencingTable))) + (role == "" ? "" : " (" + Labels.Words(role) + ")"));
             return new ChildGrid(fk, role, title, table, project);
         }).ToList();
     }
@@ -137,6 +137,11 @@ public sealed partial class ChildGrid
 
     /// <summary> The JSON name of the child column that points back at the row being edited. </summary>
     public string ForeignKeyJson => JsonNames.Camel(Link.ReferencingColumns[0]);
+
+    /// <summary> The JSON name of the record type column of a polymorphic link's grid, which a row must hold <see cref="TypeValue"/> in to belong to this parent (null on a foreign key). </summary>
+    public string? TypeJson => Link.TypeColumn is null ? null : JsonNames.Camel(Link.TypeColumn);
+
+    public string? TypeValue => Link.TypeValue;
 
     /// <summary> <see cref="HiddenColumns"/> by their JSON names. </summary>
     public IReadOnlyList<string> HiddenJson => HiddenColumns.Select(JsonNames.Camel).ToList();

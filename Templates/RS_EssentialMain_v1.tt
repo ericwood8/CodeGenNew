@@ -144,7 +144,7 @@ pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
     }
 
     // The dev servers of the front ends call this API from another origin.
-    let cors = CorsLayer::new().allow_origin([<#= origins #>]).allow_methods(Any).allow_headers(Any);
+    let cors = CorsLayer::new().allow_origin([<#= origins #>]).allow_methods(Any).allow_headers(Any)<#= Project.AssetTables.Length > 0 ? ".expose_headers([axum::http::header::CONTENT_DISPOSITION])" : "" #>;
     app.layer(cors)
 }
 

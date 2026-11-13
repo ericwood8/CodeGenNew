@@ -34,4 +34,13 @@ public class ChildForeignKeyModel
 
     /// <summary> Whether the child table itself has child tables, which makes its screen master-detail (unless the project's DetailMasterTables lists the master-detail tables instead). False unless the template's config sets NeedsReferencedDisplayColumns. </summary>
     public bool ReferencingTableHasChildren { get; init; }
+
+    /// <summary> Set on the grid of a polymorphic link (<c>PolymorphicLinks</c>): the link table's record type column, which must hold <see cref="TypeValue"/> for a row to belong to the parent. The database has no
+    /// foreign key here, so the grid is added by <see cref="PolymorphicPlan"/>; null on a real foreign key. </summary>
+    public string? TypeColumn { get; init; }
+
+    /// <summary> The record type that names the parent table (the table's own spelling). </summary>
+    public string? TypeValue { get; init; }
+
+    public bool IsPolymorphic => TypeColumn is not null;
 }

@@ -30,7 +30,8 @@
         Line("// The integration tests of the tables, as one test program (the test program named api). Written by RS_TestBodies; regenerated with the tables.");
         Line("mod test_bodies;");
         Line("mod test_support;");
-        var modules = tables.Select(x => RustTable.Of(x, Project).Module).ToList();
+        // a link table (PolymorphicLinks) has no generic tests: its rows must name a row of another table (polymorphic_check.py plays its rules over HTTP)
+        var modules = tables.Where(x => !PolymorphicPlan.IsLinkTable(x.TableName, Project)).Select(x => RustTable.Of(x, Project).Module).ToList();
         modules.AddRange(RustTestBodies.JunctionTables(Database, Project).Select(RustTestBodies.JunctionModule));
         if (RustTestBodies.HasDashboardTests(Project))
             modules.Add("dashboard_routes");

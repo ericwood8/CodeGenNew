@@ -100,10 +100,20 @@ public static class §TABLEAssets
         string? key = await context.Set<§T>().AsNoTracking().Where(x => x.§K == id).Select(x => x.§STORAGEKEY).FirstOrDefaultAsync();
         if (key is null)
             return "This row no longer exists.";
+        string? problem;
+        await using (var target = System.IO.File.Create(destination))
+            problem = await CopyFileAsync(key, target);
+        if (problem is not null)
+            System.IO.File.Delete(destination);
+        return problem;
+    }
+
+    /// <summary> Copies the stored file under <paramref name="key"/> to <paramref name="target"/>. Returns a sentence when no file is behind the key, else null. </summary>
+    public static async Task<string?> CopyFileAsync(string key, System.IO.Stream target)
+    {
         await using var stored = key.StartsWith(AssetKeys.UnattachedPrefix, StringComparison.Ordinal) || !AssetKeys.IsSafe(key) ? null : await AssetStores.Current.OpenAsync(key, CancellationToken.None);
         if (stored is null)
             return §MISSING;
-        await using var target = System.IO.File.Create(destination);
         await stored.CopyToAsync(target);
         return null;
     }

@@ -26,6 +26,10 @@
     {
         Error($"API_Test writes tests for the tables API_Crud writes an API for (a single int, uniqueidentifier or text key, not an enum or a name/active table), and [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
+    else if (PolymorphicPlan.IsLinkTable(Model.TableName, Project))
+    {
+        // a link table's rows must name a row that exists in another table, so the generic add, change and remove tests cannot make one: polymorphic_check.py plays its rules over HTTP (Docs/Verification/Tools)
+    }
     else if (TableShapes.For(Model, Project).Log is not null)
     {
         // a log table is only read: its tests do not add, change or remove rows (ApiLogTests, Core)

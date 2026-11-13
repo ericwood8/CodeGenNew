@@ -41,6 +41,7 @@
     var stacks = Project.Stacks.Where(s => s.EqualsIgnoreCase("React") || s.EqualsIgnoreCase("Angular") || s.EqualsIgnoreCase("Blazor") || s.EqualsIgnoreCase("Uno")).ToList();
     if (stacks.Count == 0) stacks = ["React"];
     string origins = string.Join(", ", stacks.Select(s => $"\"http://localhost:{Project.DevPort(s)}\""));
+    string exposed = Project.AssetTables.Length > 0 ? ".WithExposedHeaders(\"Content-Disposition\")" : "";   // a browser app on another origin reads the name of a downloaded file from this header
     var direct = stacks.Where(s => s.EqualsIgnoreCase("Blazor") || s.EqualsIgnoreCase("Uno")).ToList();   // the apps that call the API themselves (the dev servers of the others forward /api)
     var proxied = stacks.Where(s => !direct.Contains(s)).ToList();
     string callers = string.Join(" and ", direct.Select(s => s.EqualsIgnoreCase("Uno") ? "Uno app" : "Blazor app"));
@@ -244,7 +245,7 @@ builder.Services.AddGeneratedOData();
 // The origins come from Cors:Origins in appsettings.json (or the Cors__Origins__0 environment variable), so a deployment can name its own.
 string[] origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [<#= origins #>];
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod()));
+    policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod()<#= exposed #>));
 
 builder.AddProductionProfile();
 
@@ -254,7 +255,7 @@ builder.AddProductionProfile();
     {
 #>
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.WithOrigins(<#= origins #>).AllowAnyHeader().AllowAnyMethod()));
+    policy.WithOrigins(<#= origins #>).AllowAnyHeader().AllowAnyMethod()<#= exposed #>));
 
 <#
     }

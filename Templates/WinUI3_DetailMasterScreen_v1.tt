@@ -44,7 +44,9 @@
     // code-behind (CurrencyNumberFormatter.cs, written alongside, since XAML cannot declare a NumberFormatter) and rounded to the column's scale;
     // any other decimal, float or real is limited to NumericClassifier.DecimalRange.
 
+    var assetDialog = TableShapes.For(Model, Project).Asset;   // AssetTables: Upload, Download and the picture in the dialog
     var contentShape = TableShapes.For(Model, Project).Content;   // ContentTables: Publish, Unpublish and Archive in the dialog of a saved row
+    var defaultRowShape = TableShapes.For(Model, Project).DefaultRow;   // DefaultRowTables: Make default in the dialog of a saved row
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
     var userScreen = UserScreenPlan.ForDesktop(Model, Project);   // the user table's screen: a Set password box, the administrator flag for administrators only
     var keyColumn = form.KeyColumn;
@@ -123,7 +125,7 @@
     <!-- The error bar is above the scrolling area so a validation message is never scrolled out of sight. -->
     <StackPanel Spacing="12">
         <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" /><#= contentShape is not null ? ContentScreens.DialogXaml("        ") : "" #>
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" /><#= contentShape is not null ? ContentScreens.DialogXaml("        ") : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogXaml("        ") : "" #><#= assetDialog is not null ? AssetDialogCode.Xaml("        ") : "" #>
     <ScrollViewer MinWidth="560" MaxHeight="620" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto">
         <!-- The bottom padding stops the last child-grid row being cut off at the end of the scroll. -->
         <StackPanel Spacing="12" Padding="0,0,0,24">
@@ -415,7 +417,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         {
             deferral.Complete();
         }
-    }<#= contentShape is not null ? ContentScreens.DialogHandlers() : "" #>
+    }<#= contentShape is not null ? ContentScreens.DialogHandlers() : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogHandlers() : "" #><#= assetDialog is not null ? AssetDialogCode.Handlers(false) : "" #>
 <#
         foreach (var c in shown.Where(c => form.Field(c).IsDateValue && c.IsNullable))
         {
@@ -829,7 +831,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
             Write(FeatureScreenCode.DesktopViewModelMembers(userScreen is not null));
 #>
 
-<#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, table, null) : "" #>    public <#= table #>DetailMasterViewModel(<#= contextType #> context, <#= table #>? editing)
+<#= assetDialog is not null ? AssetDialogCode.Members(Model, assetDialog, null) : "" #><#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, table, null) : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogMembers(form, defaultRowShape, table, null) : "" #>    public <#= table #>DetailMasterViewModel(<#= contextType #> context, <#= table #>? editing)
     {
         _context = context;
         _repo = new <#= table #>Repo(context);
@@ -841,7 +843,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         foreach (var c in shown)
             Write(DesktopFormCode.LoadLines(form, c));
 #>
-<#= contentShape is not null ? "            RefreshContentButtons();\n" : "" #>        }
+<#= contentShape is not null ? "            RefreshContentButtons();\n" : "" #><#= defaultRowShape is not null ? DefaultRowScreens.ConstructorLine : "" #><#= assetDialog is not null ? AssetDialogCode.ConstructorLine : "" #>        }
     }
 
     /// <summary> Loads the drop-downs, and the child grids when editing an existing row. </summary>
@@ -972,7 +974,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 
         // Not tracked: EF would cascade-delete a tracked child when the list page deletes the parent.
         var rows = await _context.Set<<#= child.Table #>>().AsNoTracking()
-            .Where(c => EF.Property<<#= child.ParentKeyCs #>>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
+            .Where(c => EF.Property<<#= child.ParentKeyCs #>>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #><#= child.TypeColumn is null ? "" : $" && EF.Property<string>(c, \"{child.TypeColumn}\") == {CSharpText.Quote(child.TypeValue!)}" #>)
             .ToListAsync();
 <#
         foreach (var r in child.Resolvable.Where(r => r.TypeAhead))
@@ -1229,6 +1231,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         Write(DesktopSubscriptionCode.CheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.ContentCheckLines(Project, Model, "_context"));
+        Write(DefaultRowScreens.CheckLines(Project, Model, "_context"));
         Write(AssetDesktopCode.CheckLines(Project, Model, "_context"));
         if (isNameActive)
         {

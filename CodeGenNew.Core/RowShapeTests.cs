@@ -13,7 +13,8 @@ public static class RowShapeTests
         var effective = TableShapes.For(table, project).Effective;
         var content = TableShapes.For(table, project).Content;
         var asset = TableShapes.For(table, project).Asset;
-        if (tree is null && soft is null && effective is null && content is null && asset is null)
+        var defaultRow = TableShapes.For(table, project).DefaultRow;
+        if (tree is null && soft is null && effective is null && content is null && asset is null && defaultRow is null)
             return "";
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
@@ -476,6 +477,38 @@ public static class RowShapeTests
                 L("        await RemoveAsync(open);");
                 L("    }");
             }
+        }
+        if (TableShapes.For(table, project).DefaultRow is { } defaults)
+        {
+            string flag = JsonNames.Camel(defaults.Flag.Name);
+            string Copy(string from) => string.Concat(defaults.Groups.Select(g => $"b[\"{JsonNames.Camel(g.Name)}\"] = {from}[\"{JsonNames.Camel(g.Name)}\"]?.DeepClone(); "));
+            L();
+            L("    [TestMethod]");
+            L("    public async Task A_row_saved_with_the_default_mark_takes_it_from_the_others_of_its_group()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L($"        var first = await MakeAsync(b => b[\"{flag}\"] = false);");
+            L($"        var second = await MakeAsync(b => {{ {Copy("first")}b[\"{flag}\"] = true; }});");
+            L($"        var firstAgain = (await ApiFixture.Client.GetFromJsonAsync<JsonObject>($\"{{Route}}/{{first[\"{id}\"]!.GetValue<long>()}}\"))!;");
+            L($"        Assert.IsFalse(firstAgain[\"{flag}\"]!.GetValue<bool>(), \"the old default lost the mark\");");
+            L($"        Assert.IsTrue(second[\"{flag}\"]!.GetValue<bool>());");
+            L("        await RemoveAsync(first, second);");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public async Task Make_default_moves_the_mark_to_the_row()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L($"        var first = await MakeAsync(b => b[\"{flag}\"] = true);");
+            L($"        var second = await MakeAsync(b => {{ {Copy("first")}b[\"{flag}\"] = false; }});");
+            L($"        using var made = await ApiFixture.Client.PostAsync($\"{{Route}}/{{second[\"{id}\"]!.GetValue<long>()}}/make-default\", null);");
+            L("        Assert.AreEqual(HttpStatusCode.OK, made.StatusCode, await made.Content.ReadAsStringAsync());");
+            L($"        var firstAgain = (await ApiFixture.Client.GetFromJsonAsync<JsonObject>($\"{{Route}}/{{first[\"{id}\"]!.GetValue<long>()}}\"))!;");
+            L($"        Assert.IsFalse(firstAgain[\"{flag}\"]!.GetValue<bool>());");
+            L($"        var secondAgain = (await ApiFixture.Client.GetFromJsonAsync<JsonObject>($\"{{Route}}/{{second[\"{id}\"]!.GetValue<long>()}}\"))!;");
+            L($"        Assert.IsTrue(secondAgain[\"{flag}\"]!.GetValue<bool>());");
+            L("        await RemoveAsync(first, second);");
+            L("    }");
         }
         return o.ToString();
     }

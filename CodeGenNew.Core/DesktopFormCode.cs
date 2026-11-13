@@ -193,7 +193,7 @@ public static class DesktopFormCode
         string label = Labels.Column(column.Name);
         var table = form.Table;
         // the status and published time of a content table are shown, not edited: the routes (and the content rules before the save) own them
-        if (ContentScreens.IsStateColumn(table, project, column))
+        if (ContentScreens.IsStateColumn(table, project, column) || DefaultRowScreens.IsFlagColumn(table, project, column))
             return "";
         var o = new StringBuilder();
         void L(string s) => o.Append("        ").Append(s).Append('\n');

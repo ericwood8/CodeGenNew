@@ -61,6 +61,9 @@
     // and the upload and download routes of the asset tables (PY_Assets)
     if (Database.Tables.Any(t => TableShapes.For(t, Project).Asset is not null))
         modules.Insert(0, "asset_files");
+    // and the module of the polymorphic links (PY_Links), which has no routes: importing it registers the events
+    if (PythonLinkWriter.Links(Database, Project).Count > 0)
+        modules.Insert(0, "link_rules");
     // and the inbound event routes (PY_Inbound)
     if (Database.Tables.Any(t => TableShapes.For(t, Project).Inbound is not null))
         modules.Insert(0, "inbound");

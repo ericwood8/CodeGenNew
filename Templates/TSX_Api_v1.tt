@@ -63,7 +63,7 @@
         void L(string s = "") => o.Append(s).Append('\n');
 
         L($"@@@FILE {apiFolder}/{stem}Api.ts@@@");
-        L(TableShapes.For(Model, Project).Asset is not null ? "import { downloadFile, lookupQuery, request, uploadFile } from './client';" : "import { lookupQuery, request } from './client';");
+        L(TableShapes.For(Model, Project).Asset is not null ? "import { downloadFile, fetchBlob, lookupQuery, request, uploadFile } from './client';" : "import { lookupQuery, request } from './client';");
         L($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         L();
         L($"const apiUrl = '{apiPrefix}/{stem.Pluralize()}';");
@@ -164,6 +164,8 @@
             L($"  {AssetScreens.UploadRoute}: (file: File) => uploadFile<{baseName}>(`${{apiUrl}}/{AssetScreens.UploadRoute}`, file),");
             L();
             L($"  {AssetScreens.DownloadRoute}: (id: {keyTs}, fileName: string) => downloadFile(`${{apiUrl}}/{keyPath}/{AssetScreens.DownloadRoute}`, fileName),");
+            L();
+            L($"  {AssetScreens.PictureRoute}: (id: {keyTs}) => fetchBlob(`${{apiUrl}}/{keyPath}/{AssetScreens.DownloadRoute}`),");
         }
         if (TableShapes.For(Model, Project).Content is not null)
         {
@@ -173,6 +175,12 @@
                 L($"  {action.Route}: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/{action.Route}`, {{ method: 'POST' }}),");
             L($"  getPublic: (pageNumber = 1, pageSize = 20) => request<{baseName}[]>(`${{apiUrl}}/public?pageNumber=${{pageNumber}}&pageSize=${{pageSize}}`),");
             L($"  getPublicBySlug: (slug: string) => request<{baseName}>(`${{apiUrl}}/public/${{encodeURIComponent(slug)}}`),");
+        }
+        if (TableShapes.For(Model, Project).DefaultRow is not null)
+        {
+            L();
+            L("  // a table with one default row per group (DefaultRowTables): the row becomes the default of its group and the others lose the mark");
+            L($"  {DefaultRowScreens.Route}: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/{DefaultRowScreens.RouteName}`, {{ method: 'POST' }}),");
         }
         if (TableShapes.For(Model, Project).Tree is not null)
         {

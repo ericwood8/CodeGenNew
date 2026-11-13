@@ -16,6 +16,12 @@ public static class AssetScreens
     public const string UploadRoute = "upload";
     public const string DownloadRoute = "download";
 
+    /// <summary> The client method that reads the file of a row as bytes, for the picture a dialog shows. </summary>
+    public const string PictureRoute = "picture";
+
+    /// <summary> The largest edge, in pixels, of the picture a dialog shows. </summary>
+    public const int PictureEdge = 160;
+
     /// <summary> The file types the browser's file box offers: the project's <c>AssetAllowedTypes</c> as an <c>accept</c> value (<c>image/*,application/pdf</c>), or empty for any file. </summary>
     public static string Accept(ProjectSettings project) => string.Join(",", AssetPlan.AllowedTypes(project));
 

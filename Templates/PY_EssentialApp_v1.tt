@@ -405,7 +405,7 @@ register_error_handlers(app)
 
 # The front ends' dev servers call this API from another origin; CORS_ORIGINS (comma separated) names the origins of a deployment.
 origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()] or [<#= origins #>]
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"], expose_headers=["Location"])
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"], expose_headers=["Location"<#= Project.AssetTables.Length > 0 ? ", \"Content-Disposition\"" : "" #>])
 
 <#
     if (auth)

@@ -71,7 +71,22 @@ The store is `IAssetStore` (`SaveAsync`, `OpenAsync`, `DeleteAsync`). The defaul
 | Uno | a `FileOpenPicker` (attached to the window on the Windows head through `App.MainWindow`, a new member of `App.xaml.cs`: refresh the essentials) | a `FileSavePicker` and `FileIO.WriteBytesAsync` | the same client |
 | WinUI3 | a `FileOpenPicker`; the app reads the database itself, so `Assets.cs` (`WinUI3_Assets`) holds the store and `<Table>Assets.UploadAsync` copies the file into the store and adds the row | a `FileSavePicker`; `ExportAsync` copies the stored file there | none: the dialogs call `<Table>Assets.PrepareAsync` before a save, and a delete reads the key first (`RememberFileAsync`) and removes the file after (`AfterDeleteAsync`) |
 
-Not covered: the edit dialogs have no Upload or Download (only the list page); a table limited to an owner or a tenant; a `varbinary` column; a thumbnail; a store other than a local folder (S3 and Azure Blob are the owner's `IAssetStore`). `Docs/Verification/Tools/Schemas/assets.sql` (and `assets_postgres.sql`, `assets_mysql.sql`) is the scratch schema: `python new_scratch_project.py Ast --schema assets --stack api,python,rust --set AssetTables=Asset:StorageKey:FileName:MimeType:SizeBytes:PublicUrl,Document --set ApiTests=true --set PythonTests=true --set RustTests=true`.
+**The edit dialog** has the same two buttons and a picture. A new row's dialog has an Upload button: the file makes the row (the storage key, name, type and size come from the server). React, Angular and Blazor go on editing the saved row, so a caption can be typed and saved; WinUI3 and Uno close the dialog and the list shows the new row. A saved row's dialog has a Download button, and, when the stored type is an image other than SVG, a picture at most `AssetScreens.PictureEdge` pixels wide: React and Angular read the bytes through the client (an image tag cannot send the sign-in token), Blazor puts them in a `data:` address, the desktop apps decode them into a `BitmapImage`. `AssetDialogCode` in Core writes the desktop dialogs' XAML, handlers and view-model members for WinUI3 (through `<Table>Assets.CopyFileAsync`, which reads the store and never the database) and Uno (through the API client). A browser app on another origin reads the downloaded file's name from `Content-Disposition`, so the API's CORS policy (ASP.NET, Python and Rust) exposes that header when the project has an asset table.
+
+Not covered: a table limited to an owner or a tenant; a `varbinary` column; a store other than a local folder (S3 and Azure Blob are the owner's `IAssetStore`). `Docs/Verification/Tools/Schemas/assets.sql` (and `assets_postgres.sql`, `assets_mysql.sql`) is the scratch schema: `python new_scratch_project.py Ast --schema assets --stack api,python,rust --set AssetTables=Asset:StorageKey:FileName:MimeType:SizeBytes:PublicUrl,Document --set ApiTests=true --set PythonTests=true --set RustTests=true`.
+
+## PolymorphicLinks=Attachment:OwnerType:OwnerId:Product|Opportunity|Customer
+
+A link table whose far side is a pair, a record type name and a record id: a brochure attached to a product or an opportunity, a comment or a note on any record. A foreign key cannot hold that, so the checks are code. The table, the type column, the id column and the tables the type may name (at least two, each with a single whole-number key) are the setting; `:remove` after them removes a deleted row's links instead of refusing the delete. The id column has no foreign key; the table may also be an asset table (the brochure is a file).
+
+| Where | Rule |
+|---|---|
+| Create and update of the link table | The type is trimmed and matched to a listed table without regard to case; no match is a 400 `link-type-unknown` that names the listed tables. The type is written as the table's own name (`product` is saved as `Product`). The id must be a row of that table, else a 400 `link-target-missing`. |
+| Delete of a listed table's row | Refused with a 409 `link-target-in-use` while a link table without `:remove` has a row naming it. With `:remove` the links go after the row is gone (`AfterDeleteAsync`). |
+| The type column | `PolymorphicPlan.ApplyChoices` gives it the listed names as its choices, so every front end shows a drop-down, the validators name the values and the generated tests take the first. A column that already lists values (a CHECK list) keeps its own. |
+| The attachments grid | `PolymorphicPlan` adds a child to each listed table (a `ChildForeignKeyModel` with a `TypeColumn` and a `TypeValue`, kept out of the foreign keys the database declares), so the listed table's screen is a master-detail screen and its edit dialog shows the link table's rows whose id is the row and whose type is the table (React, Angular, Blazor, WinUI3 and Uno read it as any child grid; the web screens filter the whole list, the desktop ones filter in the query). A link table with no screen of its own (too small to get one, or left out of `Screens`) gives no grid. A delete the link table refuses answers 409, which the React pages show as "in use". |
+
+`RowShapeWriter` writes `CheckLinkAsync`, `CheckLinksAsync` and `AfterDeleteAsync` in the table's `<Table>Shape`; Python (`PY_Links`, events on the model classes, `app/routes/link_rules.py`) and Rust (`RS_Links`, `check_*`, `refuse_linked_*` and `remove_links_*` called from the routes, `src/routes/link_rules.rs`) have the same rules and sentences. `Tools/polymorphic_check.py` plays them over HTTP against any of the three over `Tools/Schemas/polymorphic.sql`. The generated generic add, change and remove tests are not written for a link table (a row of it must name a row of another table). Not covered: an "attachments" section on the screen of each listed table, a link table or listed table that is limited to an owner or a tenant, and a listed table with a text key.
 
 ## SoftDeleteTables=Customer,Order:IsRemoved
 
@@ -83,6 +98,22 @@ A table and optionally the yes/no column (default `IsDeleted`, NOT NULL). `Delet
 - `POST {id}/restore` clears the flag and the stamps and answers the row; 404 when there is no such row, 409 `/problems/not-deleted` when it is not deleted (an administrator).
 
 A row that other rows refer to is not removed by a soft delete, so the foreign keys keep pointing at it; a unique index still counts it.
+
+## DefaultRowTables=CustomerAddress:IsDefault:CustomerId+AddressType
+
+A table of which exactly one row per group is the default (an address of a customer per type). The yes/no column cannot be NULL and the group is made of one or more other columns (`+` between them); the key is a single whole number.
+
+| Rule | How |
+|---|---|
+| A save with the mark | `CheckDefaultAsync` clears the mark of the others of the group in a transaction that the save of the row commits (`DefaultRows.InSaveTransactionAsync`, committed on `SavedChanges`, rolled back on `SaveChangesFailed` or when the request ends without a save), so a unique index on the group where the flag is set is never broken |
+| A save without the mark | a row that is alone in its group, or that was the only default, is marked instead: a group that has rows has a default |
+| `POST {id}/make-default` | moves the mark in one transaction; a row that is the default answers 200 and changes nothing; a missing row is 404 |
+| A delete of the default row | `CheckDefaultDeleteAsync` hands the mark to the next row of the group (the lowest key) in one transaction before the delete runs |
+| Clone | none: a copy of the default row would be a second default (`CloneShape`) |
+| The screens | a "Make default" button on every list row that is not the default of its group (`DefaultRowScreens`): React, Angular and Blazor call the route (`makeDefault`, `MakeDefaultAsync`) and read the list again, Uno calls it through its client, WinUI3 moves the mark in one transaction of its own context. The edit dialog of a saved row has the same button, and the flag is text there (`DefaultRowScreens.IsFlagColumn` makes it a system-stamp field): a new row is not given a mark by the form, the API gives the first row of a group the mark, and the WinUI3 dialog, which writes through its own context, does the same before it saves |
+
+`RowShapeTests` writes two tests (a mark taken, `make-default`). Not served for a table limited to an owner or a tenant. Python (`PythonDefaultWriter`: `settle_default` and `promote_default` called before the commit, so the marks move in the transaction of the save; the helper runs inside `no_autoflush` so the row's own flag is not written before the old mark is cleared) and Rust (`RustDefaultWriter`: `settle_default` before the write; a row that asks for the mark while another row holds it is written without it and `move_default` moves it in one transaction right after) write the same rule and the same route; Rust moves the mark after the write, not in the same transaction, so a failure between the two leaves the old default in place.
+
 
 ## EffectiveDatedTables=Price:ValidFrom:ValidTo:ItemId+CurrencyId
 

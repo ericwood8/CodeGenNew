@@ -19,7 +19,7 @@
     // A table the project lists in LogTables (LogTablePlan) is only read: its test file checks the reads, the date range, a date that is not a date and the 405 of every write, since the API cannot add a row to it.
     // Full notes: Docs/TemplateNotes/RS_Test_v1.md
     // ==========================================================================================
-    if (!Project.RustTests)
+    if (!Project.RustTests || PolymorphicPlan.IsLinkTable(Model.TableName, Project))
     {
     }
     else

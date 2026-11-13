@@ -77,9 +77,14 @@ public class AssetScreenTests
         Expect.Contains(page, "<button type=\"button\" onClick={() => void download(asset.assetId!, asset.fileName)}>Download</button>");
         Expect.Contains(page, "setError('Problem while downloading!');");
         string client = FileEnding(files, "assetApi.ts");
-        Expect.Contains(client, "import { downloadFile, lookupQuery, request, uploadFile } from './client';");
+        Expect.Contains(client, "import { downloadFile, fetchBlob, lookupQuery, request, uploadFile } from './client';");
         Expect.Contains(client, "upload: (file: File) => uploadFile<Asset>(`${apiUrl}/upload`, file),");
         Expect.Contains(client, "download: (id: number, fileName: string) => downloadFile(`${apiUrl}/${id}/download`, fileName),");
+        Expect.Contains(client, "picture: (id: number) => fetchBlob(`${apiUrl}/${id}/download`),");
+        Expect.Contains(page, "edit(await assetApi.upload(file));");
+        Expect.Contains(page, "{!(selectedRow.assetId) && <button type=\"button\" onClick={() => dialogInput.current?.click()}>Upload</button>}");
+        Expect.Contains(page, "{selectedRow.assetId && <button type=\"button\" onClick={() => void download(selectedRow.assetId!, selectedRow.fileName ?? 'file')}>Download</button>}");
+        Expect.Contains(page, "{picture && <img src={picture} alt={selectedRow.fileName ?? ''}");
     }
 
     [TestMethod]
@@ -99,6 +104,12 @@ public class AssetScreenTests
         Expect.Contains(service, "upload(file: File): Observable<Asset> {");
         Expect.Contains(service, "return this.http.post<Asset>(`${this.apiUrl}/upload`, form);");
         Expect.Contains(service, "download(id: number, fallbackName: string): Observable<void> {");
+        Expect.Contains(service, "picture(id: number): Observable<Blob> {");
+        Expect.Contains(html, "<input #dialogInput type=\"file\" accept=\"text/*,image/png\" hidden (change)=\"uploadHere($event)\" />");
+        Expect.Contains(html, "@if (!(selectedRow.assetId)) {");
+        Expect.Contains(html, "<span><img [src]=\"picture\"");
+        Expect.Contains(code, "ngDoCheck(): void {");
+        Expect.Contains(code, "next: (saved) => { this.edit(saved); this.load(); }");
     }
 
     [TestMethod]
@@ -116,6 +127,11 @@ public class AssetScreenTests
         string client = FileEnding(files, "AssetClient.cs");
         Expect.Contains(client, "public async Task<Asset> UploadAsync(Stream content, string fileName, string? contentType)");
         Expect.Contains(client, "public async Task<(byte[] Content, string FileName, string ContentType)> DownloadAsync(int id)");
+        Expect.Contains(page, "<label>Upload <InputFile OnChange=\"UploadHereAsync\" accept=\"text/*,image/png\" /></label>");
+        Expect.Contains(page, "<button type=\"button\" @onclick=\"() => DownloadAsync(row!)\">Download</button>");
+        Expect.Contains(page, "<img src=\"@pictureUrl\"");
+        Expect.Contains(page, "_ = ShowPictureAsync();");
+        Expect.Contains(page, "pictureUrl = $\"data:{storedType};base64,{Convert.ToBase64String(content)}\";");
     }
 
     [TestMethod]
@@ -128,6 +144,7 @@ public class AssetScreenTests
         Expect.Contains(xaml, "Click=\"OnUploadClick\"");
         Expect.Contains(xaml, "<Button Content=\"Download\" FontWeight=\"Bold\"");
         Expect.Contains(xaml, "Click=\"OnDownloadClick\"");
+        Expect.Contains(xaml, "<ColumnDefinition Width=\"360\" />");   // room for Edit, Clone, Download and Delete
         string code = FileEnding(files, "AssetListPage.xaml.cs");
         Expect.Contains(code, "private async void OnUploadClick(object sender, RoutedEventArgs e)");
         Expect.Contains(code, "new Windows.Storage.Pickers.FileOpenPicker()");
@@ -137,6 +154,16 @@ public class AssetScreenTests
         string model = FileEnding(files, "AssetListViewModel.cs");
         Expect.Contains(model, "public async Task UploadAsync(Stream content, string fileName, string? contentType)");
         Expect.Contains(model, "public async Task<(byte[] Content, string FileName, string ContentType)?> DownloadAsync(int id)");
+        string dialogXaml = FileEnding(files, "AssetDetailDialog.xaml");
+        Expect.Contains(dialogXaml, "Click=\"OnDialogUploadClick\" Visibility=\"{x:Bind ViewModel.UploadVisibility, Mode=OneWay}\"");
+        Expect.Contains(dialogXaml, "Click=\"OnDialogDownloadClick\" Visibility=\"{x:Bind ViewModel.DownloadVisibility, Mode=OneWay}\"");
+        Expect.Contains(dialogXaml, "<Image Source=\"{x:Bind ViewModel.Picture, Mode=OneWay}\" MaxWidth=\"160\" MaxHeight=\"160\" />");
+        string dialogCode = FileEnding(files, "AssetDetailDialog.xaml.cs");
+        Expect.Contains(dialogCode, "if (await ViewModel.UploadAsync(content, file.Name, file.ContentType))");
+        Expect.Contains(dialogCode, "if (await ViewModel.DownloadAsync() is not { } downloaded)");
+        string dialogModel = FileEnding(files, "AssetDetailViewModel.cs");
+        Expect.Contains(dialogModel, "public async Task<bool> UploadAsync(System.IO.Stream content, string fileName, string? contentType)");
+        Expect.Contains(dialogModel, "_ = LoadPictureAsync();");
     }
 
     [TestMethod]
@@ -147,6 +174,7 @@ public class AssetScreenTests
         string xaml = FileEnding(files, "AssetListPage.xaml");
         Expect.Contains(xaml, "Click=\"OnUploadClick\"");
         Expect.Contains(xaml, "Click=\"OnDownloadClick\"");
+        Expect.Contains(xaml, "<ColumnDefinition Width=\"360\" />");   // room for Edit, Clone, Download and Delete
         string code = FileEnding(files, "AssetListPage.xaml.cs");
         Expect.Contains(code, "await ViewModel.UploadAsync(file.Path, file.ContentType);");
         Expect.Contains(code, "await ViewModel.ExportAsync(id, target.Path);");
@@ -159,6 +187,16 @@ public class AssetScreenTests
         string assets = FileEnding(files, "Assets.cs");
         Expect.Contains(assets, "public static class AssetAssets");
         Expect.DoesNotContain(assets, "IResult");
+        Expect.Contains(assets, "public static async Task<string?> CopyFileAsync(string key, System.IO.Stream target)");
+        string dialogXaml = FileEnding(files, "AssetDetailDialog.xaml");
+        Expect.Contains(dialogXaml, "Click=\"OnDialogUploadClick\"");
+        Expect.Contains(dialogXaml, "<Image Source=\"{x:Bind ViewModel.Picture, Mode=OneWay}\"");
+        string dialogCode = FileEnding(files, "AssetDetailDialog.xaml.cs");
+        Expect.Contains(dialogCode, "if (await ViewModel.UploadAsync(file.Path, file.ContentType))");
+        Expect.Contains(dialogCode, "await ViewModel.ExportAsync(target.Path);");
+        string dialogModel = FileEnding(files, "AssetDetailViewModel.cs");
+        Expect.Contains(dialogModel, "await AssetAssets.UploadAsync(_context, path, contentType);");
+        Expect.Contains(dialogModel, "AssetAssets.CopyFileAsync(_editing.StorageKey, target)");
     }
 
     [TestMethod]

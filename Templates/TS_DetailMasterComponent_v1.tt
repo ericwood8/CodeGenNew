@@ -322,6 +322,8 @@
         H($"                    <button{writeOnly} (click)=\"{(odata && !nameActive ? "open" : "edit")}({variable})\" class=\"btn-action\">Edit</button>");
         if (canClone)
             H($"                    <button{writeOnly} (click)=\"clone({variable}.{keyProp}!)\" class=\"btn-action\">Clone</button>");
+        if (TableShapes.For(Model, Project).DefaultRow is { } defaultRow)
+            H($"                    <button *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}!{variable}.{JsonNames.Camel(defaultRow.Flag.Name)}\" (click)=\"{DefaultRowScreens.Route}({variable}.{keyProp}!)\" class=\"btn-action\">{DefaultRowScreens.Caption}</button>");
         if (TableShapes.For(Model, Project).Content is { } contentButtons)
             foreach (var action in ContentScreens.Actions)
                 H($"                    <button *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}{ContentScreens.ShownTs(contentButtons, action, variable)}\" (click)=\"{action.Route}({variable}.{keyProp}!)\" class=\"btn-action\">{action.Caption}</button>");
@@ -355,6 +357,13 @@
         H("    <dialog *ngIf=\"selectedRow\" #editDialog class=\"form-container\" (cancel)=\"$event.preventDefault(); cancel()\">");
         string headingTest = textKey ? "adding ? 'Add' : 'Edit'" : "selectedRow." + keyProp + " ? 'Edit' : 'Add'";
         H($"        <h2>{{{{{headingTest}}}}} {title}</h2>");
+        if (TableShapes.For(Model, Project).DefaultRow is { } dialogDefault)
+        {
+            // the same button as the row's, for the saved row the dialog holds
+            H("        <div>");
+            H($"            <button type=\"button\" *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && !selectedRow.{JsonNames.Camel(dialogDefault.Flag.Name)}\" (click)=\"{DefaultRowScreens.Route}(selectedRow.{keyProp}!)\">{DefaultRowScreens.Caption}</button>");
+            H("        </div>");
+        }
         if (TableShapes.For(Model, Project).Content is { } dialogContent)
         {
             // the same buttons as the row's, for the saved row the dialog holds
@@ -383,7 +392,7 @@
             if (formColumn.IsSystemStampField)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
-                string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium'" + dateZone + " }}" : "{{ " + model + " }}";
+                string stampValue = c.IsBooleanColumn ? "{{ " + model + " ? '" + DefaultRowScreens.YesText + "' : '" + DefaultRowScreens.NoText + "' }}" : c.IsDateColumn ? "{{ " + model + " | date:'medium'" + dateZone + " }}" : "{{ " + model + " }}";
                 // who set a guarded column and when: a row from before the stamp existed says so instead of showing nothing
                 if (form.IsGuardStamp(c))
                     stampValue = c.IsDateColumn ? "{{ " + model + " ? (" + model + " | date:'medium'" + dateZone + ") : '" + GuardStamp.NotRecorded + "' }}" : "{{ " + model + " || '" + GuardStamp.NotRecorded + "' }}";
@@ -832,7 +841,7 @@
             T($"import {{ {AngularNames.ServiceClass(p.Table)} }} from '../../{servicesFolder}/{AngularNames.ServiceFile(p.Table)}';");
         }
         if (children.Count > 0) T("import { HttpClient } from '@angular/common/http';");
-        if (odata && gridChildren.Any(ch => ch.KeyJson is not null && ODataPlan.ServesByName(ch.Table, Project)))
+        if (odata && gridChildren.Any(ch => ch.KeyJson is not null && ch.TypeJson is null && ODataPlan.ServesByName(ch.Table, Project)))
         {
             T($"import {{ readOData }} from '../../{servicesFolder}/odata-crud.service';");
             T($"import {{ odataLiteral, queryString }} from '../../{servicesFolder}/odata-query';");
@@ -1190,7 +1199,7 @@
             T($"  private load{child.Name}(parentId: {keyTs}): void {{");
             if (child.Filters.Count > 0)
                 T($"    this.childFilters['{child.Variable}'] = {{ {string.Join(", ", child.Filters.Select(f => f.ColumnJson + ": ''"))} }};");
-            if (odata && child.KeyJson is not null && ODataPlan.ServesByName(child.Table, Project))
+            if (odata && child.KeyJson is not null && child.TypeJson is null && ODataPlan.ServesByName(child.Table, Project))
             {
                 // the child is served as OData too: the server finds the rows that point at this one, instead of the whole table being read and filtered here
                 string parentLiteral = keyType.Kind == KeyKind.Int ? "number" : keyType.Kind == KeyKind.Guid ? "guid" : "string";
@@ -1202,7 +1211,7 @@
             {
                 T($"    this.http.get<any[]>('{apiPrefix}/{child.ApiRoute}').subscribe({{");
                 T("      next: (rows) => {");
-                T($"        this.{child.Variable}Rows = rows.filter((r: any) => r['{child.ForeignKeyJson}'] === parentId);");
+                T($"        this.{child.Variable}Rows = rows.filter((r: any) => r['{child.ForeignKeyJson}'] === parentId{(child.TypeJson is null ? "" : $" && r['{child.TypeJson}'] === '{child.TypeValue}'")});");
             }
             T($"        this.{child.Variable}Columns = this.{child.Variable}Rows.length > 0 ? this.orderColumns(Object.keys(this.{child.Variable}Rows[0]), this.{child.Variable}Hidden) : [];");
             foreach (var lookup in child.Lookups.Where(l => l.TypeAhead))
@@ -1332,6 +1341,14 @@
             T("    }");
             T("    // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.");
             T("    return typeof value === 'string' ? value.replace(/^(\\d{4}-\\d{2}-\\d{2})T.*$/, '$1') : String(value);");
+            T("  }");
+        }
+        if (TableShapes.For(Model, Project).DefaultRow is not null)
+        {
+            // Make default moves the mark of the row's group to this row on the server; the grid is read again.
+            T();
+            T($"  {DefaultRowScreens.Route}(id: {keyType.TypeScript}): void {{");
+            T($"    this.{(odata ? "shapeService" : "service")}.{DefaultRowScreens.Route}(id).subscribe({{ next: () => {{ if (this.selectedRow?.{keyProp} === id) this.selectedRow = {{ ...this.selectedRow, {JsonNames.Camel(TableShapes.For(Model, Project).DefaultRow!.Flag.Name)}: true }}; this.load(); }}, error: (error) => this.showError('making it the default', error) }});");
             T("  }");
         }
         if (contentTable)

@@ -303,6 +303,8 @@
             H($"                    <button{writeOnly} (click)=\"{(odata && !nameActive ? "open" : "edit")}({variable})\" class=\"btn-action\">Edit</button>");
             if (canClone)
                 H($"                    <button{writeOnly} (click)=\"clone({variable}.{keyProp}!)\" class=\"btn-action\">Clone</button>");
+            if (TableShapes.For(Model, Project).DefaultRow is { } defaultRow)
+                H($"                    <button *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}!{variable}.{JsonNames.Camel(defaultRow.Flag.Name)}\" (click)=\"{DefaultRowScreens.Route}({variable}.{keyProp}!)\" class=\"btn-action\">{DefaultRowScreens.Caption}</button>");
             if (TableShapes.For(Model, Project).Content is { } contentButtons)
                 foreach (var action in ContentScreens.Actions)
                     H($"                    <button *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}{ContentScreens.ShownTs(contentButtons, action, variable)}\" (click)=\"{action.Route}({variable}.{keyProp}!)\" class=\"btn-action\">{action.Caption}</button>");
@@ -352,12 +354,30 @@
         // a typed key is set on a new row too, so the screen's `adding` (not the key) says which heading
         string headingTest = textKey ? "adding ? 'Add' : 'Edit'" : "selectedRow." + keyProp + " ? 'Edit' : 'Add'";
         H($"        <h2>{{{{{headingTest}}}}} {title}</h2>");
+        if (TableShapes.For(Model, Project).DefaultRow is { } dialogDefault && !oneRow)
+        {
+            // the same button as the row's, for the saved row the dialog holds
+            H("        <div>");
+            H($"            <button type=\"button\" *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && !selectedRow.{JsonNames.Camel(dialogDefault.Flag.Name)}\" (click)=\"{DefaultRowScreens.Route}(selectedRow.{keyProp}!)\">{DefaultRowScreens.Caption}</button>");
+            H("        </div>");
+        }
         if (TableShapes.For(Model, Project).Content is { } dialogContent && !oneRow)
         {
             // the same buttons as the row's, for the saved row the dialog holds
             H("        <div>");
             foreach (var action in ContentScreens.Actions)
                 H($"            <button type=\"button\" *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && {ContentScreens.ShownTs(dialogContent, action, "selectedRow")}\" (click)=\"{action.Route}(selectedRow.{keyProp}!)\" class=\"btn-action\">{action.Caption}</button>");
+            H("        </div>");
+        }
+        if (assetTable is not null && !oneRow)
+        {
+            string savedTest = textKey ? "!adding" : $"selectedRow.{keyProp}";
+            string pictureName = JsonNames.Camel(assetTable.FileName.Name);
+            H("        <div>");
+            H($"            <input #dialogInput type=\"file\" accept=\"{AssetScreens.Accept(Project)}\" hidden (change)=\"uploadHere($event)\" />");
+            H($"            <button type=\"button\" *ngIf=\"{(writeRoles.Count > 0 ? "canWrite && " : "")}!({savedTest})\" (click)=\"dialogInput.click()\" class=\"btn-action\">{AssetScreens.UploadCaption}</button>");
+            H($"            <button type=\"button\" *ngIf=\"{savedTest}\" (click)=\"download(selectedRow.{keyProp}!, selectedRow.{pictureName} ?? '{AssetScreens.FallbackFileName}')\" class=\"btn-action\">{AssetScreens.DownloadCaption}</button>");
+            H($"            <span *ngIf=\"picture\"><img [src]=\"picture\" [alt]=\"selectedRow.{pictureName}\" style=\"max-width: {AssetScreens.PictureEdge}px; max-height: {AssetScreens.PictureEdge}px\" /></span>");
             H("        </div>");
         }
         H($"        <form id=\"{variable}Form\" (ngSubmit)=\"submitForm($event, selectedRow)\">");
@@ -380,7 +400,7 @@
             if (formColumn.IsSystemStampField)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
-                string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium'" + dateZone + " }}" : "{{ " + model + " }}";
+                string stampValue = c.IsBooleanColumn ? "{{ " + model + " ? '" + DefaultRowScreens.YesText + "' : '" + DefaultRowScreens.NoText + "' }}" : c.IsDateColumn ? "{{ " + model + " | date:'medium'" + dateZone + " }}" : "{{ " + model + " }}";
                 // who set a guarded column and when: a row from before the stamp existed says so instead of showing nothing
                 if (form.IsGuardStamp(c))
                     stampValue = c.IsDateColumn ? "{{ " + model + " ? (" + model + " | date:'medium'" + dateZone + ") : '" + GuardStamp.NotRecorded + "' }}" : "{{ " + model + " || '" + GuardStamp.NotRecorded + "' }}";
@@ -1057,6 +1077,14 @@
             T(Ahead(p) ? $"    return this.{NamesOf(p)}.name(id);" : $"    return this.{p.List}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
             T("  }");
         }
+        if (TableShapes.For(Model, Project).DefaultRow is not null)
+        {
+            // Make default moves the mark of the row's group to this row on the server; the grid is read again.
+            T();
+            T($"  {DefaultRowScreens.Route}(id: {keyType.TypeScript}): void {{");
+            T($"    this.{(odata ? "shapeService" : "service")}.{DefaultRowScreens.Route}(id).subscribe({{ next: () => {{ if (this.selectedRow?.{keyProp} === id) this.selectedRow = {{ ...this.selectedRow, {JsonNames.Camel(TableShapes.For(Model, Project).DefaultRow!.Flag.Name)}: true }}; this.load(); }}, error: (error) => this.showError('making it the default', error) }});");
+            T("  }");
+        }
         if (contentTable)
         {
             // Publish, Unpublish and Archive change the state on the server (the form shows the state as text); the grid is read again.
@@ -1083,6 +1111,32 @@
             T();
             T($"  {AssetScreens.DownloadRoute}(id: {keyType.TypeScript}, fileName: string): void {{");
             T($"    this.{assetService}.{AssetScreens.DownloadRoute}(id, fileName).subscribe({{ error: (error) => this.showError('downloading', error) }});");
+            T("  }");
+            // the dialog: Upload on a new row makes the row from the file and goes on editing it; a saved row shows its picture and can be downloaded
+            string pictureKey = JsonNames.Camel(assetTable.Key.Name);
+            string pictureType = JsonNames.Camel(assetTable.MimeType.Name);
+            T();
+            T("  picture: string | null = null; // the object address of the picture of the open row, when its file is an image");
+            T("  private pictureOf: string | null = null;");
+            T();
+            T("  uploadHere(event: Event): void {");
+            T("    const input = event.target as HTMLInputElement;");
+            T("    const file = input.files?.[0];");
+            T("    input.value = '';");
+            T("    if (!file) return;");
+            T($"    this.{assetService}.{AssetScreens.UploadRoute}(file).subscribe({{ next: (saved) => {{ this.edit(saved); this.load(); }}, error: (error) => this.showError('uploading', error) }});");
+            T("  }");
+            T();
+            T("  ngDoCheck(): void {");
+            T($"    const id = this.selectedRow?.{pictureKey};");
+            T($"    const type = this.selectedRow?.{pictureType};");
+            T("    const wanted = id && type && type.startsWith('image/') && !type.startsWith('image/svg') ? `${id}|${type}` : null;");
+            T("    if (wanted === this.pictureOf) return;");
+            T("    this.pictureOf = wanted;");
+            T("    if (this.picture) URL.revokeObjectURL(this.picture);");
+            T("    this.picture = null;");
+            T("    if (!wanted || !id) return;");
+            T($"    this.{assetService}.{AssetScreens.PictureRoute}(id).subscribe({{ next: (blob) => {{ if (this.pictureOf === wanted) this.picture = URL.createObjectURL(blob); }}, error: () => {{}} }});");
             T("  }");
         }
         T("}");

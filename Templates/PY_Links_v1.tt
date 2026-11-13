@@ -1,0 +1,25 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Links_v1.tt
+    // Generates: app/routes/link_rules.py   (whole-database; the path is written by the template)
+    // The Python counterpart of the polymorphic-link part of API_RowShapes (PolymorphicLinks): SQLAlchemy events on the link table's class (a record type that names no listed table, or an id that is no row of it,
+    // is refused with 400 and the type is written in the table's own spelling) and on every listed table's class (a delete is refused with 409 while a link names the row, or removes the links with :remove).
+    // The same sentences and problem types as the ASP.NET API (LinkWords and PythonLinkWriter in Core). PY_Mod imports this module so the events are registered.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    var links = PythonLinkWriter.Links(Database, Project);
+    var problems = PolymorphicPlan.Problems(Database, Project);
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (links.Count > 0)
+    {
+        Write("@@@FILE app/routes/link_rules.py@@@\n" + PythonLinkWriter.File(links, Project));
+    }
+#>

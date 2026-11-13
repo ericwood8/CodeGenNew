@@ -75,6 +75,7 @@ public static class ProjectGenerator
         progress?.Invoke("Reading the schema...");
         var database = await provider.BuildAsync(options.DatabaseName, options.Schema, cancellationToken);
         project = project.ForServer(database.ServerVersion);
+        PolymorphicPlan.ApplyChoices(database, project);
         progress?.Invoke($"Read {database.Tables.Count} tables of [{options.Schema}].");
         var keptTables = LeaveOutTables(database, project, report);
 
@@ -146,6 +147,8 @@ public static class ProjectGenerator
             var model = !rows && !display
                 ? tablesByName[tableName]
                 : await provider.BuildTableModelAsync(options.Schema, tablesByName[tableName].DbTableName, rows, display, cancellationToken);
+            if (rows || display)
+                PolymorphicPlan.ApplyChoices(model, database, project);
             if (keptTables is not null)
                 model.ChildForeignKeys.RemoveAll(c => !keptTables.Contains(c.ReferencingTable) && !keptTables.Contains(c.ReferencingDbTable));
             return models[key] = model;

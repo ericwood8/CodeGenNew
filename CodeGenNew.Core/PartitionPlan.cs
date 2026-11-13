@@ -76,7 +76,7 @@ public static class PartitionPlan
                 problems.Add($"{prefix}: the key already holds {date.Name}; the script runs against a table whose key is the key column alone.");
                 continue;
             }
-            if (table.ForeignKeys.Count > 0 || table.ChildForeignKeys.Count > 0)
+            if (table.ForeignKeys.Count > 0 || table.ChildForeignKeys.Any(c => !c.IsPolymorphic))
             {
                 problems.Add($"{prefix} has foreign keys (to or from it); a partitioned table cannot keep them in every database.");
                 continue;

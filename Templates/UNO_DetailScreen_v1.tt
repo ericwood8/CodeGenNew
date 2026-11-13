@@ -51,7 +51,9 @@
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
     // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
 
+    var assetDialog = TableShapes.For(Model, Project).Asset;   // AssetTables: Upload, Download and the picture in the dialog
     var contentShape = TableShapes.For(Model, Project).Content;   // ContentTables: Publish, Unpublish and Archive in the dialog of a saved row
+    var defaultRowShape = TableShapes.For(Model, Project).DefaultRow;   // DefaultRowTables: Make default in the dialog of a saved row
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
     var userScreen = UserScreenPlan.ForUno(Model, Project);   // the user table: a Set password box, the administrator flag for administrators only
     var keyColumn = form.KeyColumn;
@@ -132,7 +134,7 @@
 #>
     <StackPanel MinWidth="420" Spacing="12">
         <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" /><#= contentShape is not null ? ContentScreens.DialogXaml("        ") : "" #>
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" /><#= contentShape is not null ? ContentScreens.DialogXaml("        ") : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogXaml("        ") : "" #><#= assetDialog is not null ? AssetDialogCode.Xaml("        ") : "" #>
         <TabView IsAddTabButtonVisible="False" TabWidthMode="SizeToContent" CanReorderTabs="False" CanDragTabs="False" SelectedIndex="0">
 <#
         }
@@ -142,7 +144,7 @@
     <!-- The error bar sits ABOVE the scrolling area: inside it, a validation message is out of sight whenever the person has scrolled down. -->
     <StackPanel Spacing="12">
         <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" /><#= contentShape is not null ? ContentScreens.DialogXaml("        ") : "" #>
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" /><#= contentShape is not null ? ContentScreens.DialogXaml("        ") : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogXaml("        ") : "" #><#= assetDialog is not null ? AssetDialogCode.Xaml("        ") : "" #>
     <ScrollViewer MinWidth="420" MaxHeight="560">
         <StackPanel Spacing="12">
 <#
@@ -280,7 +282,7 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
         {
             deferral.Complete();
         }
-    }<#= contentShape is not null ? ContentScreens.DialogHandlers() : "" #>
+    }<#= contentShape is not null ? ContentScreens.DialogHandlers() : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogHandlers() : "" #><#= assetDialog is not null ? AssetDialogCode.Handlers(true) : "" #>
 <#
         foreach (var c in shown.Where(c => form.Field(c).IsDateValue && c.IsNullable))
         {
@@ -446,7 +448,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         }
 #>
 
-<#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, type, "_api." + UnoNames.ClientProperty(table)) : "" #>    public <#= table #>DetailViewModel(ApiClients api, <#= type #>? editing)
+<#= assetDialog is not null ? AssetDialogCode.Members(Model, assetDialog, "_api." + UnoNames.ClientProperty(table)) : "" #><#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, type, "_api." + UnoNames.ClientProperty(table)) : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogMembers(form, defaultRowShape, type, "_api." + UnoNames.ClientProperty(table)) : "" #>    public <#= table #>DetailViewModel(ApiClients api, <#= type #>? editing)
     {
         _api = api;
         _editing = editing;
@@ -457,7 +459,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         foreach (var c in shown)
             Write(DesktopFormCode.LoadLines(form, c));
 #>
-<#= contentShape is not null ? "            RefreshContentButtons();\n" : "" #>        }
+<#= contentShape is not null ? "            RefreshContentButtons();\n" : "" #><#= defaultRowShape is not null ? DefaultRowScreens.ConstructorLine : "" #><#= assetDialog is not null ? AssetDialogCode.ConstructorLine : "" #>        }
     }
 
     // A table with no foreign-key lookups and no guarded column has nothing to load here: a plain Task.CompletedTask avoids CS1998 (an async method with no await).

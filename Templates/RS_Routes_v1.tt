@@ -67,10 +67,18 @@
     // ContentTables: the slug and status rules on create and update, publish, unpublish and archive, and the public reads (a table of a tenant, or with a second person's approval, is only written by the ASP.NET API)
     var contentPlan = log ? null : TableShapes.For(Model, Project).Content;
     var assetPlan = log ? null : TableShapes.For(Model, Project).Asset;
+    // PolymorphicLinks: a link table checks its record type and id on create and update, a listed table refuses its delete while links name the row or removes them (src/routes/link_rules.rs, RS_Links)
+    bool linkTable = !log && PolymorphicPlan.IsLinkTable(Model.TableName, Project);
+    bool linkRefuses = !log && RustLinkWriter.Refuses(Model, Project);
+    bool linkRemoves = !log && RustLinkWriter.Removes(Model, Project);
     if (contentPlan is not null && ContentApiWords.NotBuilt(contentPlan) is { } contentNotBuilt)
         Error(contentNotBuilt);
     // EffectiveDatedTables: the period check on create and update and GET current (not for a table limited to an owner or a tenant)
     var effPlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).Effective : null;
+    // DefaultRowTables: one default row per group; the save and the delete keep it, and POST {id}/make-default moves it
+    var defPlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).DefaultRow : null;
+    var defNames = defPlan is null ? null : new RustDefaultWriter.Names(t.Struct, t.FieldOf(defPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(defPlan.Key.DbName), keyType, t.FieldOf(defPlan.Flag).Name,
+        DialectInfo.For(Model.Dialect).Quote(defPlan.Flag.DbName), defPlan.Groups.Select(g => new RustDefaultWriter.Group(t.FieldOf(g).Name, DialectInfo.For(Model.Dialect).Quote(g.DbName), t.FieldOf(g).IsOption)).ToList(), t.Table);
     var effNames = effPlan is null ? null : new RustEffectiveWriter.Names(t.Struct, t.FieldOf(effPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.Key.DbName), keyType, t.FieldOf(effPlan.From).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.From.DbName),
         t.FieldOf(effPlan.To).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.To.DbName), t.FieldOf(effPlan.To).IsOption, t.FieldOf(effPlan.From).BaseType,
         effPlan.Groups.Select(g => new RustEffectiveWriter.Group(t.FieldOf(g).Name, t.FieldOf(g).Json, DialectInfo.For(Model.Dialect).Quote(g.DbName), t.FieldOf(g).BaseType, t.FieldOf(g).IsOption)).ToList(), t.Table, t.SelectList);
@@ -111,8 +119,8 @@
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
-    bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null;
-    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null;
+    bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null;
     Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -198,6 +206,8 @@
         sb.Append(RustTreeWriter.RouteLines(t.Route, readLayer, writeLayer, roles));
     if (effNames is not null)
         sb.Append(RustEffectiveWriter.RouteLine(t.Route, readLayer));
+    if (defNames is not null)
+        sb.Append(RustDefaultWriter.RouteLine(t.Route, writeLayer));
     if (contentPlan is not null)
     {
         sb.Append(RustContentWriter.StatusRouteLines(t.Route, writeLayer));
@@ -223,6 +233,8 @@
     }
     if (effNames is not null)
         Line(RustEffectiveWriter.Code(effNames, t.LiveAnd()));
+    if (defNames is not null)
+        Line(RustDefaultWriter.Code(defNames));
     if (softRoutes)
     {
         Line("/// The rows that were soft deleted, the last deleted first.");
@@ -417,7 +429,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -480,7 +492,13 @@
         Line("    new_content(&pool, &mut row).await?;");
     if (assetPlan is not null)
         Line(RustAssetWriter.CreateLine(t, assetPlan).TrimEnd((char)10));
+    if (linkTable)
+        Line(RustLinkWriter.CheckLine(t));
+    if (defNames is not null)
+        Line("    let moves_default = settle_default(&pool, None, &mut row).await?;");
     Line("    let row = repo::insert(&pool, &row).await?;");
+    if (defNames is not null)
+        Line($"    let row = if moves_default {{\n        move_default(&pool, &row).await?;\n        repo::get_by_id(&pool, {(textKey ? "&" : "")}row.{t.Key.Name}).await?.ok_or(ApiError::NotFound)?\n    }} else {{\n        row\n    }};");
     if (tenantTable)
         Line($"    attach_creator(&pool, &user, row.{t.Key.Name}).await?;");
     if (people)
@@ -528,7 +546,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -569,6 +587,19 @@
         Line("    change_content(&pool, id, &mut row, &stored).await?;");
     if (assetPlan is not null)
         Line(RustAssetWriter.UpdateLines(t, assetPlan).TrimEnd((char)10));
+    if (linkTable)
+        Line(RustLinkWriter.CheckLine(t));
+    if (defNames is not null)
+    {
+        Line("    let moves_default = settle_default(&pool, Some(id), &mut row).await?;");
+        Line($"    let saved = repo::update(&pool, {idArg}, &row).await?.ok_or(ApiError::NotFound)?;");
+        Line("    if moves_default {");
+        Line("        move_default(&pool, &saved).await?;");
+        Line($"        return repo::get_by_id(&pool, {idArg}).await?.map(Json).ok_or(ApiError::NotFound);");
+        Line("    }");
+        Line("    Ok(Json(saved))");
+    }
+    else
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
@@ -606,6 +637,10 @@
         Line("    refuse_children(&pool, id).await?;");
     if (assetPlan is not null)
         Line(RustAssetWriter.DeleteLines(t, assetPlan).TrimEnd((char)10));
+    if (linkRefuses)
+        Line($"    crate::routes::link_rules::refuse_linked_{t.Module}(&pool, id).await?;");
+    if (defNames is not null)
+        Line("    promote_default(&pool, id).await?;");
     if (soft && softByUser)
     {
         int byLength = t.SoftBy!.Column.CharacterLength;
@@ -619,6 +654,13 @@
     {
         Line("        _ => {");
         Line("            crate::routes::asset_files::remove_file(file_key);");
+        Line("            Ok(StatusCode::OK)");
+        Line("        }");
+    }
+    else if (linkRemoves)
+    {
+        Line("        _ => {");
+        Line($"            crate::routes::link_rules::remove_links_{t.Module}(&pool, id).await?;");
         Line("            Ok(StatusCode::OK)");
         Line("        }");
     }

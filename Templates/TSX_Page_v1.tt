@@ -451,7 +451,7 @@
         T($"      await {apiVar}.delete(id);");
         T("      load(page); // read the page again: the total, the rows that move up and the last page all change");
         T("    } catch (err) {");
-        T($"      if (err instanceof ApiError && {(odata ? $"(err.status === {HttpStatus.BadRequest} || err.status === {HttpStatus.Conflict})" : $"err.status === {HttpStatus.BadRequest}")}) {{");
+        T($"      if (err instanceof ApiError && {(odata || PolymorphicPlan.RefusesDeleteOf(Model.TableName, Project) ? $"(err.status === {HttpStatus.BadRequest} || err.status === {HttpStatus.Conflict})" : $"err.status === {HttpStatus.BadRequest}")}) {{");
         T("        setError('It cannot be deleted because it is in use!');");
         if (planned) T($"      }} else if (err instanceof ApiError && err.status === {HttpStatus.PaymentRequired}) {{");
         if (planned) T("        setError(planDetail(err));");
@@ -480,6 +480,20 @@
             T("      } else {");
             T("        setError('Problem while cloning!');");
             T("      }");
+            T("    }");
+            T("  };");
+        }
+        if (TableShapes.For(Model, Project).DefaultRow is not null)
+        {
+            // Make default moves the mark of the row's group to this row on the server; the grid is read again.
+            T();
+            T($"  const {DefaultRowScreens.Route} = async (id: {keyTs}): Promise<void> => {{");
+            T("    try {");
+            T($"      await {shapeApi}.{DefaultRowScreens.Route}(id);");
+            T($"      setSelectedRow((current) => current && current.{keyProp} === id ? {{ ...current, {JsonNames.Camel(TableShapes.For(Model, Project).DefaultRow!.Flag.Name)}: true }} : current);");   // an open dialog shows the new mark and keeps what was typed
+            T("      load(page);");
+            T("    } catch (err) {");
+            T($"      setError(err instanceof ApiError && err.status === {HttpStatus.NotFound} ? 'It no longer exists!' : '{DefaultRowScreens.FailedText}');");
             T("    }");
             T("  };");
         }
@@ -534,6 +548,41 @@
             T("      }");
             T("    }");
             T("  };");
+            // the dialog: Upload on a new row makes the row from the file and goes on editing it; a saved row shows its picture and can be downloaded
+            string mimeProp = JsonNames.Camel(assetShape.MimeType.Name);
+            T();
+            T("  const dialogInput = useRef<HTMLInputElement>(null);");
+            T("  const [picture, setPicture] = useState<string | null>(null); // the object address of the picture of the open row, when its file is an image");
+            T();
+            T("  const uploadHere = async (file: File | undefined): Promise<void> => {");
+            T("    if (!file) return;");
+            T("    try {");
+            T($"      edit(await {shapeApi}.{AssetScreens.UploadRoute}(file));");
+            T("      load(page);");
+            T("    } catch (err) {");
+            T($"      setError('{AssetScreens.UploadFailed}');");
+            T("    }");
+            T("  };");
+            T();
+            T("  useEffect(() => {");
+            T($"    const id = selectedRow?.{keyProp};");
+            T($"    const type = selectedRow?.{mimeProp};");
+            T("    if (!id || !type || !type.startsWith('image/') || type.startsWith('image/svg')) {");
+            T("      setPicture(null);");
+            T("      return;");
+            T("    }");
+            T("    let address: string | null = null;");
+            T("    let stale = false;");
+            T($"    {shapeApi}.{AssetScreens.PictureRoute}(id).then((blob) => {{");
+            T("      if (stale) return;");
+            T("      address = URL.createObjectURL(blob);");
+            T("      setPicture(address);");
+            T("    }).catch(() => setPicture(null));");
+            T("    return () => {");
+            T("      stale = true;");
+            T("      if (address) URL.revokeObjectURL(address);");
+            T("    };");
+            T($"  }}, [selectedRow?.{keyProp}, selectedRow?.{mimeProp}]);");
         }
         T();
         // add(): every required property gets a starting value
@@ -840,6 +889,8 @@
         T("                " + Gate($"<button type=\"button\" onClick={{() => {(odata && !nameActive ? "open" : "edit")}({variable})}}>Edit</button>"));
         if (canClone)
             T("                " + Gate($"<button type=\"button\" onClick={{() => void clone({variable}.{keyProp}!)}}>Clone</button>"));
+        if (TableShapes.For(Model, Project).DefaultRow is { } defaultRow)
+            T("                {" + (gated ? "canWrite && " : "") + $"!{variable}.{JsonNames.Camel(defaultRow.Flag.Name)} && <button type=\"button\" onClick={{() => void {DefaultRowScreens.Route}({variable}.{keyProp}!)}}>{DefaultRowScreens.Caption}</button>" + "}");
         if (TableShapes.For(Model, Project).Content is { } contentButtons)
             foreach (var action in ContentScreens.Actions)
                 T("                {" + (gated ? "canWrite && " : "") + $"{ContentScreens.ShownTs(contentButtons, action, variable)} && <button type=\"button\" onClick={{() => void {action.Route}({variable}.{keyProp}!)}}>{action.Caption}</button>}}");
@@ -904,12 +955,29 @@
         }
         T("          {error && <p role=\"alert\">{error}</p>}");
         T($"          <h2>{{{(textKey ? "adding ? 'Add' : 'Edit'" : $"selectedRow.{keyProp} ? 'Edit' : 'Add'")}}} {title}</h2>");
+        if (TableShapes.For(Model, Project).DefaultRow is { } dialogDefault && !oneRow)
+        {
+            // the same button as the row's, for the saved row the dialog holds
+            T("          <div>");
+            T("            {" + (gated ? "canWrite && " : "") + (textKey ? "!adding" : $"selectedRow.{keyProp}") + $" && !selectedRow.{JsonNames.Camel(dialogDefault.Flag.Name)} && <button type=\"button\" onClick={{() => void {DefaultRowScreens.Route}(selectedRow.{keyProp}!)}}>{DefaultRowScreens.Caption}</button>}}");
+            T("          </div>");
+        }
         if (TableShapes.For(Model, Project).Content is { } dialogContent && !oneRow)
         {
             // the same buttons as the row's, for the saved row the dialog holds
             T("          <div>");
             foreach (var action in ContentScreens.Actions)
                 T("            {" + (gated ? "canWrite && " : "") + (textKey ? "!adding" : $"selectedRow.{keyProp}") + $" && {ContentScreens.ShownTs(dialogContent, action, "selectedRow")} && <button type=\"button\" onClick={{() => void {action.Route}(selectedRow.{keyProp}!)}}>{action.Caption}</button>}}");
+            T("          </div>");
+        }
+        if (TableShapes.For(Model, Project).Asset is { } dialogAsset && !oneRow)
+        {
+            string savedTest = textKey ? "!adding" : $"selectedRow.{keyProp}";
+            T("          <div>");
+            T($"            <input ref={{dialogInput}} type=\"file\" accept=\"{AssetScreens.Accept(Project)}\" hidden onChange={{(e) => {{ void uploadHere(e.target.files?.[0]); e.target.value = ''; }}}} />");
+            T("            " + (gated ? "{canWrite && " : "{") + $"!({savedTest}) && <button type=\"button\" onClick={{() => dialogInput.current?.click()}}>{AssetScreens.UploadCaption}</button>}}");
+            T($"            {{{savedTest} && <button type=\"button\" onClick={{() => void download(selectedRow.{keyProp}!, selectedRow.{JsonNames.Camel(dialogAsset.FileName.Name)} ?? '{AssetScreens.FallbackFileName}')}}>{AssetScreens.DownloadCaption}</button>}}");
+            T($"            {{picture && <img src={{picture}} alt={{selectedRow.{JsonNames.Camel(dialogAsset.FileName.Name)} ?? ''}} style={{{{ maxWidth: {AssetScreens.PictureEdge}, maxHeight: {AssetScreens.PictureEdge} }}}} />}}");
             T("          </div>");
         }
         T("          <form noValidate ref={(form) => { if (form && storedValues.current === null) storedValues.current = snapshotOf(form); }} onSubmit={handleSubmit}>");
@@ -931,7 +999,7 @@
             if (formColumn.IsSystemStampField)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
-                string stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
+                string stampValue = c.IsBooleanColumn ? $"{{selectedRow.{prop} ? '{DefaultRowScreens.YesText}' : '{DefaultRowScreens.NoText}'}}" : c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
                 // a row from before the stamp existed says so instead of showing nothing
                 if (form.IsGuardStamp(c))
                     stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : '{GuardStamp.NotRecorded}'}}" : $"{{selectedRow.{prop} || '{GuardStamp.NotRecorded}'}}";

@@ -111,6 +111,12 @@
     var effGroups = effPlan is null ? [] : effPlan.Groups.Select(g => FieldOf(g)).ToList();
     var effNames = effPlan is null || effFrom is null || effTo is null || effGroups.Any(g => g is null) ? null
         : new PythonEffectiveWriter.Names(t.Class, key, effFrom.Name, effTo.Name, effFrom.Annotation, effGroups.Select(g => new PythonEffectiveWriter.Group(g!.Name, g.Json, g.Annotation)).ToList(), tenanted ? TenantFilter("statement") : "", t.Schema);
+    // DefaultRowTables: one default row per group; the save and the delete keep it, and POST {id}/make-default moves it
+    var defPlan = log || tenantTable || scoped ? null : TableShapes.For(Model, Project).DefaultRow;
+    var defFlag = FieldOf(defPlan?.Flag);
+    var defGroups = defPlan is null ? [] : defPlan.Groups.Select(g => FieldOf(g)).ToList();
+    var defNames = defPlan is null || defFlag is null || defGroups.Any(g => g is null) ? null
+        : new PythonDefaultWriter.Names(t.Class, key, defFlag.Name, defGroups.Select(g => g!.Name).ToList());
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -146,6 +152,8 @@
     var sqlalchemy = new List<string> { "select" };
     if (effNames is not null)
         sqlalchemy.Add("or_");
+    if (defNames is not null)
+        sqlalchemy.Add("update as sql_update");
     if (softNames is not null)
         sqlalchemy.Add("event");
     if (search || userPlan is not null || nameActive is not null)
@@ -344,6 +352,12 @@
         Line();
         Line();
         Line(PythonEffectiveWriter.Helper(effNames).TrimEnd('\n'));
+    }
+    if (defNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonDefaultWriter.Helpers(defNames).TrimEnd('\n'));
     }
     if (contentNames is not null)
     {
@@ -587,6 +601,8 @@
     }
     if (t.HashField is { IsNullable: false } newHash)
         Line($"    row.{newHash.Name} = \"\"   # a person with no password cannot sign in; set-password writes the hash");
+    if (defNames is not null)
+        Line($"    row.{defNames.Flag} = settle_default(session, None, {PythonDefaultWriter.GroupArgument(defNames, a => "body." + a)}, body.{defNames.Flag})");
     Line("    session.add(row)");
     Line("    try:");
     Line("        session.commit()");
@@ -690,6 +706,8 @@
         Line(sharedTenant ? $"    row.{tenantField.Name} = current_tenant   # a row never moves to another tenant, and a shared row stays shared" : $"    row.{tenantField.Name} = user.tenant_id   # a row never moves to another tenant");
     foreach (var f in t.StampedOnChange)
         Line($"    row.{f.Name} = {PythonTable.Now(f)}");
+    if (defNames is not null)
+        Line($"    row.{defNames.Flag} = settle_default(session, id, {PythonDefaultWriter.GroupArgument(defNames, a => "row." + a)}, row.{defNames.Flag})");
     Line("    try:");
     Line("        session.commit()");
     Line("    except IntegrityError:");
@@ -720,6 +738,8 @@
         Line("        session.commit()");
         Line($"        return Response(status_code={HttpStatus.Ok})");
     }
+    if (defNames is not null)
+        Line($"    promote_default(session, row, {PythonDefaultWriter.GroupArgument(defNames, a => "row." + a)})");
     if (softNames is not null)
         Line(PythonSoftDeleteWriter.DeleteLines(softNames, softUser).TrimEnd('\n'));
     else
@@ -737,6 +757,13 @@
         Line();
         Line();
         Line(PythonTreeWriter.PromoteRoute(treeNames!, t.Route, keyType, writeDepends, userParameter).TrimEnd('\n'));
+    }
+
+    if (defNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonDefaultWriter.Route(defNames, t.Route, t.Schema, keyType, writeDepends, userParameter).TrimEnd('\n'));
     }
 
     if (t.Clone is { } cloned && !tenantTable)

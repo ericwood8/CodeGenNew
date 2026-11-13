@@ -194,6 +194,12 @@ public static class ApiClientCode
             L();
             L($"    public async Task<{type}> GetPublicBySlugAsync(string slug) => await (await http.GetAsync($\"{{Url}}/public/{{Uri.EscapeDataString(slug)}}\")).ReadAsync<{type}>();");
         }
+        if (!nameActive && TableShapes.For(table, project).DefaultRow is not null)
+        {
+            L();
+            L("    // A table with one default row per group (DefaultRowTables): the row becomes the default of its group and the others lose the mark; the row comes back.");
+            L($"    public async Task<{type}> {DefaultRowScreens.CsMethod}({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/{DefaultRowScreens.RouteName}\", null)).ReadAsync<{type}>();");
+        }
         if (TableShapes.For(table, project).SoftDelete is not null)
         {
             L();

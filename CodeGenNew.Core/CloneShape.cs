@@ -36,7 +36,7 @@ public static class CloneShape
         && !m.IsNameActiveTable
         && OverrideColumns(m).All(c => c.IsStringColumn && c.DbCastType is null)
         && !project.NoClone(m.TableName)
-        && !EffectiveDatePlan.IsListed(m.TableName, project);
+        && !EffectiveDatePlan.IsListed(m.TableName, project) && !DefaultRowPlan.IsListed(m.TableName, project);
 
     /// <summary> Why CanClone is false, for a template's header comment or an error; null when it is true. </summary>
     public static string? WhyNot(TableModel m, ProjectSettings project)
@@ -44,6 +44,7 @@ public static class CloneShape
         if (CanClone(m, project)) return null;
         if (project.NoClone(m.TableName)) return "it is listed in the project's NoCloneTables";
         if (EffectiveDatePlan.IsListed(m.TableName, project)) return "a copy would have the same period as the row it copies (EffectiveDatedTables)";
+        if (DefaultRowPlan.IsListed(m.TableName, project)) return "a copy of the default row would be a second default (DefaultRowTables)";
         if (m.PrimaryKeyColumns.Count != 1 || !m.PrimaryKeyColumns[0].IsIdentity || !m.PrimaryKeyColumns[0].IsInt32Column)
             return "its key is not a single database-assigned int (a clone needs a new key from the routine)";
         if (m.IsNameActiveTable) return "it is a name/active table (hand-maintained repository)";

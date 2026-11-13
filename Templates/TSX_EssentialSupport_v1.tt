@@ -79,6 +79,20 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
   return (await response.json()) as T;
 }
 
+// The file of a row as a blob, for a picture the dialog shows (an image tag cannot send the sign-in token).
+export async function fetchBlob(path: string): Promise<Blob> {
+<# if (Project.Auth) { #>
+  const token = getToken();
+<# } #>
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+<# if (Project.Auth) { #>
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+<# } #>
+  });
+  if (!response.ok) throw new ApiError(response.status, response.statusText);
+  return response.blob();
+}
+
 export async function downloadFile(path: string, fallbackName: string): Promise<void> {
 <# if (Project.Auth) { #>
   const token = getToken();

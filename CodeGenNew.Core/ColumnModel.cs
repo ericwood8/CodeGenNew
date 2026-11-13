@@ -259,7 +259,7 @@ public class ColumnModel
 
     /// <summary> The values a text column may hold when the database lists them (a MySQL <c>enum('a','b')</c>); null for any other column. A generated form
     /// shows such a column as a drop-down of these values instead of a free text box. </summary>
-    public List<string>? Choices { get; init; }
+    public List<string>? Choices { get; set; }
     public bool HasChoices => Choices is { Count: > 0 };
 
     /// <summary> The schema and name of the column's PostgreSQL enum type (<c>public.status</c>, from <c>CREATE TYPE status AS ENUM (...)</c>); null for any other

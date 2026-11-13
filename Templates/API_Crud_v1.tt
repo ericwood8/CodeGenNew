@@ -46,7 +46,7 @@
     else if (plan.IsTenantTable && (plan.HasGates || TableShapes.For(Model, Project).User is not null || RowShapePlan.Has(Model, Project)))
         Error($"{Model.TableName} is the TenantTable: it takes no create and no delete, so it cannot also have gates, a row shape or be the user table.");
     else if (RowShapePlan.Has(Model, Project) && TableShapes.For(Model, Project).User is not null)
-        Error($"TreeTables, ContentTables, SoftDeleteTables and EffectiveDatedTables cannot name the user table ({Model.TableName}): its API already checks every save and delete.");
+        Error($"TreeTables, ContentTables, SoftDeleteTables, DefaultRowTables and EffectiveDatedTables cannot name the user table ({Model.TableName}): its API already checks every save and delete.");
 
     bool dtos = plan.UsesDtos;
     if (dtos)
@@ -458,11 +458,11 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
     // TreeTables or SoftDeleteTables: a row with children is not deleted, and a soft-delete table sets its flag instead of removing the row (API_RowShapes writes <#= entity #>Shape).
     protected override Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, <#= keyCSharp #> id) => <#= entity #>Shape.CheckDeleteAsync(context, id, <#= Project.ApiAuth ? "Caller" : "null" #>);
 <#
-            if (TableShapes.For(Model, Project).Asset is not null)
+            if (RowShapeWriter.HasAfterDelete(Model, Project))
             {
 #>
 
-    // AssetTables: the stored file is removed once the row is gone (API_RowShapes writes <#= entity #>Shape).
+    // AssetTables: the stored file is removed once the row is gone; PolymorphicLinks with :remove: the links that named the row are removed (API_RowShapes writes <#= entity #>Shape).
     protected override Task AfterDeleteAsync(<#= contextType #> context, <#= keyCSharp #> id) => <#= entity #>Shape.AfterDeleteAsync(context, id);
 <#
             }

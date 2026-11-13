@@ -38,7 +38,9 @@ public static class DesktopFormXaml
             // who made the row and when it changed: the system writes it, so it is text, not a box
             L(I + "<StackPanel Spacing=\"2\">");
             L(I + $"    <TextBlock Text=\"{label}\" FontWeight=\"SemiBold\" />");
-            L(I + $"    <TextBlock Text=\"{{x:Bind ViewModel.{prop}, Mode=OneWay}}\" IsTextSelectionEnabled=\"True\" />");
+            // the default flag reads "Yes" or "No" (the view model's YesNo, written with the dialog's Make default members)
+            string shown = DefaultRowScreens.IsFlagColumn(table, project, column) ? $"ViewModel.{DefaultRowScreens.YesNoMethod}(ViewModel.{prop})" : $"ViewModel.{prop}";
+            L(I + $"    <TextBlock Text=\"{{x:Bind {shown}, Mode=OneWay}}\" IsTextSelectionEnabled=\"True\" />");
             L(I + "</StackPanel>");
             return o.ToString();
         }

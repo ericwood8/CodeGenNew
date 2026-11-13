@@ -16,6 +16,14 @@ public sealed record DesktopChild(
     IReadOnlyList<string> HideColumns, IReadOnlyList<DesktopChildLookup> Resolvable, IReadOnlyList<DesktopChildFilter> Filters,
     IReadOnlyList<(string Name, int Digits)> Currency, IReadOnlyList<string> LongText, IReadOnlyList<(string Name, string Caption)> Captions, ChildGrid Grid, bool Editable)
 {
+    /// <summary> The record type column of a polymorphic link's grid (null on a foreign key): a row belongs to the parent only when it holds <see cref="TypeValue"/> there. </summary>
+    public string? TypeColumn => Grid.Link.TypeColumn;
+
+    public string? TypeValue => Grid.TypeValue;
+
+    /// <summary> The C# property of the record type column. </summary>
+    public string? TypeProp => TypeColumn is null ? null : Grid.Link.ReferencingTableColumns.First(c => c.Name.EqualsIgnoreCase(TypeColumn)).CSharpName();
+
     // the child's own dialog exists when the table is a screen: listed in the project's Screens, or (with none listed) a plain table with a single-column key
     // two foreign keys of one child to the same parent (a component and an assembly, both products) need a names dictionary each
     private static bool SharesParent(ChildGrid grid, ChildLookup lookup) => grid.Lookups.Count(o => o.ParentTable == lookup.ParentTable) > 1;

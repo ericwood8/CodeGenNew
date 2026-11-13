@@ -164,6 +164,10 @@
             L("            URL.revokeObjectURL(url);");
             L("        }));");
             L("    }");
+            L();
+            L($"    {AssetScreens.PictureRoute}(id: {keyTs}): Observable<Blob> {{");
+            L($"        return this.http.get(`${{this.apiUrl}}/${{id}}/{AssetScreens.DownloadRoute}`, {{ responseType: 'blob' }});");
+            L("    }");
         }
         if (TableShapes.For(Model, Project).Inbound is not null)
         {
@@ -228,6 +232,14 @@
             L($"    getCurrent(on?: string, groups: Record<string, string | number> = {{}}): Observable<{baseName}[]> {{");
             L("        const params = new URLSearchParams({ ...(on ? { on } : {}), ...Object.fromEntries(Object.entries(groups).map(([name, value]) => [name, String(value)])) });");
             L($"        return this.http.get<{baseName}[]>(`${{this.apiUrl}}/current?${{params}}`);");
+            L("    }");
+        }
+        if (TableShapes.For(Model, Project).DefaultRow is not null)
+        {
+            L();
+            L("    // a table with one default row per group (DefaultRowTables): the row becomes the default of its group and the others lose the mark");
+            L($"    {DefaultRowScreens.Route}(id: {keyTs}): Observable<{baseName}> {{");
+            L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/{DefaultRowScreens.RouteName}`, null);");
             L("    }");
         }
         if (guarded)

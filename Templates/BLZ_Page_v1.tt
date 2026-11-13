@@ -153,7 +153,7 @@
                     .Where(c => !g.HiddenColumns.Contains(c.Name, StringComparer.OrdinalIgnoreCase) && !c.IsCredentialColumn && HasInput(c))
                     .ToList();
                 var childWriteRoles = Project.Auth ? WriteRolePlan.For(Project, g.Table) : new List<string>();
-                bool servedChild = odata && ODataPlan.ServesByName(g.Table, Project);   // the OData page reads a served child's rows with a filter on the parent's key
+                bool servedChild = odata && g.TypeJson is null && ODataPlan.ServesByName(g.Table, Project);   // the OData page reads a served child's rows with a filter on the parent's key
                 return new
                 {
                     Link = g.Link,
@@ -165,6 +165,7 @@
                     Var = BlazorNames.ChildVariable(g),
                     Title = g.Title,
                     FkProp = g.ForeignKeyColumn!.CSharpName(),
+                    TypeTest = g.Link.TypeColumn is null ? "" : $" && line.{g.Link.ReferencingTableColumns.First(c => c.Name.EqualsIgnoreCase(g.Link.TypeColumn)).CSharpName()} == {CSharpText.Quote(g.TypeValue!)}",   // a polymorphic link: the rows that name this table
                     KeyProp = g.KeyColumn!.CSharpName(),
                     Route = ScreenNames.Route(g.Table),
                     // Edit opens the child's own page, which exists unless the project's Screens setting leaves it out
@@ -438,6 +439,13 @@
         L(Gate("                    ", odata ? "<button type=\"button\" @onclick=\"() => OpenAsync(item)\">Edit</button>" : "<button type=\"button\" @onclick=\"() => Edit(item)\">Edit</button>"));
         if (canClone)
             L(Gate("                    ", "<button type=\"button\" @onclick=\"() => CloneAsync(item)\">Clone</button>"));
+        if (TableShapes.For(Model, Project).DefaultRow is { } defaultRow)
+        {
+            L($"                    @if ({(gated ? "CanWrite && " : "")}!item.{defaultRow.Flag.CSharpName()})");
+            L("                    {");
+            L($"                        <button type=\"button\" @onclick=\"() => MakeDefaultAsync(item)\">{DefaultRowScreens.Caption}</button>");
+            L("                    }");
+        }
         if (TableShapes.For(Model, Project).Content is { } contentShape)
             foreach (var action in ContentScreens.Actions)
             {
@@ -490,6 +498,14 @@
         L("{");
         L("    <div class=\"editor\" role=\"dialog\" aria-label=\"@(isNew ? \"Add\" : \"Edit\") §N\">");
         L("        <h2>@(isNew ? \"Add\" : \"Edit\") §N</h2>");
+        if (TableShapes.For(Model, Project).DefaultRow is { } dialogDefault)
+        {
+            // the same button as the row's, for the saved row the editor holds
+            L($"        @if (!isNew && {(gated ? "CanWrite && " : "")}!row!.{dialogDefault.Flag.CSharpName()})");
+            L("        {");
+            L($"            <div><button type=\"button\" @onclick=\"() => MakeDefaultAsync(row!)\">{DefaultRowScreens.Caption}</button></div>");
+            L("        }");
+        }
         if (TableShapes.For(Model, Project).Content is { } dialogContent)
         {
             // the same buttons as the row's, for the saved row the editor holds
@@ -505,6 +521,27 @@
             }
             L("            </div>");
             L("        }");
+        }
+        if (TableShapes.For(Model, Project).Asset is { } dialogAsset)
+        {
+            // a new row is made by uploading its file and the editor goes on with the saved row; a saved row can be downloaded and shows its picture
+            L("        <div>");
+            L("            @if (isNew)");
+            L("            {");
+            L($"                @if ({(gated ? "CanWrite" : "true")})");
+            L("                {");
+            L($"                    <label>{AssetScreens.UploadCaption} <InputFile OnChange=\"UploadHereAsync\"{(AssetScreens.Accept(Project).Length > 0 ? $" accept=\"{AssetScreens.Accept(Project)}\"" : "")} /></label>");
+            L("                }");
+            L("            }");
+            L("            else");
+            L("            {");
+            L($"                <button type=\"button\" @onclick=\"() => DownloadAsync(row!)\">{AssetScreens.DownloadCaption}</button>");
+            L("                @if (pictureUrl is not null)");
+            L("                {");
+            L($"                    <img src=\"@pictureUrl\" alt=\"@row!.{dialogAsset.FileName.CSharpName()}\" style=\"max-width: {AssetScreens.PictureEdge}px; max-height: {AssetScreens.PictureEdge}px\" />");
+            L("                }");
+            L("            }");
+            L("        </div>");
         }
         L("        @if (message is not null)");
         L("        {");
@@ -537,7 +574,7 @@
             if (formColumn.IsSystemStampField)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
-                string stampText = IsDate(c) ? $"@{bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\")" : $"@{bind}";
+                string stampText = c.IsBooleanColumn ? $"@({bind} ? \"{DefaultRowScreens.YesText}\" : \"{DefaultRowScreens.NoText}\")" : IsDate(c) ? $"@{bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\")" : $"@{bind}";
                 // a row from before the stamp existed says so instead of showing nothing
                 if (form.IsGuardStamp(c))
                     stampText = IsDate(c) ? $"@({bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\") ?? \"{GuardStamp.NotRecorded}\")" : $"@({bind} ?? \"{GuardStamp.NotRecorded}\")";
@@ -1326,6 +1363,8 @@
             if (Project.ApiAnnotations || shapedForm)
                 L("        stored = add ? null : item.Copy();");
             L("        isNew = add;");
+            if (TableShapes.For(Model, Project).Asset is not null)
+                L("        _ = ShowPictureAsync();");
             if (tabbed) L("        editTab = 0;");
             L("        message = null;");
             if (userScreen is not null) L("        newPassword = \"\";");
@@ -1341,6 +1380,8 @@
             if (Project.ApiAnnotations || shapedForm)
                 L("        stored = add ? null : item.Copy();");
             L("        isNew = add;");
+            if (TableShapes.For(Model, Project).Asset is not null)
+                L("        _ = ShowPictureAsync();");
             if (tabbed) L("        editTab = 0;");
             L("        message = null;");
             if (userScreen is not null) L("        newPassword = \"\";");
@@ -1364,7 +1405,7 @@
             {
                 L(ch.Served
                     ? $"        try {{ {ch.Var}Rows = await {ch.Var}Client.GetWhereAsync(\"{ch.FkJson}\", rowKey); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}"
-                    : $"        try {{ {ch.Var}Rows = (await {ch.Var}Client.GetAllAsync()).Where(line => line.{ch.FkProp} == rowKey).ToList(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}");
+                    : $"        try {{ {ch.Var}Rows = (await {ch.Var}Client.GetAllAsync()).Where(line => line.{ch.FkProp} == rowKey{ch.TypeTest}).ToList(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}");
                 foreach (var l in ch.Lookups.Where(l => l.TypeAhead))
                     L($"        await Know{l.Field}Async({ch.Var}Rows.Select(r => r.{l.Prop}).OfType<{l.IdType}>());");
                 if (ch.IsEditable)
@@ -1541,6 +1582,26 @@
             L("        catch (HttpRequestException) { message = \"Problem while cloning!\"; }");
             L("    }");
         }
+        if (TableShapes.For(Model, Project).DefaultRow is not null)
+        {
+            L();
+            L("    // The API moves the default mark of the row's group to this row; the page is read again.");
+            L("    private async Task MakeDefaultAsync(§T item)");
+            L("    {");
+            L("        try");
+            L("        {");
+            L($"            await {(odata ? "ShapeClient" : "Client")}.{DefaultRowScreens.CsMethod}(item.§K);");
+            L($"            if (row is not null && !isNew && row.§K == item.§K) row.{TableShapes.For(Model, Project).DefaultRow!.Flag.CSharpName()} = true;   // an open editor shows the new mark and keeps what was typed");
+            L("            await LoadAsync(pageNumber);");
+            L("        }");
+            L("        catch (ApiException ex)");
+            L("        {");
+            L($"            message = ex.{ExplainCall}(\"making it the default\");");
+            L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
+            L("        }");
+            L($"        catch (HttpRequestException) {{ message = \"{DefaultRowScreens.FailedText}\"; }}");
+            L("    }");
+        }
         if (TableShapes.For(Model, Project).Content is { } contentStateColumns)
             foreach (var action in ContentScreens.Actions)
             {
@@ -1602,6 +1663,45 @@
             L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
             L("        }");
             L($"        catch (HttpRequestException) {{ message = \"{AssetScreens.DownloadFailed}\"; }}");
+            L("    }");
+            // the editor: Upload on a new row makes the row from the file and goes on with it; a saved row shows its picture (a data address, so no script is needed)
+            var pictureAsset = TableShapes.For(Model, Project).Asset!;
+            string mimeName = pictureAsset.MimeType.CSharpName();
+            L();
+            L("    private string? pictureUrl;   // the picture of the open row, when its file is an image");
+            L();
+            L("    private async Task UploadHereAsync(InputFileChangeEventArgs e)");
+            L("    {");
+            L("        try");
+            L("        {");
+            L($"            await using var content = e.File.OpenReadStream({Project.AssetMaxBytes});");
+            L($"            var saved = await {assetClient}.UploadAsync(content, e.File.Name, e.File.ContentType);");
+            L(children.Count > 0 ? "            await Edit(saved);" : "            Edit(saved);");
+            L("            await LoadAsync(pageNumber);");
+            L("        }");
+            L($"        catch (IOException) {{ message = \"{AssetWords.TooLarge(Project.AssetMaxBytes)}\"; }}");
+            L("        catch (ApiException ex)");
+            L("        {");
+            L($"            message = ex.{ExplainCall}(\"uploading\");");
+            L("        }");
+            L($"        catch (HttpRequestException) {{ message = \"{AssetScreens.UploadFailed}\"; }}");
+            L("    }");
+            L();
+            L("    private async Task ShowPictureAsync()");
+            L("    {");
+            L("        pictureUrl = null;");
+            L("        var shown = row;");
+            L($"        if (shown is null || isNew || shown.{mimeName} is not {{ }} type || !type.StartsWith(\"image/\", StringComparison.OrdinalIgnoreCase) || type.StartsWith(\"image/svg\", StringComparison.OrdinalIgnoreCase))");
+            L("            return;");
+            L("        try");
+            L("        {");
+            L($"            var (content, _, storedType) = await {assetClient}.DownloadAsync(shown.§K);");
+            L($"            if (row is not null && Equals(row.§K, shown.§K))");
+            L("                pictureUrl = $\"data:{storedType};base64,{Convert.ToBase64String(content)}\";");
+            L("        }");
+            L("        catch (ApiException) { }");
+            L("        catch (HttpRequestException) { }");
+            L("        StateHasChanged();");
             L("    }");
         }
         }
