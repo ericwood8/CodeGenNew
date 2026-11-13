@@ -104,8 +104,15 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: dotnet workload install wasm-tools
+      # The runner's newest SDK may be a later major version than the net10.0 head being built, and a workload is installed per SDK, so install it
+      # under the same 10.0 pin the generated Uno project's global.json carries.
+      - name: Install the wasm-tools workload for the 10.0 SDK
+        run: |
+          mkdir /tmp/sdk10 && cd /tmp/sdk10
+          echo '{ "sdk": { "version": "10.0.100", "rollForward": "latestFeature" } }' > global.json
+          dotnet workload install wasm-tools
       - name: Show which SDK and workloads the walk will build with
+        working-directory: /tmp/sdk10
         run: |
           dotnet --list-sdks
           dotnet --info | grep -iE "Base Path|Version:|Workload version"
