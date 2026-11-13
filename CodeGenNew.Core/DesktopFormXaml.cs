@@ -36,7 +36,9 @@ public static class DesktopFormXaml
         if (formColumn.IsSystemStampField)
         {
             // who made the row and when it changed: the system writes it, so it is text, not a box
-            L(I + "<StackPanel Spacing=\"2\">");
+            // a column the server fills on the first save has nothing to show on a new row
+            string panelVisibility = SnapshotPlan.IsOwnedColumn(table, project, column) ? " Visibility=\"{x:Bind ViewModel.SavedRowVisibility}\"" : "";
+            L(I + $"<StackPanel Spacing=\"2\"{panelVisibility}>");
             L(I + $"    <TextBlock Text=\"{label}\" FontWeight=\"SemiBold\" />");
             // the default flag reads "Yes" or "No" (the view model's YesNo, written with the dialog's Make default members)
             string shown = DefaultRowScreens.IsFlagColumn(table, project, column) ? $"ViewModel.{DefaultRowScreens.YesNoMethod}(ViewModel.{prop})" : $"ViewModel.{prop}";

@@ -297,7 +297,7 @@ using <#= modelsNamespace #>;
 using <#= servicesNamespace #>;
 using Microsoft.UI.Xaml.Controls;
 <#
-        var currencyColumns = shown.Where(c => form.Field(c).IsMoneyValue).ToList();
+        var currencyColumns = shown.Where(c => form.Field(c).IsMoneyValue && !form.Field(c).IsSystemStampField).ToList();
         foreach (string u in usings)
         {
 #>
@@ -330,7 +330,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         }
 #>
 <#
-        foreach (var c in shown.Where(c => form.Field(c).IsDecimalValue && c.IsDecimalColumn))
+        foreach (var c in shown.Where(c => form.Field(c).IsDecimalValue && c.IsDecimalColumn && !form.Field(c).IsSystemStampField))
         {
 #>
         <#= c.Name #>Box.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter
@@ -595,7 +595,7 @@ public class <#= table #>ChildGridHeader
 public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 {
     private readonly ApiClients _api;
-    private readonly <#= type #>? _editing;
+    private readonly <#= type #>? _editing;<#= SnapshotPlan.IsListed(Model.TableName, Project) ? DesktopFormCode.SavedRowVisibilityMember : "" #>
 
     public string DialogTitle => _editing is null ? "Add <#= title #>" : "Edit <#= title #>";
 <#

@@ -159,6 +159,45 @@ public static class DesktopFormCode
         return o.ToString();
     }
 
+    /// <summary> The view-model member the text of a snapshot column is hidden by while the row is new (the server fills it on the first save), written after <c>IsNewRow</c>. </summary>
+    public const string SavedRowVisibilityMember = "\n\n    /// <summary> Collapsed for a new row: the copied columns and the total are filled by the first save. </summary>\n    public Microsoft.UI.Xaml.Visibility SavedRowVisibility => _editing is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;";
+
+    /// <summary> The lines a WinUI3 dialog runs before it saves a table of <c>SnapshotColumns</c> (it writes through its own context, not through the API): a new row copies the named columns of its parents, an
+    /// edited row keeps its stored copies (the form leaves them alone), and the total is worked out. </summary>
+    public static string SnapshotCheckLines(ProjectSettings project, TableModel table, string context)
+    {
+        if (SnapshotPlan.For(table, project) is not { } shape)
+            return "";
+        var o = new StringBuilder();
+        o.Append("        if (_editing is null)\n        {\n");
+        int p = 0;
+        foreach (var parent in shape.Copies.GroupBy(c => c.Link.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var first = parent.First();
+            string link = first.Link.CSharpName(), key = first.ParentKey.CSharpName(), parentTable = first.Parent.TableName;
+            string select = string.Join(", ", parent.Select(c => $"{c.Source.CSharpName()} = x.{c.Source.CSharpName()}"));
+            string indent = "            ";
+            string linkValue = $"entity.{link}";
+            if (first.Link.IsNullable)
+            {
+                o.Append($"{indent}if (entity.{link} is {{ }} link{p})\n{indent}{{\n");
+                indent += "    ";
+                linkValue = $"link{p}";
+            }
+            o.Append($"{indent}var parent{p} = await {context}.Set<{parentTable}>().Where(x => x.{key} == {linkValue}).Select(x => new {{ {select} }}).FirstOrDefaultAsync();\n");
+            o.Append($"{indent}if (parent{p} is null)\n{indent}{{\n{indent}    ErrorMessage = \"{RowShapeWords.SnapshotParentMissing(parentTable)}\";\n{indent}    return false;\n{indent}}}\n");
+            foreach (var c in parent)
+                o.Append($"{indent}entity.{c.Target.CSharpName()} = parent{p}.{c.Source.CSharpName()};\n");
+            if (first.Link.IsNullable)
+                o.Append("            }\n");
+            p++;
+        }
+        o.Append("        }\n");
+        if (shape.Total is { } total)
+            o.Append($"        entity.{total.Target.CSharpName()} = ({total.Target.CSharpBase()})(entity.{total.FactorA.CSharpName()} * entity.{total.FactorB.CSharpName()});\n");
+        return o.Append('\n').ToString();
+    }
+
     /// <summary> The lines of the view model's load that ask the API which guarded columns the signed-in person may change (eight spaces in); until it answers, and when it cannot, the fields stay read-only.
     /// <paramref name="clientProperty"/> is the table's property of <c>ApiClients</c>. Empty when the table has no guarded column. </summary>
     public static string GuardLoadLines(FormModel form, string clientProperty)
@@ -193,7 +232,7 @@ public static class DesktopFormCode
         string label = Labels.Column(column.Name);
         var table = form.Table;
         // the status and published time of a content table are shown, not edited: the routes (and the content rules before the save) own them
-        if (ContentScreens.IsStateColumn(table, project, column) || DefaultRowScreens.IsFlagColumn(table, project, column))
+        if (ContentScreens.IsStateColumn(table, project, column) || DefaultRowScreens.IsFlagColumn(table, project, column) || SnapshotPlan.IsOwnedColumn(table, project, column))
             return "";
         var o = new StringBuilder();
         void L(string s) => o.Append("        ").Append(s).Append('\n');

@@ -115,6 +115,21 @@ A table of which exactly one row per group is the default (an address of a custo
 `RowShapeTests` writes two tests (a mark taken, `make-default`). Not served for a table limited to an owner or a tenant. Python (`PythonDefaultWriter`: `settle_default` and `promote_default` called before the commit, so the marks move in the transaction of the save; the helper runs inside `no_autoflush` so the row's own flag is not written before the old mark is cleared) and Rust (`RustDefaultWriter`: `settle_default` before the write; a row that asks for the mark while another row holds it is written without it and `move_default` moves it in one transaction right after) write the same rule and the same route; Rust moves the mark after the write, not in the same transaction, so a failure between the two leaves the old default in place.
 
 
+## SnapshotColumns=OrderItem:ProductName<-Product.Name+UnitPrice<-Product.Price+TaxRate<-TaxCategory.Rate:LineTotal=Quantity*UnitPrice
+
+A child table that keeps what its parents looked like when the row was written (the order line that copies the product's name, price and tax rate). The copied columns are `Column<-ParentTable.Column` joined by `+`; the optional last part is a line total, `Column=FactorA*FactorB`. The table has exactly one single-column foreign key to each parent it copies from, a copy has the type of its source (a text copy is as long, a source that allows NULL needs a target that does), and the total and its factors are number columns.
+
+| Rule | How |
+|---|---|
+| Create | `CheckSnapshotAsync` reads the parent row through the foreign key and copies the columns; a parent that is not there is a 400, `/problems/snapshot-parent-missing`; a parent key that may be NULL and is empty copies nothing |
+| Update | the stored copies are read back and put on the row, so a value in the body is ignored, and a change of the foreign key does not re-copy |
+| Total | `Column = FactorA * FactorB` on every save, in the type of the total |
+| The body | a create or update body may leave the copies and the total out (the request schema makes them optional, the Rust struct defaults them) |
+| The screens | the forms show the copies and the total as text (`SnapshotPlan.IsOwnedColumn` makes them system-stamp fields); a WinUI3 or Uno dialog shows nothing for them on a new row (`SavedRowVisibility`); the WinUI3 dialog writes through its own context, so `DesktopFormCode.SnapshotCheckLines` does the same copy before it saves, and Uno goes through the API |
+
+Python writes `fill_snapshot` and `SNAPSHOT_OWNED` into the table's router (`PythonSnapshotWriter`) and Rust writes `fill_snapshot` (`RustSnapshotWriter`; a SQLite decimal is a float, so the total is a float there). Those two templates see one table at a time, so `ProjectGenerator` remembers the database for the run (`SnapshotPlan.Remember`); a table generated alone gets the ASP.NET rule only. Not served for a table in LogTables or SingleRowTables. The order that becomes read-only once placed (the status gates) is a separate setting and not part of this one.
+
+
 ## EffectiveDatedTables=Price:ValidFrom:ValidTo:ItemId+CurrencyId
 
 A table, the first and the last day columns (the same date type; the first cannot be NULL, an empty last day is open) and optionally the columns that say what the row is a price of (default: every single-column foreign key). Both ends are inclusive.

@@ -51,7 +51,7 @@ public sealed class FormModel
             .Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, c.Label))).ToList();
         Log = TableShapes.For(table, project).Log;
         DateRange = Log is null ? [] : [new SearchField(Log.Timestamp, "From", LogShape.FromParameter, "From", true), new SearchField(Log.Timestamp, "To", LogShape.ToParameter, "To", true)];
-        DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c) && !ContentScreens.IsStateColumn(table, project, c)).ToList();
+        DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c) && !ContentScreens.IsStateColumn(table, project, c) && !SnapshotPlan.IsOwnedColumn(table, project, c)).ToList();
         NewRowTypeScript = NewRowMembers(table, TypedKey, KeyColumn, KeyType);
     }
 

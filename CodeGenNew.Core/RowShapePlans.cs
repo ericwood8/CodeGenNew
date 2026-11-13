@@ -9,6 +9,8 @@ public static class RowShapeWords
     public const string EffectiveRangeType = ProblemTypes.Prefix + "effective-range";
     public const string EffectiveOverlapType = ProblemTypes.Prefix + "effective-overlap";
     public const string NotDeletedType = ProblemTypes.Prefix + "not-deleted";
+    public const string SnapshotParentType = ProblemTypes.Prefix + "snapshot-parent-missing";
+    public const string SnapshotParentTitle = "Not a valid reference";
 
     public const string OwnParent = "A row cannot be its own parent.";
     public const string UnderItself = "A row cannot be moved under one of its own descendants.";
@@ -16,6 +18,9 @@ public static class RowShapeWords
     public const string BackwardsRange = "The valid-to date is before the valid-from date.";
     public const string Overlap = "Another row of the same kind is in effect during that period.";
     public const string NotDeleted = "Only a deleted row can be restored.";
+
+    /// <summary> The sentence when the parent a snapshot is copied from is not there. </summary>
+    public static string SnapshotParentMissing(string parent) => $"The {parent} the row refers to does not exist.";
 
     /// <summary> Why a table has no soft delete and no periods: a log table is only appended to, and a single-row table keeps its one row. Null for any other table. </summary>
     public static string? NeverChanged(TableModel table, ProjectSettings project) =>
@@ -295,11 +300,11 @@ public static class DefaultRowPlan
 /// <summary> Whether a table has any row shape (tree, content, soft delete, effective dating) and the reasons the project's lists cannot be served. </summary>
 public static class RowShapePlan
 {
-    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.ContentTables.Length > 0 || project.AssetTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0 || project.DefaultRowTables.Length > 0 || project.PolymorphicLinks.Length > 0;
+    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.ContentTables.Length > 0 || project.AssetTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0 || project.DefaultRowTables.Length > 0 || project.SnapshotColumns.Length > 0 || project.PolymorphicLinks.Length > 0;
 
     public static bool Has(TableModel table, ProjectSettings project) =>
         TreePlan.For(table, project) is not null || ContentPlan.For(table, project) is not null || AssetPlan.For(table, project) is not null || SoftDeletePlan.For(table, project) is not null || EffectiveDatePlan.For(table, project) is not null || DefaultRowPlan.For(table, project) is not null
-        || PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project);
+        || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project);
 
     /// <summary> Every reason the three settings cannot be served by <paramref name="database"/>. </summary>
     public static List<string> Problems(DatabaseModel database, ProjectSettings project)
@@ -317,9 +322,13 @@ public static class RowShapePlan
         problems.AddRange(SoftDeletePlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"SoftDeleteTables: {e.Table} is not a table of the database."));
         problems.AddRange(EffectiveDatePlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"EffectiveDatedTables: {e.Table} is not a table of the database."));
         problems.AddRange(DefaultRowPlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"DefaultRowTables: {e.Table} is not a table of the database."));
+        foreach (var table in database.Tables)
+            if (SnapshotPlan.Problem(table, project, database) is { } snapshotProblem)
+                problems.Add(snapshotProblem);
+        problems.AddRange(SnapshotPlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"SnapshotColumns: {e.Table} is not a table of the database."));
         problems.AddRange(PolymorphicPlan.Problems(database, project));
         if (Any(project) && project.AccessModeFor(database.Dialect) != AccessMode.Ef)
-            problems.Add("TreeTables, ContentTables, AssetTables, PolymorphicLinks, DefaultRowTables, SoftDeleteTables and EffectiveDatedTables need AccessMode=Ef.");
+            problems.Add("TreeTables, ContentTables, AssetTables, PolymorphicLinks, DefaultRowTables, SnapshotColumns, SoftDeleteTables and EffectiveDatedTables need AccessMode=Ef.");
         return problems;
     }
 }

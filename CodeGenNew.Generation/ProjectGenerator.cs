@@ -76,6 +76,7 @@ public static class ProjectGenerator
         var database = await provider.BuildAsync(options.DatabaseName, options.Schema, cancellationToken);
         project = project.ForServer(database.ServerVersion);
         PolymorphicPlan.ApplyChoices(database, project);
+        SnapshotPlan.Remember(database, project);
         progress?.Invoke($"Read {database.Tables.Count} tables of [{options.Schema}].");
         var keptTables = LeaveOutTables(database, project, report);
 

@@ -117,6 +117,16 @@
     var defGroups = defPlan is null ? [] : defPlan.Groups.Select(g => FieldOf(g)).ToList();
     var defNames = defPlan is null || defFlag is null || defGroups.Any(g => g is null) ? null
         : new PythonDefaultWriter.Names(t.Class, key, defFlag.Name, defGroups.Select(g => g!.Name).ToList());
+    // SnapshotColumns: the copies of the parents are filled on create and kept on update, and the line total is worked out on every save
+    var snapPlan = log || tenantTable || scoped ? null : SnapshotPlan.For(Model, Project);
+    var snapNames = snapPlan is null ? null : new PythonSnapshotWriter.Names(
+        snapPlan.Copies.GroupBy(c => c.Link.Name, StringComparer.OrdinalIgnoreCase).Select(g =>
+        {
+            var parentTable = PythonTable.Of(g.First().Parent, Project);
+            return new PythonSnapshotWriter.Parent(FieldOf(g.First().Link)!.Name, g.First().Link.IsNullable, parentTable.Class, parentTable.Module, parentTable.FieldOf(g.First().ParentKey).Name, g.First().Parent.TableName,
+                g.Select(c => new PythonSnapshotWriter.Copy(FieldOf(c.Target)!.Name, parentTable.FieldOf(c.Source).Name)).ToList());
+        }).ToList(),
+        snapPlan.Total is null ? null : new PythonSnapshotWriter.Total(FieldOf(snapPlan.Total.Target)!.Name, FieldOf(snapPlan.Total.FactorA)!.Name, FieldOf(snapPlan.Total.FactorB)!.Name));
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -200,6 +210,9 @@
         Line("from app.routes.tenancy import " + string.Join(", ", tenancyNames.OrderBy(n => n, StringComparer.Ordinal)));
     }
     Line($"from app.models.{t.Module} import {t.Class}");
+    if (snapNames is not null)
+        foreach (var parent in snapNames.Parents.DistinctBy(p => p.Class))
+            Line($"from app.models.{parent.Module} import {parent.Class}");
     if (ownerLink is not null)
         Line($"from app.models.{parentModule} import {parentClass}");
     Line($"from app.schemas.{t.Module} import {t.Schema}");
@@ -358,6 +371,15 @@
         Line();
         Line();
         Line(PythonDefaultWriter.Helpers(defNames).TrimEnd('\n'));
+    }
+    if (snapNames is not null)
+    {
+        Line();
+        Line();
+        Line("SNAPSHOT_OWNED = (" + string.Join(", ", snapNames.Owned.Select(Str)) + ",)");
+        Line();
+        Line();
+        Line(PythonSnapshotWriter.Helper(snapNames).TrimEnd('\n'));
     }
     if (contentNames is not null)
     {
@@ -601,6 +623,8 @@
     }
     if (t.HashField is { IsNullable: false } newHash)
         Line($"    row.{newHash.Name} = \"\"   # a person with no password cannot sign in; set-password writes the hash");
+    if (snapNames is not null)
+        Line("    fill_snapshot(session, row, True)");
     if (defNames is not null)
         Line($"    row.{defNames.Flag} = settle_default(session, None, {PythonDefaultWriter.GroupArgument(defNames, a => "body." + a)}, body.{defNames.Flag})");
     Line("    session.add(row)");
@@ -701,7 +725,14 @@
         Line("    change_content(session, row, changes)");
     }
     Line(contentNames is not null ? "    for name, value in changes.items():" : "    for name, value in body.changes().items():");
+    if (snapNames is not null)
+    {
+        Line("        if name in SNAPSHOT_OWNED:   # the copies and the total belong to the server");
+        Line("            continue");
+    }
     Line("        setattr(row, name, value)");
+    if (snapNames is not null)
+        Line("    fill_snapshot(session, row, False)");
     if (tenantField is not null)
         Line(sharedTenant ? $"    row.{tenantField.Name} = current_tenant   # a row never moves to another tenant, and a shared row stays shared" : $"    row.{tenantField.Name} = user.tenant_id   # a row never moves to another tenant");
     foreach (var f in t.StampedOnChange)

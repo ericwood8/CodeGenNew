@@ -105,6 +105,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: dotnet workload install wasm-tools
+      - name: Show which SDK and workloads the walk will build with
+        run: |
+          dotnet --list-sdks
+          dotnet --info | grep -iE "Base Path|Version:|Workload version"
+          dotnet workload list
+          ls "$(dirname "$(readlink -f "$(command -v dotnet)")")/metadata/workloads" || true
       - run: pip install playwright
       - name: Walk the Uno app
         run: python Docs/Verification/Test-FrontEndPages.py --stack uno --build-cli

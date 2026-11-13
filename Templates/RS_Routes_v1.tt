@@ -79,6 +79,17 @@
     var defPlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).DefaultRow : null;
     var defNames = defPlan is null ? null : new RustDefaultWriter.Names(t.Struct, t.FieldOf(defPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(defPlan.Key.DbName), keyType, t.FieldOf(defPlan.Flag).Name,
         DialectInfo.For(Model.Dialect).Quote(defPlan.Flag.DbName), defPlan.Groups.Select(g => new RustDefaultWriter.Group(t.FieldOf(g).Name, DialectInfo.For(Model.Dialect).Quote(g.DbName), t.FieldOf(g).IsOption)).ToList(), t.Table);
+    // SnapshotColumns: the copies of the parents are filled on create and kept on update, and the line total is worked out on every save
+    var snapPlan = !scoped && !tenanted && !log ? SnapshotPlan.For(Model, Project) : null;
+    var snapNames = snapPlan is null ? null : new RustSnapshotWriter.Names(t.Struct,
+        snapPlan.Copies.GroupBy(c => c.Link.Name, StringComparer.OrdinalIgnoreCase).Select(g =>
+        {
+            var parentTable = RustTable.Of(g.First().Parent, Project);
+            return new RustSnapshotWriter.Parent(t.FieldOf(g.First().Link).Name, t.FieldOf(g.First().Link).IsOption, parentTable.Table, DialectInfo.For(Model.Dialect).Quote(g.First().ParentKey.DbName), g.First().Parent.TableName,
+                g.Select(c => new RustSnapshotWriter.Copy(t.FieldOf(c.Target).Name, DialectInfo.For(Model.Dialect).Quote(c.Source.DbName))).ToList());
+        }).ToList(),
+        snapPlan.Total is null ? null : new RustSnapshotWriter.Total(t.FieldOf(snapPlan.Total.Target).Name,
+            RustSnapshotWriter.Factor(t.FieldOf(snapPlan.Total.FactorA), t.FieldOf(snapPlan.Total.Target), "row"), RustSnapshotWriter.Factor(t.FieldOf(snapPlan.Total.FactorB), t.FieldOf(snapPlan.Total.Target), "row")));
     var effNames = effPlan is null ? null : new RustEffectiveWriter.Names(t.Struct, t.FieldOf(effPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.Key.DbName), keyType, t.FieldOf(effPlan.From).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.From.DbName),
         t.FieldOf(effPlan.To).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.To.DbName), t.FieldOf(effPlan.To).IsOption, t.FieldOf(effPlan.From).BaseType,
         effPlan.Groups.Select(g => new RustEffectiveWriter.Group(t.FieldOf(g).Name, t.FieldOf(g).Json, DialectInfo.For(Model.Dialect).Quote(g.DbName), t.FieldOf(g).BaseType, t.FieldOf(g).IsOption)).ToList(), t.Table, t.SelectList);
@@ -235,6 +246,8 @@
         Line(RustEffectiveWriter.Code(effNames, t.LiveAnd()));
     if (defNames is not null)
         Line(RustDefaultWriter.Code(defNames));
+    if (snapNames is not null)
+        Line(RustSnapshotWriter.Code(snapNames));
     if (softRoutes)
     {
         Line("/// The rows that were soft deleted, the last deleted first.");
@@ -429,7 +442,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -494,6 +507,8 @@
         Line(RustAssetWriter.CreateLine(t, assetPlan).TrimEnd((char)10));
     if (linkTable)
         Line(RustLinkWriter.CheckLine(t));
+    if (snapNames is not null)
+        Line("    fill_snapshot(&pool, &mut row, None).await?;");
     if (defNames is not null)
         Line("    let moves_default = settle_default(&pool, None, &mut row).await?;");
     Line("    let row = repo::insert(&pool, &row).await?;");
@@ -546,7 +561,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -589,6 +604,11 @@
         Line(RustAssetWriter.UpdateLines(t, assetPlan).TrimEnd((char)10));
     if (linkTable)
         Line(RustLinkWriter.CheckLine(t));
+    if (snapNames is not null)
+    {
+        Line($"    let snapshot_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+        Line("    fill_snapshot(&pool, &mut row, Some(&snapshot_stored)).await?;");
+    }
     if (defNames is not null)
     {
         Line("    let moves_default = settle_default(&pool, Some(id), &mut row).await?;");

@@ -36,8 +36,13 @@ public sealed class RustTable
     private readonly bool _mariaDb;
     private readonly Dictionary<ColumnModel, RustField> _fieldOf;
 
+    private readonly TableModel _model;
+    private readonly ProjectSettings _project;
+
     private RustTable(TableModel model, ProjectSettings project)
     {
+        _model = model;
+        _project = project;
         Model = model;
         _di = DialectInfo.For(model.Dialect);
         _mariaDb = project.MariaDbSetting == true;
@@ -202,7 +207,7 @@ public sealed class RustTable
     public IReadOnlyList<RustField> InsertBound { get; }
 
     /// <summary> A field the server stamps, so a body may leave it out. </summary>
-    public bool IsStamped(RustField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field);
+    public bool IsStamped(RustField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field) || SnapshotPlan.IsOwnedColumn(_model, _project, field.Column);
 
     public string SelectAll { get; private set; } = "";
 

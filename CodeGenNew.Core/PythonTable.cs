@@ -19,8 +19,13 @@ public sealed record PythonSort(string Name, PythonField Field);
 /// A column whose type Python has no mapping for here (binary, a type CodeGenNew cannot map) is left out and listed in <see cref="Skipped"/>. </summary>
 public sealed class PythonTable
 {
+    private readonly TableModel _model;
+    private readonly ProjectSettings _project;
+
     private PythonTable(TableModel model, ProjectSettings project)
     {
+        _model = model;
+        _project = project;
         Model = model;
         Class = PythonNames.Pascal(ScreenNames.BaseName(model.TableName));
         Schema = Class + "Schema";
@@ -124,7 +129,7 @@ public sealed class PythonTable
     public IReadOnlyList<PythonField> StampedOnChange { get; }
 
     /// <summary> A field the server stamps, so the request schema makes it optional. </summary>
-    public bool IsStamped(PythonField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field);
+    public bool IsStamped(PythonField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field) || SnapshotPlan.IsOwnedColumn(_model, _project, field.Column);
 
     /// <summary> The value a column has when nothing was entered, as Python writes it: <c>False</c>, <c>None</c>, <c>""</c>, <c>0</c>. </summary>
     public static string DefaultValue(ColumnModel column) =>

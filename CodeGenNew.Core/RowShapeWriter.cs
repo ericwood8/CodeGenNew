@@ -7,7 +7,7 @@ namespace CodeGenNew.Core;
 public static class RowShapeWriter
 {
     /// <summary> Whether the table's API has to call <c>CheckSaveAsync</c>. </summary>
-    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Content is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).Effective is not null || TableShapes.For(table, project).DefaultRow is not null || PolymorphicPlan.IsLinkTable(table.TableName, project);
+    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Content is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).Effective is not null || TableShapes.For(table, project).DefaultRow is not null || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project);
 
     /// <summary> Whether the table's API has to call <c>CheckDeleteAsync</c>. </summary>
     public static bool HasDeleteCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).SoftDelete is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).DefaultRow is not null || PolymorphicPlan.RefusesDeleteOf(table.TableName, project);
@@ -23,7 +23,7 @@ public static class RowShapeWriter
             o.Append($"using {u};\n");
         o.Append("using Microsoft.AspNetCore.Mvc;\nusing Microsoft.EntityFrameworkCore;\n\n");
         o.Append(Shared.Replace("§TREE_CYCLE", RowShapeWords.TreeCycleType).Replace("§TREE_DEEP", RowShapeWords.TreeTooDeepType).Replace("§TREE_CHILDREN", RowShapeWords.TreeHasChildrenType)
-            .Replace("§EFF_RANGE", RowShapeWords.EffectiveRangeType).Replace("§EFF_OVERLAP", RowShapeWords.EffectiveOverlapType).Replace("§NOT_DELETED", RowShapeWords.NotDeletedType).Replace("§SLUG_TAKEN", ContentWords.SlugTakenType));
+            .Replace("§EFF_RANGE", RowShapeWords.EffectiveRangeType).Replace("§EFF_OVERLAP", RowShapeWords.EffectiveOverlapType).Replace("§NOT_DELETED", RowShapeWords.NotDeletedType).Replace("§SNAP_PARENT", RowShapeWords.SnapshotParentType).Replace("§SNAP_TITLE", RowShapeWords.SnapshotParentTitle).Replace("§SLUG_TAKEN", ContentWords.SlugTakenType));
         if (project.PolymorphicLinks.Length > 0)
             o.Append(LinkShared.Replace("§UNKNOWN_TYPE", LinkWords.UnknownTypeType).Replace("§MISSING_TYPE", LinkWords.TargetMissingType).Replace("§INUSE_TYPE", LinkWords.TargetInUseType));
         if (project.DefaultRowTables.Length > 0)
@@ -204,6 +204,30 @@ public static class RowShapeWriter
             maps.Append(Fill("        app.MapPost(\"§R/{id}/make-default\", (§CTX context, §KT id) => MakeDefaultAsync(context, id))§AUTH;\n"));
         }
 
+        if (SnapshotPlan.For(table, project, database) is { } snapshot)
+        {
+            var newLines = new StringBuilder();
+            var storedLines = new StringBuilder();
+            int p = 0;
+            foreach (var parent in snapshot.Copies.GroupBy(c => c.Link.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                var first = parent.First();
+                string linkName = first.Link.CSharpName(), parentTable = first.Parent.TableName, parentKey = first.ParentKey.CSharpName();
+                string select = string.Join(", ", parent.Select(c => $"{c.Source.CSharpName()} = x.{c.Source.CSharpName()}"));
+                string assigns = string.Concat(parent.Select(c => $"                row.{c.Target.CSharpName()} = parent{p}.{c.Source.CSharpName()};\n"));
+                string guardStart = first.Link.IsNullable ? $"            if (row.{linkName} is {{ }} link{p})\n            {{\n" : "            {\n";
+                string equals = first.Link.IsNullable ? $"link{p}" : $"row.{linkName}";
+                newLines.Append($"{guardStart}                var parent{p} = await context.Set<{parentTable}>().Where(x => x.{parentKey} == {equals}).Select(x => new {{ {select} }}).FirstOrDefaultAsync();\n                if (parent{p} is null)\n                    return RowShapeProblems.SnapshotParent(\"{RowShapeWords.SnapshotParentMissing(parentTable)}\");\n{assigns}            }}\n");
+                p++;
+            }
+            string storedSelect = string.Join(", ", snapshot.Copies.Select(c => $"{c.Target.CSharpName()} = x.{c.Target.CSharpName()}"));
+            foreach (var c in snapshot.Copies)
+                storedLines.Append($"                row.{c.Target.CSharpName()} = stored.{c.Target.CSharpName()};\n");
+            string totalLine = snapshot.Total is null ? "" : $"        row.{snapshot.Total.Target.CSharpName()} = ({snapshot.Total.Target.CSharpBase()})(row.{snapshot.Total.FactorA.CSharpName()} * row.{snapshot.Total.FactorB.CSharpName()});\n";
+            o.Append(Fill(SnapshotCheck, Pairs("§NEWLINES", newLines.ToString(), "§STOREDSELECT", storedSelect, "§STOREDLINES", storedLines.ToString(), "§TOTALLINE", totalLine)));
+            save.Append("        if (await CheckSnapshotAsync(context, row, isNew) is { } snapshotProblem)\n            return snapshotProblem;\n");
+        }
+
         if (PolymorphicPlan.LinkOf(table, project, database) is { } link)
         {
             var cases = new StringBuilder();
@@ -264,6 +288,7 @@ public static class RowShapeProblems
     public static IResult BadRange(string detail) => Problem(400, "§EFF_RANGE", "Not a valid period", detail);
     public static IResult Overlap(string detail) => Problem(409, "§EFF_OVERLAP", "Overlapping period", detail);
     public static IResult NotDeleted(string detail) => Problem(409, "§NOT_DELETED", "Not deleted", detail);
+    public static IResult SnapshotParent(string detail) => Problem(400, "§SNAP_PARENT", "§SNAP_TITLE", detail);
     public static IResult SlugTaken(string detail) => Problem(409, "§SLUG_TAKEN", "Slug taken", detail);
 }
 
@@ -702,6 +727,26 @@ public static class AssetProblems
     {
         await §TApprovals.WithdrawWaitingAsync(context, id, caller.FindFirst(AuthNames.NameClaim)?.Value);
         return await SetStatusAsync(context, id, status);
+    }
+
+
+""";
+
+    private const string SnapshotCheck = """
+    /// <summary> What the row copies of its parents is filled when it is created and put back when an update changed it; the total is worked out on every save. </summary>
+    public static async Task<IResult?> CheckSnapshotAsync(§CTX context, §T row, bool isNew)
+    {
+        if (isNew)
+        {
+§NEWLINES        }
+        else
+        {
+            var stored = await context.Set<§T>().AsNoTracking().Where(x => x.§K == row.§K).Select(x => new { §STOREDSELECT }).FirstOrDefaultAsync();
+            if (stored is not null)
+            {
+§STOREDLINES            }
+        }
+§TOTALLINE        return null;
     }
 
 

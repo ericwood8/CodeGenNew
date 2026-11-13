@@ -188,7 +188,7 @@
 using <#= viewModelNamespace #>;
 using Microsoft.UI.Xaml.Controls;
 <#
-        var currencyColumns = shown.Where(c => form.Field(c).IsMoneyValue).ToList();
+        var currencyColumns = shown.Where(c => form.Field(c).IsMoneyValue && !form.Field(c).IsSystemStampField).ToList();
         foreach (string u in usings)
         {
 #>
@@ -221,7 +221,7 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
         }
 #>
 <#
-        foreach (var c in shown.Where(c => form.Field(c).IsDecimalValue && c.IsDecimalColumn))
+        foreach (var c in shown.Where(c => form.Field(c).IsDecimalValue && c.IsDecimalColumn && !form.Field(c).IsSystemStampField))
         {
 #>
         <#= c.Name #>Box.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter
@@ -344,7 +344,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
 {
     private readonly <#= contextType #> _context;
     private readonly <#= table #>Repo _repo;
-    private readonly <#= table #>? _editing;
+    private readonly <#= table #>? _editing;<#= SnapshotPlan.IsListed(Model.TableName, Project) ? DesktopFormCode.SavedRowVisibilityMember : "" #>
 
     public string DialogTitle => _editing is null ? "Add <#= title #>" : "Edit <#= title #>";
 <#
@@ -591,6 +591,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.ContentCheckLines(Project, Model, "_context"));
         Write(DefaultRowScreens.CheckLines(Project, Model, "_context"));
+        Write(DesktopFormCode.SnapshotCheckLines(Project, Model, "_context"));
         Write(AssetDesktopCode.CheckLines(Project, Model, "_context"));
         if (isNameActive)
         {
