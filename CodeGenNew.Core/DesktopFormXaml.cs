@@ -21,6 +21,55 @@ public static class DesktopFormXaml
             + $"            <TextBlock Text=\"{System.Security.SecurityElement.Escape(guard.Note)}\" TextWrapping=\"Wrap\" FontStyle=\"Italic\" Visibility=\"{{x:Bind ViewModel.{column.Name}NoteVisibility, Mode=OneWay}}\" />\n";
     }
 
+    /// <summary> The pixels a field's box takes: a number box as wide as the widest number it holds (at most nine digits, twelve for a decimal) plus about 150 pixels for the spin buttons, clear button and padding, and never
+    /// narrower than its header text; a date box and its Clear button; any other field fills the line, so it counts as 200. </summary>
+    public static int ControlWidth(FormModel form, ProjectSettings project, ColumnModel column)
+    {
+        var formColumn = form.Field(column);
+        int header = column.Label.Length * 7 + 8;
+        if (formColumn.IsMoneyField)
+            return 180;
+        if (formColumn.IsDecimalValue)
+        {
+            var (_, decMax) = NumericClassifier.DecimalRange(column);
+            int decDigits = TemplateHelpers.Inv(decMax).Length + (column.IsDecimalColumn ? NumericClassifier.DecimalPlaces(column) : 4);
+            return Math.Max(Math.Min(decDigits, 12) * 10 + 150, header);
+        }
+        if (formColumn.IsWholeNumberValue && !formColumn.IsLookupField && project.RangeFor(column) is { } range)
+        {
+            int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
+            return Math.Max(Math.Min(digits, 9) * 10 + 150, header);
+        }
+        return formColumn.IsDateField ? (column.IsNullable ? 250 : 180) : 200;
+    }
+
+    /// <summary> The fields of one page in <see cref="FormLayout"/>'s lines: a line with several fields is a grid of equal columns, a line that a check box shows is wrapped in a panel bound to that check box
+    /// (the view model's <see cref="DesktopFormCode.ShownProperties"/>). <paramref name="field"/> gives the XAML of one column, wrappers included. </summary>
+    public static string Lines(FormModel form, ProjectSettings project, IReadOnlyList<ColumnModel> columns, Func<ColumnModel, string> field)
+    {
+        var o = new StringBuilder();
+        foreach (var line in FormLayout.For(form, columns, c => ControlWidth(form, project, c)))
+        {
+            string body;
+            if (line.Columns.Count == 1)
+                body = field(line.Columns[0]);
+            else
+            {
+                var g = new StringBuilder();
+                g.Append("            <Grid ColumnSpacing=\"16\">\n                <Grid.ColumnDefinitions>\n");
+                foreach (var _ in line.Columns)
+                    g.Append("                    <ColumnDefinition Width=\"*\" />\n");
+                g.Append("                </Grid.ColumnDefinitions>\n");
+                for (int i = 0; i < line.Columns.Count; i++)
+                    g.Append(UserScreenPlan.WithAttribute(field(line.Columns[i]), $"Grid.Column=\"{i}\""));
+                g.Append("            </Grid>\n");
+                body = g.ToString();
+            }
+            o.Append(line.ShownWhen is null ? body : $"            <StackPanel Visibility=\"{{x:Bind ViewModel.{DesktopFormCode.ShownProperty(line.ShownWhen)}, Mode=OneWay}}\">\n{body}            </StackPanel>\n");
+        }
+        return o.ToString();
+    }
+
     private static string Control(FormModel form, ProjectSettings project, TableModel table, ColumnModel column, bool textKey)
     {
         var formColumn = form.Field(column);
@@ -84,8 +133,7 @@ public static class DesktopFormXaml
         else if (formColumn.IsDecimalValue)
         {
             var (decMin, decMax) = NumericClassifier.DecimalRange(column);
-            int decDigits = TemplateHelpers.Inv(decMax).Length + (column.IsDecimalColumn ? NumericClassifier.DecimalPlaces(column) : 4);
-            string decWidth = $" Width=\"{Math.Max(Math.Min(decDigits, 12) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
+            string decWidth = $" Width=\"{ControlWidth(form, project, column)}\" HorizontalAlignment=\"Left\"";
             L(I + $"<NumberBox x:Name=\"{prop}Box\" Header=\"{label}\"{required} Value=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
             L(I + $"           Minimum=\"{TemplateHelpers.Inv(decMin)}\" Maximum=\"{TemplateHelpers.Inv(decMax)}\" SmallChange=\"1\" LargeChange=\"10\"");
             L(I + $"           SpinButtonPlacementMode=\"Inline\" ValidationMode=\"InvalidInputOverwritten\"{decWidth} />");
@@ -93,9 +141,7 @@ public static class DesktopFormXaml
         else if (formColumn.IsWholeNumberValue)
         {
             var range = project.RangeFor(column)!.Value;
-            // As wide as the range's widest number (at most nine digits) plus about 150 pixels for the spin buttons, clear button and padding, and never narrower than the header text.
-            int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
-            string width = $" Width=\"{Math.Max(Math.Min(digits, 9) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
+            string width = $" Width=\"{ControlWidth(form, project, column)}\" HorizontalAlignment=\"Left\"";
             // the key of a new row is typed; once the row exists it cannot change, and a NumberBox has no read-only state
             string enabled = formColumn.IsTypedNumberKeyField ? " IsEnabled=\"{x:Bind ViewModel.IsNewRow}\"" : "";
             L(I + $"<NumberBox Header=\"{label}\"{required} Value=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{enabled}");

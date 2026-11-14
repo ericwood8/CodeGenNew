@@ -793,7 +793,7 @@ public class ProjectSettingsTests
         Assert.IsTrue(winui.Success && react.Success && angular.Success);
         Expect.Contains(winui.GeneratedText!, "Click=\"OnOrderLineEditClick\"");
         Expect.Contains(winui.GeneratedText!, "Click=\"OnOrderLineDeleteClick\"");
-        Expect.Contains(winui.GeneratedText!, "<TextBlock Text=\"Actions\" FontWeight=\"SemiBold\" Width=\"120\" VerticalAlignment=\"Center\" />");
+        Expect.Contains(winui.GeneratedText!, "<TextBlock Text=\"Actions\" FontWeight=\"Bold\" Width=\"120\" VerticalAlignment=\"Center\" />");
         Expect.Contains(react.GeneratedText!, "const editOrderLine = (row: any) => {");
         Expect.Contains(react.GeneratedText!, "const deleteOrderLine = async (row: any): Promise<void> => {");
         Expect.Contains(react.GeneratedText!, "onClick={() => editOrderLine(row)}");

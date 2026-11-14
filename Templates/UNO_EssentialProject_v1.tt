@@ -188,6 +188,9 @@ var UnoAppManifest = {
     "<#= projectName #> (Desktop)": {
       "commandName": "Project",
       "dotnetRunMessages": true
+    },
+    "<#= projectName #> (Windows)": {
+      "commandName": "MsixPackage"
     }
   }
 }

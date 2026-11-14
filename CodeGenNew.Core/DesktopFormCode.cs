@@ -52,6 +52,23 @@ public static class DesktopFormCode
         return o.ToString();
     }
 
+    /// <summary> The name of the view-model property that tells whether a check box's dependent fields are shown (<see cref="FormLayout"/>). </summary>
+    public static string ShownProperty(ColumnModel flag) => flag.Name + "DependentsVisibility";
+
+    /// <summary> The properties that show the fields of each check box (<see cref="FormLayout.Flags"/>) only while it is ticked, and tell the dialog when the check box changes (four spaces in). Empty when no field depends on a check box. </summary>
+    public static string ShownProperties(FormModel form)
+    {
+        var o = new StringBuilder();
+        foreach (var flag in FormLayout.Flags(form))
+        {
+            o.Append('\n');
+            o.Append($"    /// <summary> Shown while {flag.Name} is ticked: the fields named after it. </summary>\n");
+            o.Append($"    public Microsoft.UI.Xaml.Visibility {ShownProperty(flag)} => {flag.Name} == true ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;\n");
+            o.Append($"    partial void On{flag.Name}Changed(bool? value) => OnPropertyChanged(nameof({ShownProperty(flag)}));\n");
+        }
+        return o.ToString();
+    }
+
     /// <summary> The check of a date that must not be earlier than the date it follows (a changed value only), or null when the column ends no pair. </summary>
     public static string? PairCheck(FormModel form, ProjectSettings project, TableModel table, ColumnModel column, string prop)
     {

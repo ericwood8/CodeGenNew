@@ -117,6 +117,8 @@
             actionWidth = (int.Parse(actionWidth) + 170).ToString();
         if (assetShape is not null)
             actionWidth = (int.Parse(actionWidth) + 110).ToString();   // the Download button
+        if (defaultRow is not null)
+            actionWidth = (int.Parse(actionWidth) + 120).ToString();   // the Make default button
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>ListPage.xaml@@@
 <Page
@@ -248,7 +250,7 @@
                             </Grid.ColumnDefinitions>
                             <!-- The header cells of the shown columns are built in code (BuildHeader), as the shown columns change. -->
                             <Grid x:Name="HeaderCells" Grid.Column="0" ColumnSpacing="8" />
-                            <TextBlock Grid.Column="1" Text="Actions" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="1" Text="Actions" FontWeight="Bold" />
                         </Grid>
                     </Border>
 

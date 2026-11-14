@@ -109,6 +109,11 @@ public class <#= stem #>JunctionClient(HttpClient http)
     PrimaryButtonText="Close"
     DefaultButton="Primary">
 
+    <!-- A ContentDialog is capped at about 548 wide by this theme resource, so the 640 wide lists below would be cut off without raising it. -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>
+    </ContentDialog.Resources>
+
     <!-- Two side-by-side lists with <</</>/>> buttons (a "shuttle control" / "transfer list"): move rows between them to edit which <#= targetRole #> rows are linked to
          this <#= anchorRole #> row. Each click commits at once through the API, so there is no separate Save. -->
     <StackPanel Spacing="8">

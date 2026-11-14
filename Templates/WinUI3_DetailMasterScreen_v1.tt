@@ -142,19 +142,32 @@
             {
 #>
                 <TabViewItem Header="<#= page.Header #>" IsClosable="False">
-                    <StackPanel Spacing="12" Padding="0,8,0,8">
+                    <StackPanel Spacing="12" Padding="0,8,0,8" MaxWidth="540" HorizontalAlignment="Left">
 <#
             }
-        foreach (var c in page.Columns)
+            else
+            {
+#>
+            <!-- The fields stay within the dialog's own width: the scroll area measures wide (the child grids below), and an unbounded text box would follow it off the screen. -->
+            <StackPanel Spacing="12" MaxWidth="540" HorizontalAlignment="Left">
+<#
+            }
+        Write(DesktopFormXaml.Lines(form, Project, page.Columns, c =>
         {
             string field = DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true);
-            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } adminFlag ? FeatureScreenCode.AdminOnlyVisibilityAttribute(adminFlag) : "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } fieldFlag ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.VisibilityAttribute(fieldFlag)) : field);
-        }
+            return userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } adminFlag ? FeatureScreenCode.AdminOnlyVisibilityAttribute(adminFlag) : "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } fieldFlag ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.VisibilityAttribute(fieldFlag)) : field;
+        }));
             if (tabbed)
             {
 #>
                     </StackPanel>
                 </TabViewItem>
+<#
+            }
+            else
+            {
+#>
+            </StackPanel>
 <#
             }
         }
@@ -224,7 +237,7 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock Text="Actions" FontWeight="SemiBold" Width="120" VerticalAlignment="Center" />
+                            <TextBlock Text="Actions" FontWeight="Bold" Width="120" VerticalAlignment="Center" />
                         </StackPanel>
                     </Border>
                     <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}"
@@ -794,6 +807,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 
 <#
         Write(DesktopFormCode.PairProperties(form, Project));
+        Write(DesktopFormCode.ShownProperties(form));
 #>
 <#
         // The values the database lists for a column (a MySQL enum), shown as a drop-down.
