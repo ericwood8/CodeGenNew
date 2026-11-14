@@ -26,6 +26,9 @@ public sealed class GenerateOptions
     /// <summary> Run only for these tables (by generated or database name): a quick regenerate after one table changed. The templates that cover the whole database (the context, the
     /// registration, the screens list) and the essentials are left out, and no file is reported stale. </summary>
     public IReadOnlyList<string>? Tables { get; init; }
+    /// <summary> With <see cref="Tables"/>: keep the templates that cover the whole database too (they write what a shape of a table adds, such as a tree's routes), so a table's setting is written without
+    /// running every other table's templates. </summary>
+    public bool WithDatabaseTemplates { get; init; }
     /// <summary> Delete the stale files (files an earlier run wrote that the plan no longer produces) that nobody has edited since. Edited ones are only reported. </summary>
     public bool DeleteStale { get; init; }
     /// <summary> Overwrite a file even when it differs from what the last run wrote (a hand edit) or no earlier run recorded it. Off: such a file is kept and reported. </summary>
@@ -125,7 +128,8 @@ public static class ProjectGenerator
             var wantedSet = wantedTables.ToHashSet(StringComparer.OrdinalIgnoreCase);
             var wantedGenerated = database.Tables.Where(t => wantedSet.Contains(t.TableName) || wantedSet.Contains(t.DbTableName)).Select(t => t.TableName).ToHashSet(StringComparer.Ordinal);
             bool Wanted(string table) => wantedGenerated.Contains(table);
-            steps = steps.Where(s => !s.IsDatabaseLevel).Select(s => s with { TableNames = s.TableNames.Where(Wanted).ToList() }).Where(s => s.TableNames.Count > 0).ToList();
+            steps = steps.Where(s => options.WithDatabaseTemplates || !s.IsDatabaseLevel).Select(s => s.IsDatabaseLevel ? s : s with { TableNames = s.TableNames.Where(Wanted).ToList() })
+                .Where(s => s.IsDatabaseLevel || s.TableNames.Count > 0).ToList();
         }
         if (options.OnlyTemplates is { Count: > 0 } only)
         {

@@ -21,7 +21,7 @@ public static class TableShapeDetector
         [("ValidFrom", "ValidTo"), ("EffectiveFrom", "EffectiveTo"), ("StartDate", "EndDate"), ("FromDate", "ToDate"), ("StartsOn", "EndsOn"), ("StartOn", "EndOn"), ("StartDateTime", "EndDateTime")];
     private static readonly string[] QueueStatusNames = ["Status", "State"];
     private static readonly string[] QueueRetryNames = ["RetryCount", "Attempts", "Tries", "AttemptCount"];
-    private static readonly string[] QueueClaimStems = ["Claimed", "Locked", "Started"];
+    private static string[] QueueClaimStems => QueuePlan.ClaimStems;
     private static readonly string[] QueueEndStems = ["Processed", "Completed", "Finished", "Done"];
 
     public static IReadOnlyList<ShapeSuggestion> Of(TableModel table, ProjectSettings project)
@@ -88,7 +88,9 @@ public static class TableShapeDetector
         string item = $"{table.TableName}:{flag.Name}:{parents[0]}{kind}";
         if (parents.Count > 1)
             return new ShapeSuggestion("Default row", "DefaultRowTables", item, false, $"{flag.Name} marks one row per group, but {string.Join(" and ", parents)} could each be the group; name the group columns");
-        return Judge("Default row", "DefaultRowTables", item, $"{flag.Name} marks one row per {parents[0]}", table, project, project.DefaultRowTables, DefaultRowPlan.Problem);
+        bool oneAllowed = table.PartialIndexes.Any(i => i.IsUnique && i.Filter.Contains(flag.DbName, StringComparison.OrdinalIgnoreCase));
+        string why = $"{flag.Name} marks one row per {parents[0]}" + (oneAllowed ? ", and a unique filtered index allows only one" : "");
+        return Judge("Default row", "DefaultRowTables", item, why, table, project, project.DefaultRowTables, DefaultRowPlan.Problem);
     }
 
     private static ShapeSuggestion? Effective(TableModel table, ProjectSettings project)
@@ -98,14 +100,17 @@ public static class TableShapeDetector
         var parents = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1).Select(f => f.ReferencingColumns[0]).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (parents.Count == 0)
             return null;
-        foreach (var (from, to) in PeriodPairs)
+        var ordered = table.CheckConstraints.Select(k => CheckConstraintParser.DateOrder(k.Definition)).OfType<(string Start, string End)>()
+            .Select(o => (First: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.DbName.EqualsIgnoreCase(o.Start)), Last: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.DbName.EqualsIgnoreCase(o.End))))
+            .Where(p => p.First is not null && p.Last is not null).Select(p => (First: p.First!, Last: p.Last!)).ToList();
+        var pairs = ordered.Concat(PeriodPairs.Select(p => (First: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.Name.EqualsIgnoreCase(p.Item1)),
+            Last: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.Name.EqualsIgnoreCase(p.Item2)))).Where(p => p.First is not null && p.Last is not null).Select(p => (First: p.First!, Last: p.Last!)));
+        foreach (var (first, last) in pairs)
         {
-            var first = table.Columns.FirstOrDefault(c => c.IsDateColumn && c.Name.EqualsIgnoreCase(from));
-            var last = table.Columns.FirstOrDefault(c => c.IsDateColumn && c.Name.EqualsIgnoreCase(to));
-            if (first is null || last is null)
-                continue;
+            bool checkedByDatabase = ordered.Any(o => o.First == first && o.Last == last);
             string item = $"{table.TableName}:{first.Name}:{last.Name}" + (parents.Count == 1 ? ":" + parents[0] : "");
-            return Judge("Effective dated rows", "EffectiveDatedTables", item, $"{first.Name} to {last.Name} is a period of {string.Join(" and ", parents)}", table, project, project.EffectiveDatedTables, EffectiveDatePlan.Problem);
+            string why = $"{first.Name} to {last.Name} is a period of {string.Join(" and ", parents)}" + (checkedByDatabase ? $", and a check constraint keeps {first.Name} from being after {last.Name}" : "");
+            return Judge("Effective dated rows", "EffectiveDatedTables", item, why, table, project, project.EffectiveDatedTables, EffectiveDatePlan.Problem);
         }
         return null;
     }
@@ -169,8 +174,12 @@ public static class TableShapeDetector
         if (new object?[] { key, name, type, size }.Count(c => c is not null) < 3 || type is null)
             return null;
         if (key is null || name is null || size is null)
+        {
+            var binary = table.Columns.FirstOrDefault(c => c.IsBinaryColumn);
+            string held = binary is null ? "" : $"; the file itself is in {binary.Name}, and stored file metadata is for files kept outside the database";
             return new ShapeSuggestion("Stored file metadata", "AssetTables", table.TableName, false,
-                $"has {string.Join(", ", new[] { key, name, type, size }.OfType<ColumnModel>().Select(c => c.Name))} but no " + string.Join(" and no ", new[] { key is null ? "storage key" : null, name is null ? "file name" : null, size is null ? "size" : null }.OfType<string>()));
+                $"has {string.Join(", ", new[] { key, name, type, size }.OfType<ColumnModel>().Select(c => c.Name))} but no " + string.Join(" and no ", new[] { key is null ? "storage key" : null, name is null ? "file name" : null, size is null ? "size" : null }.OfType<string>()) + held);
+        }
         return Judge("Stored file metadata", "AssetTables", $"{table.TableName}:{key.Name}:{name.Name}:{type.Name}:{size.Name}", "holds a storage key, a file name, a type and a size", table, project, project.AssetTables, AssetPlan.Problem);
     }
 

@@ -28,6 +28,9 @@ public static class QueuePlan
     public const string DefaultStatus = "Status";
     public const string DefaultRetry = "RetryCount";
 
+    /// <summary> The starts of the name of the stamp a worker sets when it takes a row, in the order the plan prefers them. </summary>
+    public static readonly string[] ClaimStems = ["Claimed", "Locked", "Started"];
+
     private static readonly string[] ProcessedStems = ["Processed", "Completed", "Finished", "Done"];
     private static readonly string[] ClaimedByNames = ["ClaimedBy", "LockedBy", "WorkerName", "Worker"];
     private static readonly string[] ErrorNames = ["LastError", "ErrorMessage", "Error", "Failure"];
@@ -64,7 +67,8 @@ public static class QueuePlan
         var status = Named(entry.Status);
         var retry = Named(entry.Retry);
         var created = LogTablePlan.Guess(table);
-        var claimed = table.Columns.FirstOrDefault(c => LogTablePlan.HasTimeOfDay(c) && c.Name.StartsWith("Claimed", StringComparison.OrdinalIgnoreCase) && !c.Name.EndsWith("By", StringComparison.OrdinalIgnoreCase));
+        var claimed = ClaimStems.Select(s => table.Columns.FirstOrDefault(c => LogTablePlan.HasTimeOfDay(c) && c.Name.StartsWith(s, StringComparison.OrdinalIgnoreCase) && !c.Name.EndsWith("By", StringComparison.OrdinalIgnoreCase)))
+            .FirstOrDefault(c => c is not null);
         var processed = table.Columns.FirstOrDefault(c => LogTablePlan.HasTimeOfDay(c) && ProcessedStems.Any(s => c.Name.StartsWith(s, StringComparison.OrdinalIgnoreCase)));
         var missing = new List<string>();
         if (status is not { IsStringColumn: true } || status.CharacterLength is > 0 and < 7)

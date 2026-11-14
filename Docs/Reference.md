@@ -141,6 +141,8 @@ The routine attempts the delete and reads the error: success returns `0`, a fore
 
 One `<name>.config` file per project: `key=value` lines, `#` comments, lists comma-separated. Every key is optional; a blank one takes the default described here (a name derived from `ProjectName`, or the template's own value). The settings screen shows the same text beside each box.
 
+A table whose columns fit a shape one of these keys turns on may be offered without the key: the right-click menu and the run report suggest it, and nothing is generated for it until its item is in the key (the menu's "Use as ... and generate" writes the item). See `Docs/TableShapes.md`.
+
 | Key | Meaning |
 |---|---|
 | `ProjectName` | the project's name (the file name of its .config); every blank namespace and folder is derived from it |

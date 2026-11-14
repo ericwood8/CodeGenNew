@@ -125,6 +125,32 @@ public class TableShapeDetectorTests
     }
 
     [TestMethod]
+    public void A_check_constraint_that_orders_two_dates_finds_a_period_the_names_do_not_show()
+    {
+        var table = Sample.Table("Rate", [Key("RateId"), Sample.Column("ItemId", SqlDbType.Int, ordinal: 2), Sample.Column("Opens", SqlDbType.Date, ordinal: 3), Sample.Column("Closes", SqlDbType.Date, nullable: true, ordinal: 4)],
+            [Sample.ForeignKey("ItemId", "Item", "ItemId")], checks: [new CheckConstraintModel("CK_Rate_Period", "CHECK ([Closes] IS NULL OR [Opens]<=[Closes])")]);
+        var period = Find(table, "Effective dated rows")!;
+        Assert.AreEqual("Rate:Opens:Closes:ItemId", period.Item);
+        StringAssert.Contains(period.Text, "check constraint");
+    }
+
+    [TestMethod]
+    public void A_period_with_no_check_constraint_does_not_mention_one()
+    {
+        var table = Sample.Table("Price", [Key("PriceId"), Sample.Column("ItemId", SqlDbType.Int, ordinal: 2), Sample.Column("ValidFrom", SqlDbType.Date, ordinal: 3), Sample.Column("ValidTo", SqlDbType.Date, nullable: true, ordinal: 4)],
+            [Sample.ForeignKey("ItemId", "Item", "ItemId")]);
+        Assert.IsFalse(Find(table, "Effective dated rows")!.Text.Contains("check constraint", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void A_unique_filtered_index_on_the_default_flag_is_mentioned()
+    {
+        var table = Sample.Table("CustomerAddress", [Key("CustomerAddressId"), Sample.Column("CustomerId", SqlDbType.Int, ordinal: 2), Sample.Column("IsDefault", SqlDbType.Bit, ordinal: 3)],
+            [Sample.ForeignKey("CustomerId", "Customer", "CustomerId")], partialIndexes: [new PartialIndexModel("UX_Default", true, ["CustomerId"], [], "([IsDefault]=(1))")]);
+        StringAssert.Contains(Find(table, "Default row")!.Text, "unique filtered index");
+    }
+
+    [TestMethod]
     public void A_period_with_no_parent_is_not_suggested()
     {
         var table = Sample.Table("Event", [Key("EventId"), Sample.Column("StartDate", SqlDbType.Date, ordinal: 2), Sample.Column("EndDate", SqlDbType.Date, nullable: true, ordinal: 3)]);
@@ -162,12 +188,20 @@ public class TableShapeDetectorTests
     }
 
     [TestMethod]
-    public void A_queue_whose_claim_stamp_the_planner_does_not_read_is_short_of_it()
+    public void A_file_kept_in_a_binary_column_is_named_as_the_opposite_of_stored_file_metadata()
     {
-        var queue = Find(Queue(claim: "LockedOn"), "Work queue")!;
-        Assert.IsFalse(queue.Fits);
-        StringAssert.Contains(queue.Note, "ClaimedOn");
+        var table = Sample.Table("Document", [Key("DocumentId"), Sample.Column("FileName", SqlDbType.VarChar, characters: 100, ordinal: 2), Sample.Column("ContentType", SqlDbType.VarChar, characters: 50, ordinal: 3),
+            Sample.Column("FileSize", SqlDbType.Int, ordinal: 4), Sample.Column("Content", SqlDbType.VarBinary, ordinal: 5)]);
+        var asset = Find(table, "Stored file metadata")!;
+        Assert.IsFalse(asset.Fits);
+        StringAssert.Contains(asset.Note, "Content");
+        StringAssert.Contains(asset.Note, "outside the database");
     }
+
+    [TestMethod]
+    [DataRow("LockedOn")]
+    [DataRow("StartedAt")]
+    public void A_queue_with_a_locked_or_started_stamp_fits(string claim) => Assert.IsTrue(Find(Queue(claim: claim), "Work queue")!.Fits);
 
     [TestMethod]
     public void A_table_without_a_retry_count_is_not_a_queue()

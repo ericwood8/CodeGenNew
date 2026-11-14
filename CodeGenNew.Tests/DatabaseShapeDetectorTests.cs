@@ -177,6 +177,40 @@ public class DatabaseShapeDetectorTests
     }
 
     [TestMethod]
+    public async Task The_menu_suggests_a_shape_from_a_read_database_and_stops_once_the_project_names_it()
+    {
+        string database = Path.Combine(Path.GetTempPath(), "codegen_menu_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={database}"))
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = "CREATE TABLE Folder (FolderId INTEGER PRIMARY KEY, Title VARCHAR(40) NOT NULL, Note VARCHAR(100) NULL, ParentId INTEGER NULL REFERENCES Folder(FolderId))";
+                command.ExecuteNonQuery();
+            }
+            var request = new CodeGenNew.Connections.ConnectionRequest { Provider = CodeGenNew.Connections.DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
+            var provider = CodeGenNew.SchemaIntrospection.SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
+            var model = await CodeGenNew.SchemaIntrospection.DatabaseModelBuilder.BuildAsync(provider, database, "main");
+
+            string file = "ProjectName=Shop\nDatabaseProvider=Sqlite\nStacks=Api\nAccessMode=Ef\n";
+            var tree = CodeGenNew.Generation.ShapeMenu.Suggestions(model, "Folder", ProjectSettings.Parse(file)).Single(s => s.Shape == "Tree");
+            Assert.IsTrue(tree.Fits, tree.Note);
+
+            string changed = CodeGenNew.Generation.ShapeMenu.Apply(file, tree);
+            StringAssert.Contains(changed, "TreeTables=Folder");
+            StringAssert.Contains(changed, "Stacks=Api");
+            Assert.IsFalse(CodeGenNew.Generation.ShapeMenu.Suggestions(model, "Folder", ProjectSettings.Parse(changed)).Any(s => s.Shape == "Tree"));
+            Assert.AreEqual(0, CodeGenNew.Generation.ShapeMenu.Suggestions(model, "NoSuchTable", ProjectSettings.Parse(file)).Count);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(database);
+        }
+    }
+
+    [TestMethod]
     public async Task A_suggestion_added_to_the_project_changes_what_a_regenerate_writes()
     {
         string database = Path.Combine(Path.GetTempPath(), "codegen_shape_" + Guid.NewGuid().ToString("N") + ".db");
@@ -193,19 +227,25 @@ public class DatabaseShapeDetectorTests
             var request = new CodeGenNew.Connections.ConnectionRequest { Provider = CodeGenNew.Connections.DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
             var provider = CodeGenNew.SchemaIntrospection.SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
             var values = new Dictionary<string, string> { ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = "Api", ["AccessMode"] = "Ef" };
-            async Task<string> Run(string text)
+            async Task<string> Run(string text, string[]? tables = null)
             {
                 if (Directory.Exists(output))
                     Directory.Delete(output, recursive: true);
                 var project = ProjectSettings.FromValues(text.Length == 0 ? values : new Dictionary<string, string>(values) { ["TreeTables"] = text });
-                var report = await Repo.GenerateAsync(provider, new CodeGenNew.Generation.GenerateOptions { Project = project, Stacks = ["Api"], OutputDirectory = output, DatabaseName = database, Schema = "main" });
+                var report = await Repo.GenerateAsync(provider, new CodeGenNew.Generation.GenerateOptions
+                    { Project = project, Stacks = ["Api"], OutputDirectory = output, DatabaseName = database, Schema = "main", Tables = tables, WithDatabaseTemplates = tables is not null });
                 Assert.IsTrue(report.Success, string.Join(" | ", report.Errors));
-                return string.Join("\n", Directory.GetFiles(output, "*", SearchOption.AllDirectories).Select(File.ReadAllText));
+                return string.Join("\n", Directory.GetFiles(output, "*", SearchOption.AllDirectories).Select(f => "FILE:" + Path.GetRelativePath(output, f) + "\n" + File.ReadAllText(f)));
             }
             string without = await Run("");
             string with = await Run("Category");
             Assert.IsFalse(without.Contains("promote-children"));
             StringAssert.Contains(with, "promote-children");
+            StringAssert.Contains(with, "Other");
+            string quick = await Run("Category", ["Category"]);
+            StringAssert.Contains(quick, "promote-children");
+            Assert.IsTrue(with.Split('\n').Any(l => l.StartsWith("FILE:") && l.Contains("Other")), "the whole run writes files for the other table");
+            Assert.IsFalse(quick.Split('\n').Any(l => l.StartsWith("FILE:") && l.Contains("Other")), "a run for one table does not write the other table's files");
         }
         finally
         {

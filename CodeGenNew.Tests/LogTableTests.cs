@@ -386,4 +386,22 @@ public class LogTableTests
         Assert.IsTrue(TableShapeNotes.Of([], database, plain, ["React"]).Any(n => n.StartsWith("AuditEvent: looks like a log", StringComparison.Ordinal)));
         Assert.IsFalse(TableShapeNotes.Of([], database, listed, ["React"]).Any(n => n.Contains("looks like a log", StringComparison.Ordinal)));
     }
+
+    [TestMethod]
+    public void The_run_notes_call_a_webhook_table_an_inbound_table_and_not_a_log()
+    {
+        var hook = Sample.Table("WebhookEvent",
+        [
+            Sample.Column("WebhookEventId", System.Data.SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("ReceivedOn", System.Data.SqlDbType.DateTime, ordinal: 2),
+            Sample.Column("Payload", System.Data.SqlDbType.NVarChar, characters: -1, ordinal: 3),
+            Sample.Column("Processed", System.Data.SqlDbType.Bit, ordinal: 4)
+        ]);
+        var database = new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Tables = [hook] };
+        var plain = ProjectSettings.FromValues(new Dictionary<string, string> { ["Stacks"] = "React" });
+
+        var notes = TableShapeNotes.Of([], database, plain, ["React"]);
+        Assert.IsTrue(notes.Any(n => n.Contains("Inbound event table", StringComparison.Ordinal)));
+        Assert.IsFalse(notes.Any(n => n.Contains("looks like a log", StringComparison.Ordinal)));
+    }
 }

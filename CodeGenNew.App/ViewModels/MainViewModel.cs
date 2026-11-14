@@ -142,7 +142,8 @@ public partial class MainViewModel : ObservableObject
                 table.Summary.IsAuditTable))
             .ToList();
 
-    /// <summary> The shapes the table looks like that the chosen project does not name (<see cref="TableShapeDetector"/>), read from the table's full model; empty when nothing is connected or the read fails. </summary>
+    /// <summary> The shapes the table looks like that the chosen project does not name: <see cref="TableShapeDetector"/> on the table, and with a project chosen also the shapes that need the other tables
+    /// (<see cref="DatabaseShapeDetector"/>: polymorphic link, snapshot, archive and the like) that point at this table. Empty when nothing is connected or the read fails. </summary>
     public async Task<IReadOnlyList<ShapeSuggestion>> DetectShapesAsync(TableNodeViewModel table)
     {
         if (_connectionRequest is null)
@@ -150,6 +151,13 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var project = LoadActiveProject();
+            if (HasActiveProject)
+            {
+                var database = await GetDatabaseModelAsync(table.SchemaName);
+                var found = ShapeMenu.Suggestions(database, table.TableName, project);
+                if (database.Tables.Any(t => t.TableName == table.TableName || t.DbTableName == table.TableName))
+                    return found;
+            }
             var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
             var model = await schemaProvider.BuildTableModelAsync(table.SchemaName, table.TableName, false, false);
             return TableShapeDetector.Of(model, project.ForServer(model.ServerVersion));
@@ -167,12 +175,12 @@ public partial class MainViewModel : ObservableObject
     public void ApplyShape(ShapeSuggestion suggestion)
     {
         string path = ProjectSettings.FilePathFor(_settings.ProjectsDirectory, _settings.Current.LastProject);
-        File.WriteAllText(path, ProjectFileEdit.AddListItem(File.ReadAllText(path), suggestion.Setting, suggestion.Item));
+        File.WriteAllText(path, ShapeMenu.Apply(File.ReadAllText(path), suggestion));
         StatusMessage = $"Added {suggestion.Item} to {suggestion.Setting} in {Path.GetFileName(path)}. Regenerate to use it.";
     }
 
-    /// <summary> Adds the shape to the chosen project's file (<see cref="ApplyShape"/>), then regenerates the project's Stacks with the shape on. A shape's files (its routes, checks and screens) are written by templates
-    /// that cover the whole database, so a run limited to one table would leave them out; files that did not change are not touched, and files a person edited are kept. </summary>
+    /// <summary> Adds the shape to the chosen project's file (<see cref="ApplyShape"/>), then regenerates the project's Stacks for the table and the templates that cover the whole database (where a shape's routes
+    /// and checks are written); the other tables' own files wait for a project run. Files that did not change are not touched, and files a person edited are kept. </summary>
     public async Task ApplyShapeAndGenerateAsync(TableNodeViewModel table, ShapeSuggestion suggestion)
     {
         ApplyShape(suggestion);
@@ -190,14 +198,15 @@ public partial class MainViewModel : ObservableObject
             var provider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
             var options = new GenerateOptions
             {
-                Project = project, Stacks = project.Stacks, OutputDirectory = _settings.OutputDirectory, DatabaseName = _connectionRequest.DatabaseName, Schema = table.SchemaName
+                Project = project, Stacks = project.Stacks, OutputDirectory = _settings.OutputDirectory, DatabaseName = _connectionRequest.DatabaseName, Schema = table.SchemaName,
+                Tables = [table.TableName], WithDatabaseTemplates = true
             };
             StatusMessage = $"Generating {string.Join(", ", project.Stacks)} with {table.TableName} as {suggestion.Shape.ToLowerInvariant()}...";
             var report = await Task.Run(() => ProjectGenerator.RunAsync(provider, _settings.TemplatesDirectory, options));
             int written = report.Count(FileOutcomeKind.Created) + report.Count(FileOutcomeKind.Updated);
             int kept = report.Count(FileOutcomeKind.Edited) + report.Count(FileOutcomeKind.Unknown);
             StatusMessage = report.Success
-                ? $"Added {suggestion.Item} to {suggestion.Setting} and wrote {written} files" + (kept > 0 ? $"; kept {kept} you edited" : "") + "."
+                ? $"Added {suggestion.Item} to {suggestion.Setting} and wrote {written} files" + (kept > 0 ? $"; kept {kept} you edited" : "") + $" for {table.TableName} and the database-wide files; regenerate the project to refresh the other tables."
                 : "Added the setting, but generation failed: " + string.Join(" | ", report.Errors);
         }
         catch (Exception ex)
@@ -222,22 +231,29 @@ public partial class MainViewModel : ObservableObject
             return templates;
         try
         {
-            var project = LoadActiveProject();
-            string projectKey = _settings.Current.LastProject + "|" + project.ToFileText().GetHashCode();
-            if (_databaseModel is null || _databaseModelProject != projectKey)
-            {
-                var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
-                _databaseModel = await schemaProvider.BuildAsync(_connectionRequest.DatabaseName, table.SchemaName);
-                _databaseModelProject = projectKey;
-            }
-            project = project.ForServer(_databaseModel.ServerVersion);
-            var model = _databaseModel.Tables.FirstOrDefault(t => t.TableName == table.TableName || t.DbTableName == table.TableName);
-            return model is null ? templates : [.. TemplateOffer.Filter(templates, model, _databaseModel, project)];
+            var database = await GetDatabaseModelAsync(table.SchemaName);
+            var project = LoadActiveProject().ForServer(database.ServerVersion);
+            var model = database.Tables.FirstOrDefault(t => t.TableName == table.TableName || t.DbTableName == table.TableName);
+            return model is null ? templates : [.. TemplateOffer.Filter(templates, model, database, project)];
         }
         catch (Exception)
         {
             return templates;
         }
+    }
+
+    /// <summary> The whole database as the chosen project reads it, kept until the project's file changes or the tables are refreshed. </summary>
+    private async Task<DatabaseModel> GetDatabaseModelAsync(string schema)
+    {
+        var project = LoadActiveProject();
+        string projectKey = _settings.Current.LastProject + "|" + schema + "|" + project.ToFileText().GetHashCode();
+        if (_databaseModel is null || _databaseModelProject != projectKey)
+        {
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest!, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
+            _databaseModel = await schemaProvider.BuildAsync(_connectionRequest!.DatabaseName, schema);
+            _databaseModelProject = projectKey;
+        }
+        return _databaseModel;
     }
 
     /// <summary> The templates that write one file for the whole database (CS_DbContext, API_Registration), for the toolbar's database menu. </summary>
