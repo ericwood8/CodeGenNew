@@ -1,4 +1,4 @@
-using CodeGenNew.App.Services;
+﻿using CodeGenNew.App.Services;
 using CodeGenNew.App.ViewModels;
 using CodeGenNew.App.Views;
 using CodeGenNew.Core;
@@ -148,16 +148,18 @@ public sealed partial class MainWindow : Window
             ViewModel.SelectedTable = table;
     }
 
-    private void OnTableRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    private async void OnTableRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not TableNodeViewModel table)
             return;
 
+        e.Handled = true;
         ViewModel.SelectedTable = table;
 
-        var templates = ViewModel.GetApplicableTemplates(table);
+        var templates = await ViewModel.GetOfferedTemplatesAsync(table);
         var problems = table.Problems;
-        if (templates.Count == 0 && problems.Count == 0)
+        var shapes = await ViewModel.DetectShapesAsync(table);
+        if (templates.Count == 0 && problems.Count == 0 && shapes.Count == 0)
             return;
 
         var flyout = new MenuFlyout();
@@ -180,10 +182,32 @@ public sealed partial class MainWindow : Window
         }
 
         AddGrouped(flyout, templates, template => RunTemplateAsync(table, template));
+        AddShapes(flyout, shapes, table);
 
         var position = e.GetPosition((FrameworkElement)sender);
         flyout.ShowAt((FrameworkElement)sender, position);
-        e.Handled = true;
+    }
+
+    /// <summary> A shape the table fits is an item that adds it to the project's settings; one it only looks like, and one that needs no setting, is a label that cannot be clicked. </summary>
+    private void AddShapes(MenuFlyout flyout, IReadOnlyList<CodeGenNew.Core.ShapeSuggestion> shapes, TableNodeViewModel table)
+    {
+        if (shapes.Count == 0)
+            return;
+        if (flyout.Items.Count > 0)
+            flyout.Items.Add(new MenuFlyoutSeparator());
+        foreach (var shape in shapes)
+        {
+            if (shape.CanBeApplied && ViewModel.HasActiveProject)
+            {
+                var item = new MenuFlyoutItem { Text = $"Use as {shape.Shape.ToLowerInvariant()} and generate: {shape.Setting}={shape.Item}" };
+                item.Click += async (_, _) => await ViewModel.ApplyShapeAndGenerateAsync(table, shape);
+                flyout.Items.Add(item);
+            }
+            else
+            {
+                flyout.Items.Add(new MenuFlyoutItem { Text = $"Looks like {shape.Shape.ToLowerInvariant()}: {shape.Note}", IsEnabled = false });
+            }
+        }
     }
 
     /// <summary> Adds the templates to the menu, one submenu per group (TSX, WinUI3 ...) as the table menu does. </summary>

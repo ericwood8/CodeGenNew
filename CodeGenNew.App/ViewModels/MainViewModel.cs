@@ -2,6 +2,7 @@
 using CodeGenNew.App.Services;
 using CodeGenNew.Connections;
 using CodeGenNew.Core;
+using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -115,6 +116,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
     {
+        _databaseModel = null;
         if (_connectionRequest is not null)
             await ConnectAsync(_connectionRequest);
     }
@@ -139,6 +141,104 @@ public partial class MainViewModel : ObservableObject
                 _connectionRequest?.Provider switch { DatabaseProvider.PostgreSql => SqlDialect.PostgreSql, DatabaseProvider.MySql => SqlDialect.MySql, DatabaseProvider.Sqlite => SqlDialect.Sqlite, _ => SqlDialect.SqlServer },
                 table.Summary.IsAuditTable))
             .ToList();
+
+    /// <summary> The shapes the table looks like that the chosen project does not name (<see cref="TableShapeDetector"/>), read from the table's full model; empty when nothing is connected or the read fails. </summary>
+    public async Task<IReadOnlyList<ShapeSuggestion>> DetectShapesAsync(TableNodeViewModel table)
+    {
+        if (_connectionRequest is null)
+            return [];
+        try
+        {
+            var project = LoadActiveProject();
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
+            var model = await schemaProvider.BuildTableModelAsync(table.SchemaName, table.TableName, false, false);
+            return TableShapeDetector.Of(model, project.ForServer(model.ServerVersion));
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
+    /// <summary> Whether a project is chosen, so a shape can be added to its file. </summary>
+    public bool HasActiveProject => _settings.Current.LastProject.Length > 0 && File.Exists(ProjectSettings.FilePathFor(_settings.ProjectsDirectory, _settings.Current.LastProject));
+
+    /// <summary> Adds the suggestion's item to its setting in the chosen project's file; every other line of the file stays as it is. </summary>
+    public void ApplyShape(ShapeSuggestion suggestion)
+    {
+        string path = ProjectSettings.FilePathFor(_settings.ProjectsDirectory, _settings.Current.LastProject);
+        File.WriteAllText(path, ProjectFileEdit.AddListItem(File.ReadAllText(path), suggestion.Setting, suggestion.Item));
+        StatusMessage = $"Added {suggestion.Item} to {suggestion.Setting} in {Path.GetFileName(path)}. Regenerate to use it.";
+    }
+
+    /// <summary> Adds the shape to the chosen project's file (<see cref="ApplyShape"/>), then regenerates the project's Stacks with the shape on. A shape's files (its routes, checks and screens) are written by templates
+    /// that cover the whole database, so a run limited to one table would leave them out; files that did not change are not touched, and files a person edited are kept. </summary>
+    public async Task ApplyShapeAndGenerateAsync(TableNodeViewModel table, ShapeSuggestion suggestion)
+    {
+        ApplyShape(suggestion);
+        if (_connectionRequest is null)
+            return;
+        IsBusy = true;
+        try
+        {
+            var project = LoadActiveProject();
+            if (project.Stacks.Length == 0)
+            {
+                StatusMessage += " The project has no Stacks setting, so no files were written.";
+                return;
+            }
+            var provider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
+            var options = new GenerateOptions
+            {
+                Project = project, Stacks = project.Stacks, OutputDirectory = _settings.OutputDirectory, DatabaseName = _connectionRequest.DatabaseName, Schema = table.SchemaName
+            };
+            StatusMessage = $"Generating {string.Join(", ", project.Stacks)} with {table.TableName} as {suggestion.Shape.ToLowerInvariant()}...";
+            var report = await Task.Run(() => ProjectGenerator.RunAsync(provider, _settings.TemplatesDirectory, options));
+            int written = report.Count(FileOutcomeKind.Created) + report.Count(FileOutcomeKind.Updated);
+            int kept = report.Count(FileOutcomeKind.Edited) + report.Count(FileOutcomeKind.Unknown);
+            StatusMessage = report.Success
+                ? $"Added {suggestion.Item} to {suggestion.Setting} and wrote {written} files" + (kept > 0 ? $"; kept {kept} you edited" : "") + "."
+                : "Added the setting, but generation failed: " + string.Join(" | ", report.Errors);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Added the setting, but generation failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private DatabaseModel? _databaseModel;
+    private string? _databaseModelProject;
+
+    /// <summary> The templates <see cref="GetApplicableTemplates"/> offers, less those the chosen project would write nothing for (<see cref="TemplateOffer"/>): a screen of a table the Screens setting leaves out, an OData page
+    /// for a table that is not served as OData. The database is read once and kept until the project changes or the tables are refreshed; when it cannot be read, every template of the table's shape is offered. </summary>
+    public async Task<List<TemplateInfo>> GetOfferedTemplatesAsync(TableNodeViewModel table)
+    {
+        var templates = GetApplicableTemplates(table);
+        if (_connectionRequest is null || !HasActiveProject)
+            return templates;
+        try
+        {
+            var project = LoadActiveProject();
+            string projectKey = _settings.Current.LastProject + "|" + project.ToFileText().GetHashCode();
+            if (_databaseModel is null || _databaseModelProject != projectKey)
+            {
+                var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
+                _databaseModel = await schemaProvider.BuildAsync(_connectionRequest.DatabaseName, table.SchemaName);
+                _databaseModelProject = projectKey;
+            }
+            project = project.ForServer(_databaseModel.ServerVersion);
+            var model = _databaseModel.Tables.FirstOrDefault(t => t.TableName == table.TableName || t.DbTableName == table.TableName);
+            return model is null ? templates : [.. TemplateOffer.Filter(templates, model, _databaseModel, project)];
+        }
+        catch (Exception)
+        {
+            return templates;
+        }
+    }
 
     /// <summary> The templates that write one file for the whole database (CS_DbContext, API_Registration), for the toolbar's database menu. </summary>
     public List<TemplateInfo> GetDatabaseTemplates() =>

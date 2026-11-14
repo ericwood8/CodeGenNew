@@ -51,6 +51,11 @@ Every one of these needs a single whole-number key unless the row says otherwise
 |---|---|---|
 | Log table (read only, newest first) | `LogTables` | The table gets an API; `AccessMode=Ef`; the `Columns` list protocol; a date-and-time column (named, or the one whose name says when something happened first) |
 | Work queue | `QueueTables` | Status column (default `Status`): text of at least 7 characters. Retry column (default `RetryCount`): whole number. A created stamp (the log timestamp guess). A date-and-time column starting `Claimed` that allows NULL. A date-and-time column starting `Processed`, `Completed`, `Finished` or `Done` that allows NULL. Optional text columns for the worker (`ClaimedBy`, `LockedBy`, `WorkerName`, `Worker`) and the error (`LastError`, `ErrorMessage`, `Error`, `Failure`) |
+| Content with a slug | `ContentTables` | A text `Slug`, `UrlName`, `Permalink` or `Handle` beside a text `Title`, `Name` or `Headline` (and a text `Status`); without a unique index on the slug it only looks like |
+| Stored file metadata | `AssetTables` | A storage key (`StorageKey`, `StoragePath`, `BlobKey`, `FilePath`, `Path`, `Key`), a file name, a type (`MimeType`, `ContentType`, `MediaType`) and a size; three of the four only look like, and the note names what is missing |
+| Inbound event table | `InboundTables` | A text `Body`, `Payload`, `RawBody`, `Json` or `Message`, a `ReceivedOn` or `ReceivedAt` stamp, a processed flag or stamp, and no claim stamp (a claim stamp makes it a queue) |
+| Session and token table | `TokenTables` | A text column with `Hash` in its name (not `Password`) and a date-and-time column with `Expires` or `Expiry`; the planner then wants `ApiAuth`, `AccessMode=Ef` and a hash of 64 or more characters |
+| Usage ledger | `UsageTables` | A required text `Kind`, `EventType`, `Metric`, `Meter` or `Feature`, a required number `Quantity`, `Units`, `Amount` or `Count`, and a required `OccurredOn`, `RecordedAt` or `UsedOn` |
 | Archive or purge script | `ArchiveTables` | The days to keep, a primary key, and a date-and-time column to measure age by; `delete` instead of moving rows to `<Table>Archive` is optional |
 | Partition script | `PartitionTables` | A date column (named, or guessed as for a log); not SQLite |
 | Inbound event landing table | `InboundTables` | A text body (named, or one of a list of usual names), a received-on stamp (a date-and-time column starting `Received`, else the log timestamp guess), and a `Processed` yes/no column or a `Processed...` date-and-time column that allows NULL. Every other column must allow NULL or have a default, since the receiving route cannot fill it |
@@ -70,11 +75,38 @@ Every one of these needs a single whole-number key unless the row says otherwise
 | Snapshot at checkout | `SnapshotColumns` | Exactly one single-column foreign key to each parent copied from, and copy columns of the source's type and length |
 | Polymorphic link | `PolymorphicLinks` | A text type column, a whole-number id column with no foreign key, and at least two tables the type may name. The key must be a single whole number |
 | Single-row table | `SingleRowTables` | Nothing beyond what the setting says: the screen is one form |
-| One-to-one extension | none | Detected from the key: the one-column primary key is also a foreign key to another table's primary key. The generator finds it with `ExtensionPlan.For`, with no setting, but the menu does not use it |
+| One-to-one extension | none | Detected from the key: the one-column primary key is also a foreign key to another table's primary key. The generator finds it with `ExtensionPlan.For`, with no setting, and the menu shows it as a label |
 
 `TableShapes.For(table, project)` gathers the shapes one table has, as shape objects (`QueueShape`, `LogShape`, `TreeShape`, `TenantOwnedShape` and the others). A table may have several at once. Each shape is worked out the first time it is asked for. The planners that own a rule (for example `LogTablePlan`, `SnapshotPlan`, `DefaultRowPlan`) are the place to read the exact checks and the exact problem messages.
 
-Spec item 151 (`DetectTableShapesForTheMenu`) plans detecting most of these from the table, with the usual column names and the person's own names, so the menu and the run report can suggest them.
+## Suggestions from the table
+
+`TableShapeDetector.Of(table, project)` finds the shapes below from a table's columns and keys, with the usual column names, and never changes what is generated. Each answer is a suggestion: **fits** when the shape's own planner accepts the table listed with the suggested item (so a suggestion and a run cannot disagree), or **looks like** with the words of what is missing. A table the project already lists is not suggested again.
+
+| Shape | Setting item suggested | Signal |
+|---|---|---|
+| One-to-one extension | none | The one-column key is also a foreign key to another table |
+| Tree | `TreeTables` | Exactly one nullable single-column foreign key from the table to its own key; two or more are listed as ambiguous with each column named |
+| Soft delete | `SoftDeleteTables` | A yes/no column named `IsDeleted`, `Deleted`, `IsRemoved`, `Removed`, `IsVoided`, `Voided` or `IsArchived`; a nullable `DeletedOn` with no flag is a note only. Never for a log or single-row table |
+| Default row | `DefaultRowTables` | A yes/no column named `IsDefault`, `Default`, `IsPrimary`, `Primary`, `IsMain`, `IsPreferred` or `IsCurrent` and one single-column foreign key (with a column ending in `Type` or `Kind` added to the group); several foreign keys ask for the group |
+| Effective dated rows | `EffectiveDatedTables` | A date pair named `ValidFrom` and `ValidTo`, `EffectiveFrom` and `EffectiveTo`, `StartDate` and `EndDate`, `FromDate` and `ToDate`, `StartsOn` and `EndsOn` and at least one foreign key |
+| Work queue | `QueueTables` | A text `Status` or `State`, a whole-number `RetryCount`, `Attempts`, `Tries` or `AttemptCount`, a claim stamp (`Claimed`, `Locked` or `Started`) and an end stamp (`Processed`, `Completed`, `Finished` or `Done`); the table's own spelling goes into the item (`Mail:State:Attempts`). A table that fits as a queue is not also noted as a log |
+
+The right-click menu reads the table's full model when the menu opens. A shape that fits is an item "Use as ... and generate" that adds the item to the chosen project's file (every other line of the file stays as it is; nothing is added twice) and then regenerates the project's `Stacks` with the shape on. The run is the whole project, not one table, because a shape's routes and checks are written by templates that cover the whole database; a file that did not change is not touched and a file a person edited is kept. A project with no `Stacks` setting only gets the line; a shape that only looks like is a label that cannot be clicked. With no project chosen, every suggestion is a label. A whole-database run lists each suggestion in the run report.
+
+A whole-database run (`DatabaseShapeDetector`) also looks at more than one table and lists these, which the menu does not offer (they need the other tables, or the whole project):
+
+| Shape | Setting | Signal |
+|---|---|---|
+| Polymorphic link | `PolymorphicLinks` | A text column ending in `Type`, `Table` or `Kind` and a whole-number column of the same stem ending in `Id` with no foreign key; the tables come from a check constraint that names them, with no constraint it only looks like |
+| Snapshot at checkout | `SnapshotColumns` | A table with a `Quantity` and columns that copy a parent's column (same name, the parent's name before it, or `UnitPrice` for `Price`) of the same type and length. Always only looks like; the note carries the item to check |
+| Archive | `ArchiveTables` | Another table named like it plus `Archive`, `_Archive`, `History` or `_History` that has all its columns. Only looks like: the days to keep are the person's choice |
+| Tenant table | `TenantTable` | A required whole-number column named `TenantId`, `OrganizationId`, `AccountId`, `CompanyId` or `OrgId`, a foreign key to the same table in most of the others; fits with `ApiAuth` |
+| User table | `UserTable` | Exactly one table with a login name and a password hash by the names the user table already reads |
+| Roles and permissions | `PermissionTables` | `Role`, `Permission`, a junction of the two and a junction of `Role` and another table |
+| Feature flags | `FeatureTables` | A flag table with an integer key, a `Name` and a required yes/no default, and a table with one foreign key to it and a required `IsEnabled` |
+
+The log and single-row notes stay as described above. Shapes not in these tables are named only by a setting.
 
 ## How a setting-named shape reaches the files
 
