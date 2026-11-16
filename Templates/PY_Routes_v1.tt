@@ -127,6 +127,18 @@
                 g.Select(c => new PythonSnapshotWriter.Copy(FieldOf(c.Target)!.Name, parentTable.FieldOf(c.Source).Name)).ToList());
         }).ToList(),
         snapPlan.Total is null ? null : new PythonSnapshotWriter.Total(FieldOf(snapPlan.Total.Target)!.Name, FieldOf(snapPlan.Total.FactorA)!.Name, FieldOf(snapPlan.Total.FactorB)!.Name));
+    // PartyTables: an identifier table keeps a scheme and value pair on one row only, and the party table finds its rows by an identifier
+    var idPlan = log || tenantTable || scoped || tenanted ? null : PartyPlan.IdentifiersOf(Model, Project);
+    var idNames = idPlan is null || FieldOf(idPlan.Scheme) is null || FieldOf(idPlan.Value) is null ? null
+        : new PythonPartyWriter.IdentifierNames(t.Class, key, FieldOf(idPlan.Scheme)!.Name, FieldOf(idPlan.Value)!.Name);
+    var partyPlan = log || tenantTable || scoped || tenanted ? null : PartyPlan.PartyOf(Model, Project);
+    PythonPartyWriter.PartyNames? partyNames = null;
+    if (partyPlan is not null)
+    {
+        var identifierTable = PythonTable.Of(partyPlan.Identifiers, Project);
+        partyNames = new PythonPartyWriter.PartyNames(t.Class, key, identifierTable.Class, identifierTable.Module, identifierTable.FieldOf(partyPlan.Link).Name,
+            identifierTable.FieldOf(partyPlan.Scheme).Name, identifierTable.FieldOf(partyPlan.Value).Name);
+    }
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -166,7 +178,7 @@
         sqlalchemy.Add("update as sql_update");
     if (softNames is not null)
         sqlalchemy.Add("event");
-    if (search || userPlan is not null || nameActive is not null)
+    if (search || userPlan is not null || nameActive is not null || idNames is not null || partyNames is not null)
         sqlalchemy.Add("func");
     bool castsLookup = t.LookupName is { } castName && castName.Annotation != "str";
     if (castsEnum || castsLookup)
@@ -213,6 +225,8 @@
     if (snapNames is not null)
         foreach (var parent in snapNames.Parents.DistinctBy(p => p.Class))
             Line($"from app.models.{parent.Module} import {parent.Class}");
+    if (partyNames is not null && partyNames.IdentifierClass != t.Class)
+        Line($"from app.models.{partyNames.IdentifierModule} import {partyNames.IdentifierClass}");
     if (ownerLink is not null)
         Line($"from app.models.{parentModule} import {parentClass}");
     Line($"from app.schemas.{t.Module} import {t.Schema}");
@@ -372,6 +386,12 @@
         Line();
         Line(PythonDefaultWriter.Helpers(defNames).TrimEnd('\n'));
     }
+    if (idNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonPartyWriter.Helper(idNames).TrimEnd('\n'));
+    }
     if (snapNames is not null)
     {
         Line();
@@ -406,6 +426,13 @@
 
     if (treePlan is not null)
         Line(PythonTreeWriter.TreeRoute(treeNames!, t.Route, readDepends, userParameter));
+
+    if (partyNames is not null)
+    {
+        Line();
+        Line(PythonPartyWriter.Route(partyNames, t.Route, t.Schema, readDepends, userParameter).TrimEnd('\n'));
+        Line();
+    }
 
     if (effNames is not null)
     {
@@ -623,6 +650,11 @@
     }
     if (t.HashField is { IsNullable: false } newHash)
         Line($"    row.{newHash.Name} = \"\"   # a person with no password cannot sign in; set-password writes the hash");
+    if (idNames is not null)
+    {
+        Line("    check_identifier(session, row)");
+        Line(PythonPartyWriter.PairLine(idNames));
+    }
     if (snapNames is not null)
         Line("    fill_snapshot(session, row, True)");
     if (defNames is not null)
@@ -632,6 +664,8 @@
     Line("        session.commit()");
     Line("    except IntegrityError:");
     Line("        session.rollback()");
+    if (idNames is not null)
+        Line(PythonPartyWriter.RefusedLines("None"));
     Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
     Line("    session.refresh(row)");
     if (tenantTable)
@@ -731,6 +765,11 @@
         Line("            continue");
     }
     Line("        setattr(row, name, value)");
+    if (idNames is not null)
+    {
+        Line("    check_identifier(session, row)");
+        Line(PythonPartyWriter.PairLine(idNames));
+    }
     if (snapNames is not null)
         Line("    fill_snapshot(session, row, False)");
     if (tenantField is not null)
@@ -743,6 +782,8 @@
     Line("        session.commit()");
     Line("    except IntegrityError:");
     Line("        session.rollback()");
+    if (idNames is not null)
+        Line(PythonPartyWriter.RefusedLines("id"));
     Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
     Line("    session.refresh(row)");
     Line("    return row");

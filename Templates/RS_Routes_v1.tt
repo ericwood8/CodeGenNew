@@ -103,6 +103,13 @@
     var guarded = new[] { FieldOf(userPlan?.Admin), FieldOf(userPlan?.Role) }.Where(f => f is not null).Select(f => f!).ToList();
     var activeField = t.ActiveField;
     string AdminTest(string row) => adminField is null ? "false" : (adminField.IsOption ? $"{row}.{adminField.Name} == Some(true)" : $"{row}.{adminField.Name}") + (activeField is null ? "" : $" && {row}.{activeField.Name}");
+    // PartyTables: an identifier table keeps a scheme and value pair on one row only, and the party table finds its rows by an identifier
+    var idPlan = !scoped && !tenanted && !log ? PartyPlan.IdentifiersOf(Model, Project) : null;
+    var idNames = idPlan is null ? null : new RustPartyWriter.IdentifierNames(t.Struct, t.Table, DialectInfo.For(Model.Dialect).Quote(idPlan.IdentifierKey.DbName), keyType,
+        t.FieldOf(idPlan.Scheme).Name, DialectInfo.For(Model.Dialect).Quote(idPlan.Scheme.DbName), t.FieldOf(idPlan.Value).Name, DialectInfo.For(Model.Dialect).Quote(idPlan.Value.DbName));
+    var partyPlan = !scoped && !tenanted && !log ? PartyPlan.PartyOf(Model, Project) : null;
+    var partyNames = partyPlan is null ? null : new RustPartyWriter.PartyNames(t.Struct, t.Table, t.SelectList, DialectInfo.For(Model.Dialect).Quote(partyPlan.PartyKey.DbName), RustTable.Of(partyPlan.Identifiers, Project).Table,
+        DialectInfo.For(Model.Dialect).Quote(partyPlan.Link.DbName), DialectInfo.For(Model.Dialect).Quote(partyPlan.Scheme.DbName), DialectInfo.For(Model.Dialect).Quote(partyPlan.Value.DbName));
     string DefaultOf(RustField f) => f.BaseType == "bool" ? (f.IsOption ? "Some(false)" : "false") : f.IsOption ? "None" : "String::new()";
     string keyRef = textKey ? "&" : "";
     // SoftDeleteTables: the repository hides flagged rows and flags instead of removing; GET deleted and POST {id}/restore (administrator only) are written for a table not limited to an owner or a tenant
@@ -124,14 +131,14 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
-    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null;
     Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -219,6 +226,8 @@
         sb.Append(RustEffectiveWriter.RouteLine(t.Route, readLayer));
     if (defNames is not null)
         sb.Append(RustDefaultWriter.RouteLine(t.Route, writeLayer));
+    if (partyNames is not null)
+        sb.Append(RustPartyWriter.RouteLine(t.Route, readLayer));
     if (contentPlan is not null)
     {
         sb.Append(RustContentWriter.StatusRouteLines(t.Route, writeLayer));
@@ -246,6 +255,10 @@
         Line(RustEffectiveWriter.Code(effNames, t.LiveAnd()));
     if (defNames is not null)
         Line(RustDefaultWriter.Code(defNames));
+    if (idNames is not null)
+        Line(RustPartyWriter.CheckCode(idNames));
+    if (partyNames is not null)
+        Line(RustPartyWriter.FindCode(partyNames));
     if (snapNames is not null)
         Line(RustSnapshotWriter.Code(snapNames));
     if (softRoutes)
@@ -442,7 +455,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || idNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -507,11 +520,13 @@
         Line(RustAssetWriter.CreateLine(t, assetPlan).TrimEnd((char)10));
     if (linkTable)
         Line(RustLinkWriter.CheckLine(t));
+    if (idNames is not null)
+        Line("    check_identifier(&pool, None, &mut row).await?;");
     if (snapNames is not null)
         Line("    fill_snapshot(&pool, &mut row, None).await?;");
     if (defNames is not null)
         Line("    let moves_default = settle_default(&pool, None, &mut row).await?;");
-    Line("    let row = repo::insert(&pool, &row).await?;");
+    Line(idNames is not null ? RustPartyWriter.InsertLines : "    let row = repo::insert(&pool, &row).await?;");
     if (defNames is not null)
         Line($"    let row = if moves_default {{\n        move_default(&pool, &row).await?;\n        repo::get_by_id(&pool, {(textKey ? "&" : "")}row.{t.Key.Name}).await?.ok_or(ApiError::NotFound)?\n    }} else {{\n        row\n    }};");
     if (tenantTable)
@@ -561,7 +576,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || idNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -604,6 +619,8 @@
         Line(RustAssetWriter.UpdateLines(t, assetPlan).TrimEnd((char)10));
     if (linkTable)
         Line(RustLinkWriter.CheckLine(t));
+    if (idNames is not null)
+        Line("    check_identifier(&pool, Some(id), &mut row).await?;");
     if (snapNames is not null)
     {
         Line($"    let snapshot_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
@@ -619,6 +636,8 @@
         Line("    }");
         Line("    Ok(Json(saved))");
     }
+    else if (idNames is not null)
+        Line(RustPartyWriter.UpdateLines(idArg));
     else
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");

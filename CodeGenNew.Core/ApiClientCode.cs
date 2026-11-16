@@ -194,6 +194,8 @@ public static class ApiClientCode
             L();
             L($"    public async Task<{type}> GetPublicBySlugAsync(string slug) => await (await http.GetAsync($\"{{Url}}/public/{{Uri.EscapeDataString(slug)}}\")).ReadAsync<{type}>();");
         }
+        if (PartyScreens.HasBox(table, project))
+            foreach (string line in PartyScreens.CsClientLines(type)) L(line);
         if (!nameActive && TableShapes.For(table, project).DefaultRow is not null)
         {
             L();

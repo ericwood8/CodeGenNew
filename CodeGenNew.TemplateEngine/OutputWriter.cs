@@ -41,9 +41,9 @@ public static class OutputWriter
 {
     /// <summary> The files a template's output stands for: the marker-delimited files, or the one file named by the template's own rule (<paramref name="tableName"/> fills its {Table}). </summary>
     public static List<(string RelativePath, string Content)> FilesOf(TemplateInfo template, string tableName, string generatedText) =>
-        GeneratedFiles.HasMarkers(generatedText)
-            ? GeneratedFiles.Split(generatedText)
-            : [(template.BuildFileName(tableName), generatedText)];
+        GeneratedFiles.HasMarkers(generatedText) ? GeneratedFiles.Split(generatedText)
+        : string.IsNullOrWhiteSpace(generatedText) ? []   // a template that found nothing to write (tests that do not apply to this database) leaves no empty file
+        : [(template.BuildFileName(tableName), generatedText)];
 
     /// <summary> Writes <paramref name="files"/> under <paramref name="folder"/>. <paramref name="createOnly"/>: only files that do not exist are written (the essentials default: those files are
     /// edited by hand afterwards). <paramref name="dryRun"/>: nothing is written, the outcome says what would be. <paramref name="withDiff"/>: a file that exists with other content carries

@@ -334,6 +334,9 @@
             L("    <button type=\"button\" @onclick=\"ClearSearchAsync\">Clear</button>");
             L("</div>");
         }
+        bool partyBox = !oneRow && !nameActive && PartyScreens.HasBox(Model, Project);   // the OData page asks the same REST route through its OData client
+        if (partyBox)
+            foreach (string line in PartyScreens.BlazorBox()) L(line);
         if (!oneRow && !nameActive)
         {
         L();
@@ -1582,6 +1585,8 @@
             L("        catch (HttpRequestException) { message = \"Problem while cloning!\"; }");
             L("    }");
         }
+        if (partyBox)
+            foreach (string line in PartyScreens.BlazorHandlers("Client", !nameActive)) L(line);
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             L();

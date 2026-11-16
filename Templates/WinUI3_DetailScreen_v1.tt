@@ -592,6 +592,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.ContentCheckLines(Project, Model, "_context"));
         Write(DefaultRowScreens.CheckLines(Project, Model, "_context"));
+        Write(PartyScreens.CheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.SnapshotCheckLines(Project, Model, "_context"));
         Write(AssetDesktopCode.CheckLines(Project, Model, "_context"));
         if (isNameActive)

@@ -14,7 +14,8 @@ public static class RowShapeTests
         var content = TableShapes.For(table, project).Content;
         var asset = TableShapes.For(table, project).Asset;
         var defaultRow = TableShapes.For(table, project).DefaultRow;
-        if (tree is null && soft is null && effective is null && content is null && asset is null && defaultRow is null)
+        var identifiers = PartyPlan.IdentifiersOf(table, project);
+        if (tree is null && soft is null && effective is null && content is null && asset is null && defaultRow is null && identifiers is null)
             return "";
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
@@ -508,6 +509,48 @@ public static class RowShapeTests
             L($"        var secondAgain = (await ApiFixture.Client.GetFromJsonAsync<JsonObject>($\"{{Route}}/{{second[\"{id}\"]!.GetValue<long>()}}\"))!;");
             L($"        Assert.IsTrue(secondAgain[\"{flag}\"]!.GetValue<bool>());");
             L("        await RemoveAsync(first, second);");
+            L("    }");
+        }
+        if (identifiers is not null)
+        {
+            string scheme = JsonNames.Camel(identifiers.Scheme.Name), value = JsonNames.Camel(identifiers.Value.Name), link = JsonNames.Camel(identifiers.Link.Name);
+            string partyRoute = ApiRequests.Route(identifiers.Party), partyKey = JsonNames.Camel(identifiers.PartyKey.Name);
+            int room = identifiers.Value.CharacterLength > 0 ? Math.Min(identifiers.Value.CharacterLength, 12) : 12;
+            L();
+            L("    private static string NewIdentifierValue() => Guid.NewGuid().ToString(\"N\")[..§ROOM].ToUpperInvariant();".Replace("§ROOM", room.ToString()));
+            L();
+            L("    [TestMethod]");
+            L("    public async Task A_scheme_and_value_pair_another_row_holds_is_refused()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        string held = NewIdentifierValue();");
+            L($"        var first = await MakeAsync(b => b[\"{value}\"] = \"  \" + held + \" \");");
+            L($"        Assert.AreEqual(held, first[\"{value}\"]!.GetValue<string>(), \"the value is trimmed\");");
+            L("        var again = await NewBodyAsync();");
+            L($"        again[\"{scheme}\"] = first[\"{scheme}\"]!.GetValue<string>().ToLowerInvariant();");
+            L($"        again[\"{value}\"] = held.ToLowerInvariant();");
+            L("        using var refused = await ApiFixture.Client.PostAsJsonAsync(Route, again);");
+            L("        Assert.AreEqual(HttpStatusCode.Conflict, refused.StatusCode, await refused.Content.ReadAsStringAsync());");
+            L($"        Assert.AreEqual(\"{PartyWords.IdentifierTakenType}\", (await refused.Content.ReadFromJsonAsync<JsonObject>())![\"type\"]!.GetValue<string>());");
+            L($"        using var unchanged = await PutAsync(first, _ => {{ }});");
+            L("        Assert.IsTrue(unchanged.IsSuccessStatusCode, \"a row saved again with its own pair is not refused\");");
+            L("        await RemoveAsync(first);");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public async Task The_party_is_found_by_its_identifier()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        string held = NewIdentifierValue();");
+            L($"        var first = await MakeAsync(b => b[\"{value}\"] = held);");
+            L($"        string query = $\"{partyRoute}/by-identifier?value={{held.ToLowerInvariant()}}&scheme={{Uri.EscapeDataString(first[\"{scheme}\"]!.GetValue<string>())}}\";");
+            L("        var found = (await ApiFixture.Client.GetFromJsonAsync<JsonArray>(query))!;");
+            L($"        Assert.IsTrue(found.Any(p => p![\"{partyKey}\"]!.GetValue<long>() == first[\"{link}\"]!.GetValue<long>()), \"the party that holds the identifier is in the answer\");");
+            L($"        using var blank = await ApiFixture.Client.GetAsync(\"{partyRoute}/by-identifier\");");
+            L("        Assert.AreEqual(HttpStatusCode.BadRequest, blank.StatusCode);");
+            L("        await RemoveAsync(first);");
+            L($"        var none = (await ApiFixture.Client.GetFromJsonAsync<JsonArray>(query))!;");
+            L("        Assert.AreEqual(0, none.Count, \"once the identifier is gone the search finds nothing\");");
             L("    }");
         }
         return o.ToString();

@@ -11,3 +11,5 @@ A short class on `ODataCrudService` (`services/odata-crud.service.ts`, the `ODat
 - the REST route a clone goes through (`api/<set>`; OData has no clone verb).
 
 Every name is the JSON name the REST routes use, so the model (`models/<table>`) and the screens are the same. The class is the OData twin of `TS_Service`; `TS_ODataComponent` is the screen over it.
+
+`PartyTables`: the service of a party table also has `byIdentifier`, which asks the table's REST route (`<restUrl>/by-identifier`) for the screen's Find by identifier box.

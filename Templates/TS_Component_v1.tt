@@ -221,6 +221,9 @@
             H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"clearSearch()\"> Clear </button>");
             H("    </div>");
         }
+        bool partyBox = !oneRow && PartyScreens.HasBox(Model, Project);   // the OData screen asks the same REST route through its OData service
+        if (partyBox)
+            foreach (string line in PartyScreens.AngularBox()) H(line);
         if (chooseColumns)
         {
             H();
@@ -1077,6 +1080,8 @@
             T(Ahead(p) ? $"    return this.{NamesOf(p)}.name(id);" : $"    return this.{p.List}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
             T("  }");
         }
+        if (partyBox)
+            foreach (string line in PartyScreens.AngularHandlers(!nameActive)) T(line);
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             // Make default moves the mark of the row's group to this row on the server; the grid is read again.

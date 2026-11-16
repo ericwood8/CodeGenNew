@@ -171,6 +171,25 @@ public class RowShapePlanTests
     }
 
     [TestMethod]
+    public async Task The_OData_routes_run_the_same_save_and_delete_checks_as_the_REST_routes()
+    {
+        var (success, errors, read, _) = await GenerateAsync(new() { ["OData"] = "true" });
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string odata = read("Apis/OData.cs");
+        Assert.Contains("public sealed class CategoryODataRules : ODataRules<Category,", odata);
+        Assert.Contains("CategoryShape.CheckSaveAsync(context, row, isNew);", odata);
+        Assert.Contains("CategoryShape.CheckDeleteAsync(context, row.CategoryId, null);", odata);
+        Assert.Contains("PriceShape.CheckSaveAsync(context, row, isNew);", odata);
+        Assert.DoesNotContain("PriceShape.CheckDeleteAsync", odata);
+        Assert.Contains("CustomerShape.CheckDeleteAsync(context, row.CustomerId, null);", odata);
+        Assert.DoesNotContain("CustomerShape.CheckSaveAsync", odata);
+        Assert.Contains("new ODataRules<Item, ShopContext>()", odata, "a table with no shape keeps the plain rules");
+        Assert.Contains("rules.BeforeDeleteAsync(context, http.User, row)", odata);
+        Assert.Contains("rules.AfterDeleteAsync(context, row)", odata);
+    }
+
+    [TestMethod]
     public async Task The_Python_and_Rust_APIs_check_a_tree_and_map_its_routes()
     {
         var (success, errors, readPython, _) = await GenerateAsync(stacks: "python");

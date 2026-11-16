@@ -72,6 +72,7 @@ Every one of these needs a single whole-number key unless the row says otherwise
 | Content with a slug | `ContentTables` | A text column to make the slug from (named, else `Title`, `Name` or `Headline`), a NOT NULL text `Slug` of room for the slug, a NOT NULL text status wide enough for `published`, and optionally a nullable date-and-time published-on |
 | Stored file metadata | `AssetTables` | A NOT NULL text storage key, a NOT NULL text file name, a text file type and a whole-number size; every other column must be fillable by the upload route |
 | One default row per group | `DefaultRowTables` | A NOT NULL yes/no column and the group columns. Refused for a table owned by a person or a tenant |
+| Party and its identifiers | `PartyTables` | A party table and an identifier table, each with a single whole-number key; exactly one single-column foreign key from the identifier table to the party; NOT NULL text columns for the scheme and the value (default `Scheme` and `Value`). Refused for a table owned by a person or a tenant |
 | Snapshot at checkout | `SnapshotColumns` | Exactly one single-column foreign key to each parent copied from, and copy columns of the source's type and length |
 | Polymorphic link | `PolymorphicLinks` | A text type column, a whole-number id column with no foreign key, and at least two tables the type may name. The key must be a single whole number |
 | Single-row table | `SingleRowTables` | Nothing beyond what the setting says: the screen is one form |
@@ -100,6 +101,7 @@ A whole-database run (`DatabaseShapeDetector`) also looks at more than one table
 |---|---|---|
 | Polymorphic link | `PolymorphicLinks` | A text column ending in `Type`, `Table` or `Kind` and a whole-number column of the same stem ending in `Id` with no foreign key; the tables come from a check constraint that names them, with no constraint it only looks like |
 | Snapshot at checkout | `SnapshotColumns` | A table with a `Quantity` and columns that copy a parent's column (same name, the parent's name before it, or `UnitPrice` for `Price`) of the same type and length. Always only looks like; the note carries the item to check |
+| Party identifiers | `PartyTables` | A NOT NULL text `Scheme`, `SchemeCode`, `IdentifierType` or `IdentifierScheme` and a NOT NULL text `Value`, `Identifier`, `IdentifierValue` or `Number` under a foreign key to one other table; suggested on the identifier table, and two foreign keys to that table only look like it |
 | Archive | `ArchiveTables` | Another table named like it plus `Archive`, `_Archive`, `History` or `_History` that has all its columns. Only looks like: the days to keep are the person's choice |
 | Tenant table | `TenantTable` | A required whole-number column named `TenantId`, `OrganizationId`, `AccountId`, `CompanyId` or `OrgId`, a foreign key to the same table in most of the others; fits with `ApiAuth` |
 | User table | `UserTable` | Exactly one table with a login name and a password hash by the names the user table already reads |

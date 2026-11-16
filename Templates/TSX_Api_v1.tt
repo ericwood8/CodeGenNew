@@ -176,6 +176,12 @@
             L($"  getPublic: (pageNumber = 1, pageSize = 20) => request<{baseName}[]>(`${{apiUrl}}/public?pageNumber=${{pageNumber}}&pageSize=${{pageSize}}`),");
             L($"  getPublicBySlug: (slug: string) => request<{baseName}>(`${{apiUrl}}/public/${{encodeURIComponent(slug)}}`),");
         }
+        if (PartyScreens.HasBox(Model, Project))
+        {
+            L();
+            L("  // a party table (PartyTables): the parties that hold an identifier with this value");
+            L(PartyScreens.ReactApiLine(baseName));
+        }
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             L();

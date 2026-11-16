@@ -24,6 +24,9 @@ public class ApiException(int status, string message) : Exception(message)
     {
         <#= HttpStatus.BadRequest #> => action == "deleting" ? "It cannot be deleted because it is in use!" : "Some of the values are not acceptable!",
         <#= HttpStatus.NotFound #> => "It no longer exists!",
+<# if (Project.PartyTables.Length > 0) { #>
+        <#= HttpStatus.Conflict #> when Message == "<#= PartyWords.IdentifierTaken #>" => Message,   // an identifier another row holds (PartyTables): the API's own sentence
+<# } #>
 <# if (SubscriptionFeature.IsEnabled(Project)) { #>
         <#= HttpStatus.PaymentRequired #> => Message,   // the subscription is paused or the plan allows no more: the API's own sentence
 <# } #>
@@ -50,6 +53,10 @@ public static class ApiSupport
 <# if (SubscriptionFeature.IsEnabled(Project)) { #>
         if ((int)response.StatusCode == <#= HttpStatus.PaymentRequired #>)
             message = await ProblemDetailAsync(response) ?? "<#= SubscriptionFeature.PausedFallback #>";
+<# } #>
+<# if (Project.PartyTables.Length > 0) { #>
+        if ((int)response.StatusCode == <#= HttpStatus.Conflict #> && await ProblemDetailAsync(response) is { } refusal)
+            message = refusal;
 <# } #>
         throw new ApiException((int)response.StatusCode, message);
     }

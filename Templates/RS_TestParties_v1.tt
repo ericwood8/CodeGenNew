@@ -1,0 +1,20 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestParties_v1.tt
+    // Generates: tests/api/party_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of what RS_Routes writes for PartyTables, run in process over a scratch database like RS_Test. Each test adds two parties and their identifiers through the router and removes them
+    // again. The cases: a scheme and value pair another row holds is refused on create and on update (trimmed, without regard to case), and a party is found by an identifier.
+    // The words are PartyWords, as in the other stacks' tests.
+    // Written only for a project with RustTests=true and a party table the tests can fill (PartyTestPlan).
+    // Needs Client.start of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (RustPartyTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/party_routes.rs@@@\n" + RustPartyTests.File(Database, Project));
+    }
+#>

@@ -68,6 +68,7 @@
         string Gate(string jsx) => gated ? "{canWrite && " + jsx + "}" : jsx;
         bool nameActive = form.IsNameActive;   // a Name and an IsActive column: the whole list is read, narrowed by a name box and an Active only check box on the page, with no paging or sort
         string problemCall = odata ? "problemText" : "problemDetail";   // reads the API's own words from a problem answer
+        bool partyTaken = !odata && PartyScreens.SaysTaken(Model, Project);   // the identifier table of PartyTables: a pair another row holds is refused (409) in the API's own words
         string pageName = odata ? baseName + "ODataDetailMasterPage" : baseName + "DetailMasterPage";
         string apiVar = odata ? ReactNames.ODataApiVar(Model.TableName) : ReactNames.ApiVar(Model.TableName);
         string apiFile = odata ? ReactNames.ODataApiFile(Model.TableName) : ReactNames.ApiFile(Model.TableName);
@@ -260,6 +261,8 @@
             T("type Lookup<K extends number | string = number> = { id: K; name: string; isActive?: boolean | null };");
             T();
         }
+        if (partyTaken && !nameActive)
+            foreach (string line in PartyScreens.ReactProblemDetail()) T(line);
         if (nameActive)
         {
             if (!odata)
@@ -397,6 +400,9 @@
         }
         T("  const [loaded, setLoaded] = useState(false); // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         T("  const [error, setError] = useState<string | null>(null);");
+        bool partyBox = PartyScreens.HasBox(Model, Project);   // the OData page asks the same REST route through its OData module
+        if (partyBox)
+            foreach (string line in PartyScreens.ReactHandlers(apiVar, setList, !nameActive)) T(line);
         if (nameActive)
         {
         }
@@ -913,7 +919,7 @@
         if (planned) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.PaymentRequired}) {{ setError(planDetail(err)); }}");
         // a typed key can already be taken: the API answers 409
         if (textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError('A {form.Words} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
-        if ((odata || nameActive) && !textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError({problemCall}(err) ?? 'A row with this value already exists!'); }}");
+        if ((odata || nameActive || partyTaken) && !textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError({problemCall}(err) ?? 'A row with this value already exists!'); }}");
         T("    else { setError('Problem while ' + action + '!'); }");
         T("  };");
         T();
@@ -976,6 +982,8 @@
             }
             T("      </div>");
         }
+        if (partyBox)
+            foreach (string line in PartyScreens.ReactBox()) T(line);
         if (chooseColumns)
         {
             T();

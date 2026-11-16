@@ -124,7 +124,15 @@ public static class LookupFilter
 public sealed record ChildBody(JsonElement Json, JsonSerializerOptions Options<#= options.Tenants ? ", int? Tenant = null" : "" #>);
 
 /// <summary> A child list could not be applied (a row that is not one of the parent's); the answer is a 400 with the message. </summary>
+<# if (Project.PartyTables.Length > 0) { #>
+public sealed class ChildRowsException(string message, IResult? answer = null) : Exception(message)
+{
+    /// <summary> The answer of a rule that refused the rows (a party's identifier another row holds), in place of the 400. </summary>
+    public IResult? Answer => answer;
+}
+<# } else { #>
 public sealed class ChildRowsException(string message) : Exception(message);
+<# } #>
 
 /// <summary>
 /// The rows of one child table that a parent's form saves together with the parent (the project's EditableChildren). The request body holds them as a list under <see cref="Name"/> (<c>departmentTeams</c>);
@@ -143,7 +151,7 @@ public abstract class ChildRows<TKey> where TKey : notnull
 }
 
 /// <summary> <see cref="ChildRows{TKey}"/> for the child entity <typeparamref name="TChild"/>: its identity key and the property that links it to the parent (<c>c =&gt; c.DepartmentId</c>). </summary>
-public sealed class ChildRows<TKey, TChild>(string name, Expression<Func<TChild, int>> key, Expression<Func<TChild, TKey>> parent<#= options.Tenants ? ", Expression<Func<TChild, int>>? tenantOf = null" : "" #>) : ChildRows<TKey>
+public sealed class ChildRows<TKey, TChild>(string name, Expression<Func<TChild, int>> key, Expression<Func<TChild, TKey>> parent<#= options.Tenants ? ", Expression<Func<TChild, int>>? tenantOf = null" : "" #><#= Project.PartyTables.Length > 0 ? ", Func<DbContext, TKey, List<TChild>, Task<IResult?>>? check = null" : "" #>) : ChildRows<TKey>
     where TKey : notnull
     where TChild : class, new()
 {
@@ -152,6 +160,11 @@ public sealed class ChildRows<TKey, TChild>(string name, Expression<Func<TChild,
     public override async Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options<#= options.Tenants ? ", int? tenant = null" : "" #>)
     {
         var sent = rows.Deserialize<List<TChild>>(options) ?? [];
+<# if (Project.PartyTables.Length > 0) { #>
+        // the rule of the child table (PartyTables: a scheme and value pair is held by one row) judges the rows as they will be saved
+        if (check is not null && await check(context, parentId, sent) is { } refused)
+            throw new ChildRowsException("The rows were refused.", refused);
+<# } #>
 <# if (options.Tenants) { #>
         Action<TChild, int>? setTenant = null;
         if (tenantOf is not null)
@@ -280,6 +293,10 @@ public static class ChildRowsSupport
         }
         catch (ChildRowsException error)
         {
+<# if (Project.PartyTables.Length > 0) { #>
+            if (error.Answer is { } answer)
+                return answer;
+<# } #>
             return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.InvalidRows #>", title: "Invalid rows", detail: error.Message);
         }
         catch (DbUpdateException error)

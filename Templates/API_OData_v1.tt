@@ -40,7 +40,10 @@
     string listGate = auth ? "            if (!RoleGate.Allows(http.User, rules.ReadRoles))" + ((char)10) + "                throw new ODataRoleRefusedException();" + ((char)10) : "";
     var scopedTables = auth ? tables.Where(t => ODataPlan.IsScoped(t, Project)).ToList() : [];
     // a name/active table (a Name and an IsActive column) keeps the REST routes' rules: the name is required and trimmed and no two active rows share it
-    var ruleTables = tables.Where(t => t.IsNameActiveTable || (auth && (ODataPlan.IsScoped(t, Project) || GatePlan.HasRules(Project, t) || WriteRolePlan.WriteFor(Project, t).Count > 0 || WriteRolePlan.ReadFor(Project, t).Count > 0))).ToList();
+    var ruleTables = tables.Where(t => t.IsNameActiveTable || HasShapeRule(t) || (auth && (ODataPlan.IsScoped(t, Project) || GatePlan.HasRules(Project, t) || WriteRolePlan.WriteFor(Project, t).Count > 0 || WriteRolePlan.ReadFor(Project, t).Count > 0))).ToList();
+
+    // TreeTables, ContentTables, AssetTables, SoftDeleteTables, EffectiveDatedTables, DefaultRowTables, SnapshotColumns, PolymorphicLinks and PartyTables: the REST routes run the table's Shape checks, so the OData routes run them too
+    bool HasShapeRule(TableModel t) => !t.IsNameActiveTable && (RowShapeWriter.HasSaveCheck(t, Project) || RowShapeWriter.HasDeleteCheck(t, Project) || RowShapeWriter.HasAfterDelete(t, Project));
 
     string Names(IEnumerable<string> items) => string.Join(", ", items.Select(i => "\"" + i + "\""));
 
@@ -108,6 +111,12 @@ public class ODataRules<T, TContext> where T : class where TContext : DbContext
 
     /// <summary> Runs before a row is saved: <paramref name="row"/> may be corrected (a column the caller may not change takes its stored value) and a result refuses the write. </summary>
     public virtual Task<IResult?> BeforeSaveAsync(TContext context, ClaimsPrincipal caller, T row, bool isNew) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs before a row is deleted: a result answers the request instead (a refusal, or the soft delete itself). </summary>
+    public virtual Task<IResult?> BeforeDeleteAsync(TContext context, ClaimsPrincipal caller, T row) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs once the delete is saved (the stored file of an asset row, the links that named the row). </summary>
+    public virtual Task AfterDeleteAsync(TContext context, T row) => Task.CompletedTask;
 }
 
 <#
@@ -189,6 +198,41 @@ public sealed class <#= entity #>ODataRules : ODataRules<<#= entity #>, <#= cont
 #>
     }
 <#
+        }
+        else if (HasShapeRule(t))
+        {
+            bool gated = GatePlan.HasRules(Project, t);
+            string key = t.PrimaryKeyColumns[0].CSharpName();
+            if (RowShapeWriter.HasSaveCheck(t, Project))
+            {
+                // the same check the REST routes run before a save (a tree cycle, an overlapping period, a slug, a snapshot, a link, an asset key, a default row, a party identifier)
+#>
+
+    public override <#= gated ? "async " : "" #>Task<IResult?> BeforeSaveAsync(<#= contextType #> context, ClaimsPrincipal caller, <#= entity #> row, bool isNew) =>
+        <#= gated ? $"await {entity}Gates.CheckAsync(context, caller, row, isNew) ?? await " : "" #><#= entity #>Shape.CheckSaveAsync(context, row, isNew);
+<#
+            }
+            else if (gated)
+            {
+#>
+
+    public override Task<IResult?> BeforeSaveAsync(<#= contextType #> context, ClaimsPrincipal caller, <#= entity #> row, bool isNew) => <#= entity #>Gates.CheckAsync(context, caller, row, isNew);
+<#
+            }
+            if (RowShapeWriter.HasDeleteCheck(t, Project))
+            {
+#>
+
+    public override Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, ClaimsPrincipal caller, <#= entity #> row) => <#= entity #>Shape.CheckDeleteAsync(context, row.<#= key #>, <#= auth ? "caller" : "null" #>);
+<#
+            }
+            if (RowShapeWriter.HasAfterDelete(t, Project))
+            {
+#>
+
+    public override Task AfterDeleteAsync(<#= contextType #> context, <#= entity #> row) => <#= entity #>Shape.AfterDeleteAsync(context, row.<#= key #>);
+<#
+            }
         }
         else if (GatePlan.HasRules(Project, t))
         {
@@ -437,8 +481,14 @@ public static partial class ODataEndpoints
                     return Results.NotFound();
                 if (await RefuseOtherOwnersAsync(context, http, rules, row) is { } refused)
                     return refused;
+                if (await rules.BeforeDeleteAsync(context, http.User, row) is { } refusedDelete)
+                    return refusedDelete;
                 context.Set<T>().Remove(row);
-                return await SaveAsync(context, () => Results.NoContent());
+                bool deleted = false;
+                var saved = await SaveAsync(context, () => { deleted = true; return Results.NoContent(); });
+                if (deleted)
+                    await rules.AfterDeleteAsync(context, row);
+                return saved;
             })<#= roleGate #>;
         }
 

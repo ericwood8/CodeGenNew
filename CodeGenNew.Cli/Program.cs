@@ -120,6 +120,7 @@ public static class Program
 
         TableModel? model = null;
         DatabaseModel? database = null;
+        DatabaseModel? pair = null;
         var schemaReadOutcome = await RetryRunner.RunAsync("schema-read", async () =>
         {
             var schemaProvider = SchemaProviderFactory.Create(connectionRequest, specialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
@@ -130,6 +131,8 @@ public static class Program
             }
             model = await schemaProvider.BuildTableModelAsync(
                 options.Schema, options.Table!, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
+            if (PartyPlan.IsListed(options.Table!, project))
+                pair = await schemaProvider.BuildAsync(options.Database, options.Schema);
             return $"Read schema for [{options.Schema}].[{options.Table}].";
         });
 
@@ -140,6 +143,8 @@ public static class Program
         }
 
         project = project.ForServer(database?.ServerVersion ?? model?.ServerVersion);
+        if (pair is not null)
+            PartyPlan.Remember(pair, project);
 
         // spCanDelete is a SQL Server stored procedure of the author's own tooling; PostgreSQL and MySQL have no such check.
         if (options.Provider == DatabaseProvider.SqlServer)

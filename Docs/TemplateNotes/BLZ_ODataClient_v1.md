@@ -5,3 +5,5 @@
 It is the OData twin of `BLZ_Client`: the same model (`Models/<table>`), the same row JSON, another route. `BLZ_Screens` registers every OData client with `AddApiClients()`. The page over it is `BLZ_ODataPage`. A name/active table gets none (Blazor has no page for it).
 
 For a table with a `GuardedColumns` rule (`ApiAuth=true`) the class also has `GetGuardsAsync()`, which asks the table's REST route (`/guards`); the OData page shows a guarded column by its answer (see `BLZ_Page_v1.md`).
+
+`PartyTables`: the client of a party table also has `ByIdentifierAsync`, which asks the table's REST route for the page's Find by identifier box.

@@ -123,6 +123,12 @@
         bool softScreen = softPlan is not null;
         bool validOnScreen = effectivePlan is not null;
         bool shapeScreen = softScreen || validOnScreen;
+        bool partyBox = !logOnly && PartyScreens.HasBox(Model, Project);   // PartyTables: a Find by identifier box in the bar; the grid then lists the parties found
+        bool listScreen = shapeScreen || partyBox;
+        string shapeView = string.Join(" || ", new[] { partyBox ? PartyScreens.DesktopView : null, softScreen ? "ShowDeleted" : null, validOnScreen ? "ValidOnActive" : null }.Where(x => x is not null));
+        string shapeRows = !shapeScreen ? "" : softScreen && validOnScreen ? "ShowDeleted ? await Client.GetDeletedAsync() : await Client.GetCurrentAsync((ValidOnDay ?? DateTimeOffset.Now).ToString(\"yyyy-MM-dd\"))" : softScreen ? "await Client.GetDeletedAsync()" : "await Client.GetCurrentAsync((ValidOnDay ?? DateTimeOffset.Now).ToString(\"yyyy-MM-dd\"))";
+        if (partyBox)
+            shapeRows = shapeScreen ? $"{PartyScreens.DesktopView} ? await {PartyScreens.DesktopRows}() : {shapeRows}" : $"await {PartyScreens.DesktopRows}()";
         string actionWidth = logOnly ? (queue is null && inbound is null ? "90" : "170") : canClone ? "250" : "175";
         var assetShape = logOnly ? null : TableShapes.For(Model, Project).Asset;   // AssetTables: an Upload button in the bar and a Download button on a row
         var contentShape = logOnly ? null : TableShapes.For(Model, Project).Content;   // ContentTables: Publish, Unpublish and Archive buttons on a row (each shown only when it changes something)
@@ -173,7 +179,7 @@
 <# } #>
                 <Button Content="Refresh" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnRefreshClick" />
                 <Button Content="Columns" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnColumnsClick" />
-<# if (softScreen) { #>
+<#= partyBox ? PartyScreens.DesktopBox() : "" #><# if (softScreen) { #>
                 <ToggleButton Content="Show deleted" IsChecked="{x:Bind ViewModel.ShowDeleted, Mode=TwoWay}" Click="OnShapeViewClick" />
 <# } #>
 <# if (validOnScreen) { #>
@@ -451,6 +457,7 @@ public sealed partial class <#= stemName #>ListPage : Page
 <# } #>
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();
 
+<#= partyBox ? PartyScreens.DesktopHandlers().TrimEnd('\n') + "\n" : "" #>
 <# if (!logOnly) { #>
     private async void OnEditClick(object sender, RoutedEventArgs e)
     {
@@ -773,7 +780,7 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     [ObservableProperty]
     private int _totalPages = 1;
 
-<# if (shapeScreen) { #>
+<# if (listScreen) { #>
 <# if (softScreen) { #>
     /// <summary> The grid lists the rows that were soft deleted (SoftDeleteTables) instead of the table's rows; each has Restore. </summary>
     [ObservableProperty]
@@ -789,8 +796,8 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     private DateTimeOffset? _validOnDay = DateTimeOffset.Now;
 
 <# } #>
-    /// <summary> One list of up to 500 rows, not the pages of the search: the deleted rows, or the rows valid on the day. </summary>
-    public bool ShapeView => <#= softScreen && validOnScreen ? "ShowDeleted || ValidOnActive" : softScreen ? "ShowDeleted" : "ValidOnActive" #>;
+<#= partyBox ? PartyScreens.DesktopMembers() : "" #>    /// <summary> One list, not the pages of the search: the deleted rows, the rows valid on the day, or the parties that hold an identifier. </summary>
+    public bool ShapeView => <#= shapeView #>;
 
 <# } #>
     public bool CanGoPrevious => PageNumber > 1;
@@ -1048,7 +1055,7 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
         }
 #>
         };
-<# if (shapeScreen) { #>
+<# if (listScreen) { #>
         var result = ShapeView ? null : <#= pageCall #>;
         var rows = result?.Items ?? await ShapeRowsAsync();
         int totalCount = result?.TotalCount ?? rows.Count;
@@ -1201,9 +1208,9 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
         }
     }
 
-<# if (shapeScreen) { #>
+<#= partyBox ? PartyScreens.UnoRows(type) : "" #><# if (listScreen) { #>
     private async Task<List<<#= type #>>> ShapeRowsAsync() =>
-        <#= softScreen && validOnScreen ? "ShowDeleted ? await Client.GetDeletedAsync() : await Client.GetCurrentAsync((ValidOnDay ?? DateTimeOffset.Now).ToString(\"yyyy-MM-dd\"))" : softScreen ? "await Client.GetDeletedAsync()" : "await Client.GetCurrentAsync((ValidOnDay ?? DateTimeOffset.Now).ToString(\"yyyy-MM-dd\"))" #>;
+        <#= shapeRows #>;
 
 <# } #>
 <# if (softScreen) { #>

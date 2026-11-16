@@ -51,6 +51,8 @@
             L("    // Which guarded columns the signed-in person may change (the table's REST route answers it), by the column's JSON name.");
             L($"    public async Task<Dictionary<string, bool>> GetGuardsAsync() => await (await http.GetAsync({Text(BlazorNames.ApiRoute(table.TableName) + "/guards")})).ReadAsync<Dictionary<string, bool>>();");
         }
+        if (PartyScreens.HasBox(table, Project))
+            foreach (string line in PartyScreens.CsODataClientLines(type, BlazorNames.ApiRoute(table.TableName))) L(line);
         L("}");
     }
     Write(o.ToString());

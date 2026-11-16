@@ -20,7 +20,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project) })
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
         }
@@ -54,6 +54,26 @@ public static class DatabaseShapeDetector
             return new ShapeSuggestion("Polymorphic link", "PolymorphicLinks", item, problem is null, problem is null ? $"{type.Name} names one of {string.Join(", ", targets)} and {id.Name} is its key" : $"{type.Name} and {id.Name} look like a link, but {problem}");
         }
         return null;
+    }
+
+    private static readonly string[] PartySchemeNames = ["Scheme", "SchemeCode", "IdentifierType", "IdentifierScheme"];
+    private static readonly string[] PartyValueNames = ["Value", "Identifier", "IdentifierValue", "Number"];
+
+    /// <summary> A table of identifiers: a scheme and a value, both text that cannot be NULL, under one foreign key to another table. </summary>
+    private static ShapeSuggestion? Party(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (PartyPlan.IsListed(table.TableName, project))
+            return null;
+        var scheme = table.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && PartySchemeNames.Any(n => c.Name.EqualsIgnoreCase(n)));
+        var value = table.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && PartyValueNames.Any(n => c.Name.EqualsIgnoreCase(n)));
+        var parents = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !f.ReferencedTable.EqualsIgnoreCase(table.TableName)).Select(f => f.ReferencedTable).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (scheme is null || value is null || parents.Count != 1 || PartyPlan.IsPartyTable(parents[0], project))
+            return null;
+        string item = $"{parents[0]}:{table.TableName}" + (scheme.Name.EqualsIgnoreCase(PartyPlan.DefaultScheme) && value.Name.EqualsIgnoreCase(PartyPlan.DefaultValue) ? "" : $":{scheme.Name}:{value.Name}");
+        var listed = project.WithOverrides([new("PartyTables", string.Join(",", project.PartyTables.Append(item)))]);
+        string? problem = PartyPlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"PartyTables: {parents[0]}", StringComparison.OrdinalIgnoreCase));
+        string why = $"{scheme.Name} and {value.Name} identify a row of {parents[0]}";
+        return new ShapeSuggestion("Party identifiers", "PartyTables", item, problem is null, problem is null ? why : $"{why}, but {problem}");
     }
 
     private static ShapeSuggestion? Snapshot(TableModel table, DatabaseModel database, ProjectSettings project)

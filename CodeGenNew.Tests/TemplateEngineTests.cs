@@ -320,6 +320,16 @@ public class TemplateInfoAppliesToTests
         Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isNameActiveTable: false));
         Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isNameActiveTable: true));
     }
+
+    [TestMethod]
+    public void A_template_that_writes_nothing_leaves_no_file()
+    {
+        var t = new TemplateInfo { FilePath = "X.tt", Name = "X", Config = new TemplateConfig() };
+
+        Assert.HasCount(0, OutputWriter.FilesOf(t, "Customer", ""));
+        Assert.HasCount(0, OutputWriter.FilesOf(t, "Customer", "\r\n  \n"));
+        Assert.HasCount(1, OutputWriter.FilesOf(t, "Customer", "class Customer { }\n"));
+    }
 }
 
 [TestClass]
@@ -406,9 +416,9 @@ public class TemplateCatalogTests
         Assert.AreEqual(5, groups["MD"]);
         Assert.AreEqual(27, groups["TSX"]);
         Assert.AreEqual(1, groups["PROTO"]);
-        Assert.AreEqual(40, groups["RS"]);
+        Assert.AreEqual(41, groups["RS"]);
         Assert.AreEqual(29, groups["BLZ"]);
-        Assert.AreEqual(32, groups["PY"]);
+        Assert.AreEqual(33, groups["PY"]);
         Assert.IsTrue(offered.All(t => !t.IsSuperseded));
     }
 }
