@@ -170,6 +170,16 @@ public class PartyTableTests
         string box = string.Join("\n", PartyScreens.ReactBox());
         Expect.Contains(box, "aria-label=\"Find by identifier\"");
         Expect.Contains(box, "<button type=\"button\" onClick={showAllParties}>Show all</button>");
+        string reactTest = string.Join("\n", PartyScreens.ReactBoxTests("partyApi", "PartyPage", "getPage"));
+        Expect.Contains(reactTest, "vi.spyOn(partyApi, 'byIdentifier').mockResolvedValue([]);");
+        Expect.Contains(reactTest, "expect(found).toHaveBeenCalledWith('AB12');");
+        Expect.Contains(reactTest, "const list = vi.spyOn(partyApi, 'getPage');");
+        string angularTest = PartyScreens.AngularBoxTest();
+        Expect.Contains(angularTest, "component.findByIdentifier();");
+        Expect.Contains(angularTest, "endsWith('/by-identifier?value=AB12')");
+        string blazorTest = PartyScreens.BlazorBoxTest();
+        Expect.Contains(blazorTest, "Api.Answer(\"/by-identifier?value=AB12\", \"[]\");");
+        Expect.Contains(blazorTest, "Input(\"  AB12  \")");
     }
 
     [TestMethod]
@@ -191,6 +201,11 @@ public class PartyTableTests
         Expect.Contains(check, "entity.Scheme = (entity.Scheme ?? \"\").Trim();");
         Expect.Contains(check, "AnyAsync(x => x.PartyIdentifierId != entity.PartyIdentifierId && x.Scheme.ToLower() == heldScheme && x.Value.ToLower() == heldValue))");
         Expect.Contains(check, "ErrorMessage = \"" + PartyWords.IdentifierTaken + "\";");
+        string race = PartyScreens.RaceLines(project, Identifier(), "_context");
+        Expect.Contains(race, "_context.Entry(entity).State = Microsoft.EntityFrameworkCore.EntityState.Detached;");
+        Expect.Contains(race, "AnyAsync(x => x.PartyIdentifierId != entity.PartyIdentifierId && x.Scheme.ToLower() == heldScheme && x.Value.ToLower() == heldValue)");
+        Expect.Contains(race, "ErrorMessage = \"" + PartyWords.IdentifierTaken + "\";");
+        Assert.AreEqual("", PartyScreens.RaceLines(project, Party(), "_context"));
         Assert.AreEqual("", PartyScreens.CheckLines(project, Party(), "_context"));
 
         Assert.IsTrue(PartyScreens.SaysTaken(Identifier(), project));
@@ -267,6 +282,7 @@ public class PartyTableTests
         PartyPlan.Remember(Database(), project);
         string lines = PartyScreens.EditRowsCheckLines(project, Party(), "PartyIdentifier", "identifiersEdit", "_context");
         Expect.Contains(lines, "foreach (var line in identifiersEdit)");
+        Expect.Contains(PartyScreens.EditRowsCheckLines(project, Party(), "PartyIdentifier", "identifiersEdit", "_context", "Refused"), "foreach (var lineRefused in identifiersEdit)");
         Expect.Contains(lines, "_context.Set<PartyIdentifier>().AsNoTracking().AnyAsync(x => x.PartyId != entity.PartyId && x.Scheme.ToLower() == lineScheme && x.Value.ToLower() == lineValue)");
         Expect.Contains(lines, "ErrorMessage = \"" + PartyWords.IdentifierTaken + "\";");
         Assert.AreEqual("", PartyScreens.EditRowsCheckLines(project, Party(), "PartyNote", "notesEdit", "_context"));

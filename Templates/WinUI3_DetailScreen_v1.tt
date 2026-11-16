@@ -616,6 +616,23 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         return true;
 <#
         }
+        else if (PartyScreens.RaceLines(Project, Model, "_context") is { Length: > 0 } race)
+        {
+#>
+        try
+        {
+            if (_editing is null)
+                await _repo.AddAsync(entity);
+            else
+                await _repo.UpdateAsync(entity.<#= keyProp #>, entity);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+<#= race #>            throw;
+        }
+        return true;
+<#
+        }
         else
         {
 #>

@@ -18,3 +18,5 @@ bUnit tests of the Blazor pages, in a test project beside the Blazor app. `Blazo
 - **The dashboard** (`DashboardPageTests`, written by `BLZ_EssentialTests` when the project has a dashboard): a count card, a money card in the project's currency, a bar list and the recent rows from a stand-in `/api/dashboard`, the sentence for an empty dashboard and the one for a failed load.
 - **Junction error paths:** a link the API refuses says why and leaves the row in Available, an unlink that fails says there was a problem and keeps the row in Selected, and a failing lookup or list of rows says so.
 - **Not done:** a parent that is searched as the person types has no filter row test. A project made before needs `--replace` of the Tests essentials for the new `FakeApi`.
+
+`PartyTables`: the page tests of a party table include a test of the Find by identifier box (a value typed with spaces is asked for trimmed, an empty box reads the list again).

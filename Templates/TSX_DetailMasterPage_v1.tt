@@ -1497,7 +1497,7 @@
         else if (softScreen)
             S(textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';");
         else
-        S(textKey || editableChildren.Count > 0 || odata || nameActive || columnTests || (!nameActive && GridTestRow.For(form, chosen) is not null) ? (textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';") : "import { render, screen } from '@testing-library/react';");
+        S(textKey || partyBox || editableChildren.Count > 0 || odata || nameActive || columnTests || (!nameActive && GridTestRow.For(form, chosen) is not null) ? (textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';") : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
@@ -1547,6 +1547,8 @@
             S("    await waitFor(() => expect(current).toHaveBeenLastCalledWith('2025-06-01'));");
             S("  });");
         }
+        if (partyBox)
+            foreach (string line in PartyScreens.ReactBoxTests(apiVar, pageName, nameActive ? "getAll" : odata ? "queryPage" : "getPage")) S(line);
         var testRow = nameActive ? null : GridTestRow.For(form, chosen);
         if (testRow is not null)
         {

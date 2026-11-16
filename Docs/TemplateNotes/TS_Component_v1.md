@@ -123,3 +123,5 @@ The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAhead
 **Dates in order.** The end date box of a pair (`DatePairs`, see CS_Validator_v1) has `[attr.min]` bound to the start date, so the form's own check refuses an end before its start; the server's validator refuses what the form lets through.
 
 **Single-row tables.** A table the project lists in `SingleRowTables` (and does not serve as OData) gets this screen as a form on `SingleRowCrudScreen` (crud-screen.ts): the first row (`searchPage` of one) opens in an inline form (a `<section #oneRowForm>`, not a dialog), an empty table opens a blank form, Submit saves and reads the row again, and Reload reads it again. There is no grid, search, paging, Columns list, Add New, Clone or Delete, and no master-detail component. Its spec checks the form of one row and the blank form.
+
+`PartyTables`: the screen of a party table has the Find by identifier box and a generated spec of it (`findByIdentifier` asks the table's `by-identifier` route with the trimmed value and the answer replaces the rows).

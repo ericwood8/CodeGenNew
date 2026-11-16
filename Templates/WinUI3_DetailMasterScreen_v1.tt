@@ -1294,6 +1294,11 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         }
         catch (DbUpdateException)
         {
+            await transaction.RollbackAsync();
+<#
+                foreach (var child in editChildren)
+                    Write(PartyScreens.EditRowsCheckLines(Project, Model, child.Table, child.Var + "Edit", "_context", "Refused"));
+#>
             ErrorMessage = "The rows could not be saved.";
             return false;
         }

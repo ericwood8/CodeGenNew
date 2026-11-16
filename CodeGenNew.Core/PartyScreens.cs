@@ -112,6 +112,35 @@ public static class PartyScreens
         "    </div>",
     ];
 
+    /// <summary> The Jasmine test of the box: the value typed is asked for trimmed, and the answer replaces the rows. </summary>
+    public static string AngularBoxTest() =>
+        "  it('finds the parties that hold an identifier', () => {\n"
+        + "    const http = TestBed.inject(HttpTestingController);\n"
+        + "    component.identifierText = '  AB12  ';\n"
+        + "    component.findByIdentifier();\n"
+        + $"    const request = http.expectOne((r) => r.urlWithParams.endsWith('/{RouteName}?value=AB12'));\n"
+        + "    request.flush([]);\n"
+        + "    expect(component.rows.length).toBe(0);\n"
+        + "  });\n";
+
+    /// <summary> The bUnit test of the box: a value typed with spaces is asked for trimmed, and an empty box reads the list again instead of asking. </summary>
+    public static string BlazorBoxTest() =>
+        "\n"
+        + "    [TestMethod]\n"
+        + "    public void Finds_the_parties_that_hold_an_identifier_and_reads_the_list_again_for_an_empty_box()\n"
+        + "    {\n"
+        + "        var page = Open();\n"
+        + "        Api.Answer(\"/by-identifier?value=AB12\", \"[]\");\n"
+        + "        page.Find(\"[aria-label=\\\"Find by identifier\\\"]\").Input(\"  AB12  \");\n"
+        + "        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Find\").Click();\n"
+        + "        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.EndsWith(\"/by-identifier?value=AB12\"))));\n"
+        + "        Api.Requests.Clear();\n"
+        + "        page.Find(\"[aria-label=\\\"Find by identifier\\\"]\").Input(\"   \");\n"
+        + "        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Find\").Click();\n"
+        + "        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Count > 0 && Api.Requests.All(r => !r.Path.Contains(\"/by-identifier\"))));\n"
+        + "    }\n"
+        + "\n";
+
     /// <summary> The field and the two methods of the Angular screen: the rows found replace the list as one page. </summary>
     public static IReadOnlyList<string> AngularHandlers(bool paged) =>
     [
@@ -257,24 +286,62 @@ public static class PartyScreens
 
     /// <summary> The lines a WinUI3 dialog of the party table runs before it saves the identifiers edited as rows inside it (<c>EditableChildren</c>): <paramref name="rows"/> is the collection of the lines, which are
     /// the party's identifiers as they will be. Both columns are trimmed; a pair twice in the lines, or held by a row of another party, is the dialog's error. Empty when <paramref name="child"/> is not the party's identifier table. </summary>
-    public static string EditRowsCheckLines(ProjectSettings project, TableModel party, string child, string rows, string context)
+    public static string EditRowsCheckLines(ProjectSettings project, TableModel party, string child, string rows, string context, string suffix = "")
     {
         if (PartyPlan.SavedWithShape(party, child, project) is not { } shape)
             return "";
         string scheme = shape.Scheme.CSharpName(), value = shape.Value.CSharpName(), link = shape.Link.CSharpName(), key = shape.PartyKey.CSharpName();
-        return $"        var heldPairs = new HashSet<(string, string)>();\n"
-            + $"        foreach (var line in {rows})\n"
+        return $"        var heldPairs{suffix} = new HashSet<(string, string)>();\n"
+            + $"        foreach (var line{suffix} in {rows})\n"
             + "        {\n"
-            + $"            line.{scheme} = line.{scheme}.Trim();\n"
-            + $"            line.{value} = line.{value}.Trim();\n"
-            + $"            string lineScheme = line.{scheme}.ToLower(), lineValue = line.{value}.ToLower();\n"
-            + $"            if (!heldPairs.Add((lineScheme, lineValue)) || await {context}.Set<{shape.Identifiers.TableName}>().AsNoTracking().AnyAsync(x => x.{link} != entity.{key} && x.{scheme}.ToLower() == lineScheme && x.{value}.ToLower() == lineValue))\n"
+            + $"            line{suffix}.{scheme} = line{suffix}.{scheme}.Trim();\n"
+            + $"            line{suffix}.{value} = line{suffix}.{value}.Trim();\n"
+            + $"            string lineScheme{suffix} = line{suffix}.{scheme}.ToLower(), lineValue{suffix} = line{suffix}.{value}.ToLower();\n"
+            + $"            if (!heldPairs{suffix}.Add((lineScheme{suffix}, lineValue{suffix})) || await {context}.Set<{shape.Identifiers.TableName}>().AsNoTracking().AnyAsync(x => x.{link} != entity.{key} && x.{scheme}.ToLower() == lineScheme{suffix} && x.{value}.ToLower() == lineValue{suffix}))\n"
             + "            {\n"
             + $"                ErrorMessage = \"{PartyWords.IdentifierTaken}\";\n"
             + "                return false;\n"
             + "            }\n"
             + "        }\n\n";
     }
+
+    /// <summary> What the dialog of the identifier table does when the save itself is refused: another writer took the pair between the check and the save, so the unique index on the pair refused it. The tracked row is
+    /// put back and, when the pair is held now, the dialog's error is the rule's sentence. Empty for any other table. Runs after <see cref="CheckLines"/>, which declares the trimmed pair. </summary>
+    public static string RaceLines(ProjectSettings project, TableModel table, string context)
+    {
+        if (PartyPlan.IdentifiersOf(table, project) is not { } shape)
+            return "";
+        string scheme = shape.Scheme.CSharpName(), value = shape.Value.CSharpName(), key = shape.IdentifierKey.CSharpName();
+        return "            if (_editing is null)\n"
+            + $"                {context}.Entry(entity).State = Microsoft.EntityFrameworkCore.EntityState.Detached;\n"
+            + "            else\n"
+            + $"                await {context}.Entry(entity).ReloadAsync();\n"
+            + $"            if (await {context}.Set<{table.TableName}>().AsNoTracking().AnyAsync(x => x.{key} != entity.{key} && x.{scheme}.ToLower() == heldScheme && x.{value}.ToLower() == heldValue))\n"
+            + "            {\n"
+            + $"                ErrorMessage = \"{PartyWords.IdentifierTaken}\";\n"
+            + "                return false;\n"
+            + "            }\n";
+    }
+
+    /// <summary> The generated vitest of the box: a value typed with spaces is asked for trimmed, and an empty box reads the list again instead of asking. </summary>
+    public static IReadOnlyList<string> ReactBoxTests(string apiVar, string pageName, string listMethod) =>
+    [
+        "",
+        "  it('finds the parties that hold an identifier and reads the list again for an empty box', async () => {",
+        $"    const found = vi.spyOn({apiVar}, '{Route}').mockResolvedValue([]);",
+        $"    render(<MemoryRouter><{pageName} /></MemoryRouter>);",
+        $"    const box = await screen.findByLabelText('{BoxLabel}');",
+        "    fireEvent.change(box, { target: { value: '  AB12  ' } });",
+        $"    fireEvent.click(screen.getByText('{FindCaption}'));",
+        "    expect(found).toHaveBeenCalledWith('AB12');",
+        $"    const list = vi.spyOn({apiVar}, '{listMethod}');",
+        "    const reads = list.mock.calls.length;",
+        "    fireEvent.change(box, { target: { value: '   ' } });",
+        $"    fireEvent.click(screen.getByText('{FindCaption}'));",
+        "    expect(list.mock.calls.length).toBeGreaterThan(reads);",
+        "    expect(found).toHaveBeenCalledTimes(1);",
+        "  });",
+    ];
 
     /// <summary> The box and its two buttons above the grid of the React page. </summary>
     public static IReadOnlyList<string> ReactBox() =>

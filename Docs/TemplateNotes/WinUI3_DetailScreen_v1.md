@@ -58,3 +58,5 @@ The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAhead
 - **Only what changed is checked.** The shape check (email, phone, URL, postal code, social security number) and the not-later-than-today check run only when the box differs from the value the entity holds (`!string.Equals(entity.Prop, Prop)`; a date compares its day), so an old value that breaks the rule does not stop an edit of another field. A new row has nothing stored and checks every box.
 
 **Dates in order.** The end calendar of a pair (`DatePairs`, see CS_Validator_v1) has `MinDate` bound to `<End>MinDate`, the start date (the calendar's own first date while there is none), and Save refuses a changed end before its start with the sentence of the API validators. The Uno dialogs and the master-detail dialogs write the same text.
+
+`PartyTables`: the dialog of the identifier table catches a save the unique index on the pair refused (another writer took the pair between the check and the save), puts the tracked row back and says the rule's sentence when the pair is held now; any other refusal is thrown as before.

@@ -746,7 +746,7 @@
             spec.Append("    expect(component.selectedRow).not.toBeNull();\n    expect(component.adding).toBe(true);\n  });\n});\n");
         }
         else
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + "\n});\n");
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + (partyBox ? "\n" + PartyScreens.AngularBoxTest() : "") + "\n});\n");
         if (writeRoles.Count > 0 && !oneRow) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
         if (testRow is not null && !oneRow) spec.Append(testRow.AngularOpenedFromAnotherPage(title, cls));
 
