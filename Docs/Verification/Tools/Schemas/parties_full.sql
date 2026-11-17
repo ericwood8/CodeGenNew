@@ -1,4 +1,4 @@
--- A party with the child tables of a party master: identifiers, names, tax registrations, contact methods and the roles it plays.
+-- SQLite (AUTOINCREMENT is SQLite's; parties_full_sqlserver.sql is the SQL Server script). A party with the child tables of a party master: identifiers, names, tax registrations, contact methods and the roles it plays.
 -- PartyTables=Party:PartyIdentifier, DefaultRowTables=PartyName:IsPrimary:PartyId+NameType,ContactMethod:IsPreferred:PartyId+MethodType,
 -- EffectiveDatedTables=TaxRegistration:ValidFrom:ValidTo:PartyId+Country. PartyRole is the junction of a party and a role (a customer, a supplier, a carrier).
 CREATE TABLE Party (
