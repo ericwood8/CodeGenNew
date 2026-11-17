@@ -316,12 +316,12 @@ public class RateDocumentTests
     [DataRow("BLZ_EssentialSupport_v1.tt")]
     public async Task The_uno_and_blazor_clients_show_the_apis_sentence_of_a_rate_refusal_only_when_there_are_rate_tables(string template)
     {
-        string with = (await Repo.Cache.RunAsync(Repo.Template(template), Project())).GeneratedText!;
+        string with = (await Repo.Cache.RunAsync(Repo.Template(template), Project())).GeneratedText!.Replace("\r\n", "\n");
         Expect.Contains(with, "public class ApiException(int status, string message, bool sentence = false) : Exception(message)");
         Expect.Contains(with, "        _ when Sentence => Message,\n");
         Expect.Contains(with, "type.GetString()?.StartsWith(\"" + ProblemTypes.Prefix + "rate-\")");
         Expect.Contains(with, "throw new ApiException((int)response.StatusCode, sentence, true);");
-        string without = (await Repo.Cache.RunAsync(Repo.Template(template), ProjectSettings.FromValues(new Dictionary<string, string> { ["ProjectName"] = "Shop" }))).GeneratedText!;
+        string without = (await Repo.Cache.RunAsync(Repo.Template(template), ProjectSettings.FromValues(new Dictionary<string, string> { ["ProjectName"] = "Shop" }))).GeneratedText!.Replace("\r\n", "\n");
         Assert.DoesNotContain("Sentence", without);
         Assert.DoesNotContain("RateRefusalAsync", without);
         Expect.Contains(without, "public class ApiException(int status, string message) : Exception(message)\n{\n    public int Status => status;\n\n    // The sentence a screen shows");
