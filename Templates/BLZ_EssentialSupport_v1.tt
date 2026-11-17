@@ -16,13 +16,20 @@ using System.Text.Json;
 
 namespace <#= ns #>.Services;
 
-public class ApiException(int status, string message) : Exception(message)
+public class ApiException(int status, string message<# if (Project.RateTables.Length > 0) { #>, bool sentence = false<# } #>) : Exception(message)
 {
     public int Status => status;
+<# if (Project.RateTables.Length > 0) { #>
+    // true when the message is the API's own sentence of a rate refusal (RateTables, RateDocuments)
+    public bool Sentence => sentence;
+<# } #>
 
     // The sentence a screen shows for a failed save, delete or clone.
     public string Explain(string action) => Status switch
     {
+<# if (Project.RateTables.Length > 0) { #>
+        _ when Sentence => Message,
+<# } #>
         <#= HttpStatus.BadRequest #> => action == "deleting" ? "It cannot be deleted because it is in use!" : "Some of the values are not acceptable!",
         <#= HttpStatus.NotFound #> => "It no longer exists!",
 <# if (Project.PartyTables.Length > 0) { #>
@@ -59,6 +66,10 @@ public static class ApiSupport
         if ((int)response.StatusCode == <#= HttpStatus.Conflict #> && await ProblemDetailAsync(response) is { } refusal)
             message = refusal;
 <# } #>
+<# if (Project.RateTables.Length > 0) { #>
+        if ((int)response.StatusCode is <#= HttpStatus.BadRequest #> or <#= HttpStatus.Conflict #> && await RateRefusalAsync(response) is { } sentence)
+            throw new ApiException((int)response.StatusCode, sentence, true);
+<# } #>
         throw new ApiException((int)response.StatusCode, message);
     }
 
@@ -76,6 +87,23 @@ public static class ApiSupport
         }
     }
 
+<# if (Project.RateTables.Length > 0) { #>
+    /// <summary> The API's own sentence of a rate refusal (a problem whose type starts with <#= ProblemTypes.Prefix #>rate-), or null. </summary>
+    public static async Task<string?> RateRefusalAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+            return root.TryGetProperty("type", out var type) && type.GetString()?.StartsWith("<#= ProblemTypes.Prefix #>rate-") == true && root.TryGetProperty("detail", out var detail) ? detail.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+<# } #>
     public static async Task<T> ReadAsync<T>(this HttpResponseMessage response)
     {
         await response.EnsureSuccessAsync();

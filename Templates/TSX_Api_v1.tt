@@ -182,6 +182,12 @@
             L("  // a party table (PartyTables): the parties that hold an identifier with this value");
             L(PartyScreens.ReactApiLine(baseName));
         }
+        if (RateScreens.HasBox(Model, Project))
+        {
+            L();
+            L("  // a rate table (RateTables): the rate in force for a pair of currencies on a day");
+            L(RateScreens.ReactApiLine(baseName));
+        }
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             L();

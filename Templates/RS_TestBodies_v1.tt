@@ -45,6 +45,10 @@
             modules.Add("queue_routes");
         if (RustPartyTests.Applies(Database, Project))
             modules.Add("party_routes");
+        if (RustRateTests.Applies(Database, Project))
+            modules.Add("rate_routes");
+        if (RustRateDocumentTests.Applies(Database, Project))
+            modules.Add("rate_document_routes");
         if (RustAssetTests.Applies(Database, Project))
             modules.Add("asset_routes");
         if (RustInboundTests.Applies(Database, Project))
@@ -107,6 +111,8 @@
                         lets.Add($"let {day} = new_day({(sample.Contains('T') ? "true" : "false")});");
                     return $"{day}.clone()";
                 }
+                if (RateDocumentPlan.IsCurrency(table, c, Project) && RateDocumentPlan.For(table, Project) is { } rateDocument)
+                    return Json(rateDocument.BaseCurrency);   // a save looks the rate up and refuses a currency with none
                 if (RustTestBodies.IsFreeText(table, c, Project))
                     return $"unique({Json(ApiSampleValues.Text(c, Project, table.TableName))}, {Math.Max(c.CharacterLength, 0)})";
                 if (RustTestBodies.ParentKey(table, c, Project) is { } fk)

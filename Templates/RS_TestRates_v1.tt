@@ -1,0 +1,25 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestRates_v1.tt
+    // Generates: tests/api/rate_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of what RS_Routes writes for RateTables, run in process over a scratch database like RS_Test. Each test adds rates of a pair of currencies no other run uses through the router
+    // and removes them again. The cases: currencies trimmed and upper case, two different ones, a rate above zero, one rate per pair and day (on create and on update), and the rate in force on a day.
+    // The words are RateWords, as in the other stacks' tests.
+    // With RateDocuments it also writes tests/api/rate_document_routes.rs: the document cases of the Python tests (the rate in force on the date, kept while the currency and date stay, the converted amount, rate-needed).
+    // Written only for a project with RustTests=true and a rate table the tests can fill (RateTestPlan).
+    // Needs Client.start of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (RustRateDocumentTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/rate_document_routes.rs@@@\n" + RustRateDocumentTests.File(Database, Project));
+    }
+    if (RustRateTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/rate_routes.rs@@@\n" + RustRateTests.File(Database, Project));
+    }
+#>

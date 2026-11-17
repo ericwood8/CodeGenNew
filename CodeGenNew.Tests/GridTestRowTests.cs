@@ -248,7 +248,7 @@ public class GridTestRowTests
         string odata = text[text.IndexOf("public class AccountODataPageTests", StringComparison.Ordinal)..];
 
         Expect.Contains(odata, "public void Filters_a_date_column_by_a_range_that_includes_the_last_day()");
-        Expect.Contains(odata, "page.Find(\"[aria-label=\\\"Opened from\\\"]\").Change(\"2026-03-05\");");
+        Expect.Contains(odata, "page.Find(\"input[type=date][aria-label=\\\"Opened from\\\"]\").Change(\"2026-03-05\");");
         Expect.Contains(odata, "\"$filter=\" + \"opened ge 2026-03-05 and opened lt 2026-03-10\"");
         Expect.Contains(odata, "public void Filters_a_column_whose_values_the_database_lists_by_the_value_picked()");
         Expect.Contains(odata, "page.Find(\"select[aria-label=\\\"Filter by Tier\\\"]\").Change(\"Gold\");");

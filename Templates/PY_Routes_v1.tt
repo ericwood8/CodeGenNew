@@ -139,6 +139,18 @@
         partyNames = new PythonPartyWriter.PartyNames(t.Class, key, identifierTable.Class, identifierTable.Module, identifierTable.FieldOf(partyPlan.Link).Name,
             identifierTable.FieldOf(partyPlan.Scheme).Name, identifierTable.FieldOf(partyPlan.Value).Name);
     }
+    // RateTables: a rate keeps its currencies trimmed and upper case, a rate above zero and one row per pair and day, and GET rate answers the latest rate on or before a day
+    var ratePlan = log || tenantTable || scoped || tenanted ? null : RatePlan.For(Model, Project);
+    var rateDay = FieldOf(ratePlan?.Day);
+    var rateNames = ratePlan is null || FieldOf(ratePlan.From) is null || FieldOf(ratePlan.To) is null || FieldOf(ratePlan.Rate) is null || rateDay is null ? null
+        : new PythonRateWriter.Names(t.Class, key, FieldOf(ratePlan.From)!.Name, FieldOf(ratePlan.To)!.Name, FieldOf(ratePlan.Rate)!.Name, rateDay.Name, rateDay.Annotation, t.Schema, Project.RateInverse && RatePlan.InvertibleRate(ratePlan.Rate));
+    // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
+    var docPlan = log || tenantTable || scoped || tenanted ? null : RateDocumentPlan.For(Model, Project);
+    var docRateTable = docPlan is null ? null : PythonTable.Of(docPlan.Rates.Table, Project);
+    var docDay = FieldOf(docPlan?.Day);
+    var docNames = docPlan is null ? null : new PythonRateDocumentWriter.Names(t.Class, FieldOf(docPlan.Currency)!.Name, FieldOf(docPlan.Rate)!.Name, FieldOf(docPlan.Rate)!.Annotation, FieldOf(docPlan.Amount)!.Name,
+        FieldOf(docPlan.Amount)!.Annotation, FieldOf(docPlan.BaseAmount)!.Name, FieldOf(docPlan.BaseAmount)!.Annotation, docDay?.Name, docDay?.Annotation, docRateTable!.FieldOf(docPlan.Rates.Day).Annotation,
+        docRateTable.FieldOf(docPlan.Rates.Rate).Name, docPlan.BaseCurrency, docPlan.BaseAmount.Scale ?? RateDocumentPlan.DefaultScale);
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -156,9 +168,19 @@
         foreach (string word in effNames.DateAnnotation == "datetime" ? new[] { "date", "datetime", "time" } : new[] { "date" })
             if (!clonedDates.Contains(word))
                 clonedDates.Add(word);
+    if (rateNames is not null)
+        foreach (string word in PythonRateWriter.DateWords(rateNames))
+            if (!clonedDates.Contains(word))
+                clonedDates.Add(word);
+    if (docNames is not null)
+        foreach (string word in PythonRateDocumentWriter.DateWords(docNames))
+            if (!clonedDates.Contains(word))
+                clonedDates.Add(word);
     clonedDates.Sort(StringComparer.Ordinal);
     if (clonedDates.Count > 0)
         Line($"from datetime import {string.Join(", ", clonedDates)}");
+    if (docNames is not null)
+        Line("from decimal import ROUND_HALF_UP, Decimal");
     if (tenantTable)
         Line("from typing import Any");
     if (textKey)
@@ -168,7 +190,7 @@
         Line("from uuid import UUID, uuid4");
     else if (uuidFilter)
         Line("from uuid import UUID");
-    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter || contentNames is not null)
+    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter || contentNames is not null || docNames is not null)
         Line();
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbCastType is not null);
     var sqlalchemy = new List<string> { "select" };
@@ -178,7 +200,7 @@
         sqlalchemy.Add("update as sql_update");
     if (softNames is not null)
         sqlalchemy.Add("event");
-    if (search || userPlan is not null || nameActive is not null || idNames is not null || partyNames is not null)
+    if (search || userPlan is not null || nameActive is not null || idNames is not null || partyNames is not null || rateNames is not null)
         sqlalchemy.Add("func");
     bool castsLookup = t.LookupName is { } castName && castName.Annotation != "str";
     if (castsEnum || castsLookup)
@@ -186,7 +208,7 @@
         sqlalchemy.Add("cast");
         sqlalchemy.Add("String");
     }
-    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || effNames is not null || contentNames is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || effNames is not null || contentNames is not null || rateNames is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
@@ -227,6 +249,8 @@
             Line($"from app.models.{parent.Module} import {parent.Class}");
     if (partyNames is not null && partyNames.IdentifierClass != t.Class)
         Line($"from app.models.{partyNames.IdentifierModule} import {partyNames.IdentifierClass}");
+    if (docRateTable is not null)
+        Line($"from app.routes.{docRateTable.Module} import find_rate");
     if (ownerLink is not null)
         Line($"from app.models.{parentModule} import {parentClass}");
     Line($"from app.schemas.{t.Module} import {t.Schema}");
@@ -405,11 +429,26 @@
         Line();
         Line(PythonPartyWriter.Helper(idNames).TrimEnd('\n'));
     }
+    if (rateNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonRateWriter.Helper(rateNames).TrimEnd('\n'));
+    }
+    if (docNames is not null)
+    {
+        Line();
+        Line();
+        Line("RATE_DOCUMENT_OWNED = (" + string.Join(", ", PythonRateDocumentWriter.Owned(docNames).Select(Str)) + ",)");
+        Line();
+        Line();
+        Line(PythonRateDocumentWriter.Helper(docNames).TrimEnd('\n'));
+    }
     if (snapNames is not null)
     {
         Line();
         Line();
-        Line("SNAPSHOT_OWNED = (" + string.Join(", ", snapNames.Owned.Select(Str)) + ",)");
+        Line("SNAPSHOT_OWNED =(" + string.Join(", ", snapNames.Owned.Select(Str)) + ",)");
         Line();
         Line();
         Line(PythonSnapshotWriter.Helper(snapNames).TrimEnd('\n'));
@@ -444,6 +483,13 @@
     {
         Line();
         Line(PythonPartyWriter.Route(partyNames, t.Route, t.Schema, readDepends, userParameter).TrimEnd('\n'));
+        Line();
+    }
+
+    if (rateNames is not null)
+    {
+        Line();
+        Line(PythonRateWriter.Route(rateNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
         Line();
     }
 
@@ -668,6 +714,13 @@
         Line("    check_identifier(session, row)");
         Line(PythonPartyWriter.PairLine(idNames));
     }
+    if (rateNames is not null)
+    {
+        Line("    check_rate(session, row)");
+        Line(PythonRateWriter.PairLine(rateNames));
+    }
+    if (docNames is not null)
+        Line("    convert_currency(session, row, None)");
     if (snapNames is not null)
         Line("    fill_snapshot(session, row, True)");
     if (defNames is not null)
@@ -679,6 +732,8 @@
     Line("        session.rollback()");
     if (idNames is not null)
         Line(PythonPartyWriter.RefusedLines("None"));
+    if (rateNames is not null)
+        Line(PythonRateWriter.RefusedLines("None"));
     Line("        raise save_refusal(error)");
     Line("    session.refresh(row)");
     if (tenantTable)
@@ -771,7 +826,14 @@
         Line("    changes = body.changes()");
         Line("    change_content(session, row, changes)");
     }
+    if (docNames is not null)
+        Line("    stored = document_key(row)");
     Line(contentNames is not null ? "    for name, value in changes.items():" : "    for name, value in body.changes().items():");
+    if (docNames is not null)
+    {
+        Line("        if name in RATE_DOCUMENT_OWNED:   # the rate and the converted amount belong to the server");
+        Line("            continue");
+    }
     if (snapNames is not null)
     {
         Line("        if name in SNAPSHOT_OWNED:   # the copies and the total belong to the server");
@@ -783,6 +845,13 @@
         Line("    check_identifier(session, row)");
         Line(PythonPartyWriter.PairLine(idNames));
     }
+    if (rateNames is not null)
+    {
+        Line("    check_rate(session, row)");
+        Line(PythonRateWriter.PairLine(rateNames));
+    }
+    if (docNames is not null)
+        Line("    convert_currency(session, row, stored)");
     if (snapNames is not null)
         Line("    fill_snapshot(session, row, False)");
     if (tenantField is not null)
@@ -797,6 +866,8 @@
     Line("        session.rollback()");
     if (idNames is not null)
         Line(PythonPartyWriter.RefusedLines("id"));
+    if (rateNames is not null)
+        Line(PythonRateWriter.RefusedLines("id"));
     Line("        raise save_refusal(error)");
     Line("    session.refresh(row)");
     Line("    return row");

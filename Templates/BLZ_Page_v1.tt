@@ -337,6 +337,9 @@
         bool partyBox = !oneRow && !nameActive && PartyScreens.HasBox(Model, Project);   // the OData page asks the same REST route through its OData client
         if (partyBox)
             foreach (string line in PartyScreens.BlazorBox()) L(line);
+        var rateNames = !oneRow && !nameActive && RateScreens.HasBox(Model, Project) ? RateScreens.CsNames(Model, Project) : null;   // RateTables: a lookup of the rate in force, over the REST route on the OData page too
+        if (rateNames is not null)
+            foreach (string line in RateScreens.BlazorBox()) L(line);
         if (!oneRow && !nameActive)
         {
         L();
@@ -1588,6 +1591,8 @@
         }
         if (partyBox)
             foreach (string line in PartyScreens.BlazorHandlers("Client", !nameActive)) L(line);
+        if (rateNames is { } rateHandlers)
+            foreach (string line in RateScreens.BlazorHandlers("Client", rateHandlers)) L(line);
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             L();

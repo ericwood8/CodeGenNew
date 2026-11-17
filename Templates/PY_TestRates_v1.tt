@@ -1,0 +1,31 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestRates_v1.tt
+    // Generates: tests/conftest.py and tests/test_rates.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of what PY_Routes writes for RateTables. conftest.py is the one PY_TestApprovals writes (the application over a scratch database: a temporary copy of the SQLite file, or the URL
+    // in <PROJECT>_TEST_CONNECTION for PostgreSQL and MySQL; with none the tests are skipped with the reason). test_rates.py adds rates of a pair of currencies no other run uses through the route and
+    // removes them after the test, and plays the cases: currencies trimmed and upper case, two different ones, a rate above zero, one rate per pair and day (on create and on update), and the rate in
+    // force on a day (the latest one on or before it, none before the first).
+    // The words are RateWords, as in the other stacks' tests.
+    // With RateDocuments it also writes tests/test_rate_documents.py: a document is written with the rate in force on its date (1 for the base currency), keeps it while its currency and date stay, gets the
+    // amount times the rate as its converted amount, ignores a rate and converted amount sent on an update, and is refused (rate-needed) when its currency has no rate.
+    // Written only for a project with PythonTests=true and a rate table the tests can fill (RateTestPlan); not for SQL Server.
+    // Run them with pytest from the API's folder (requirements.txt lists pytest and httpx with PythonTests=true).
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (PythonRateDocumentTests.Applies(Database, Project))
+    {
+        if (!PythonRateTests.Applies(Database, Project))
+            Write("@@@FILE tests/conftest.py@@@\n" + PythonRateTests.Conftest(Project, Database.Dialect));
+        Write("@@@FILE tests/test_rate_documents.py@@@\n" + PythonRateDocumentTests.File(Database, Project));
+    }
+    if (PythonRateTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/conftest.py@@@\n" + PythonRateTests.Conftest(Project, Database.Dialect));
+        Write("@@@FILE tests/test_rates.py@@@\n" + PythonRateTests.File(Database, Project));
+    }
+#>

@@ -81,6 +81,7 @@ public static class ProjectGenerator
         PolymorphicPlan.ApplyChoices(database, project);
         SnapshotPlan.Remember(database, project);
         PartyPlan.Remember(database, project);
+        RatePlan.Remember(database, project);
         progress?.Invoke($"Read {database.Tables.Count} tables of [{options.Schema}].");
         var keptTables = LeaveOutTables(database, project, report);
 
@@ -98,7 +99,7 @@ public static class ProjectGenerator
         foreach (var table in database.Tables)
             if (ContentPlan.For(table, project) is { } content && !table.Indexes.Any(i => i.IsUnique && i.Columns.Count == 1 && i.Columns[0].EqualsIgnoreCase(content.Slug.DbName)))
                 report.Warnings.Add($"{table.DbTableName}.{content.Slug.DbName} is a content table's slug without a unique index: two requests at once can still store the same slug. Add a unique index on it; the server then refuses the second one.");
-        foreach (string missing in PartyPlan.MissingIndexes(database, project))
+        foreach (string missing in PartyPlan.MissingIndexes(database, project).Concat(RatePlan.MissingIndexes(database, project)))
             report.Warnings.Add(missing);
         bool desktop = options.Stacks.Any(s => s.EqualsIgnoreCase("WinUI3") || s.EqualsIgnoreCase("Uno"));
         if (desktop && project.Naming != NamingStyle.Pascal)

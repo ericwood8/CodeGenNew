@@ -37,7 +37,7 @@ public sealed class ApiTestPlan
             BodyColumns = BodyColumns.Append(effective.To).OrderBy(c => c.OrdinalPosition).ToList();
 
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
-        Changed = BodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0)
+        Changed = BodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && !RatePlan.IsCurrency(model, c, project) && !RateDocumentPlan.IsCurrency(model, c, project))
             ?? BodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
             ?? BodyColumns.FirstOrDefault(HasRoomToGrow);
         ChangedJson = Changed is null ? "" : JsonNames.Camel(Changed.Name);
@@ -160,6 +160,8 @@ public sealed class ApiTestPlan
             if (c.Name.EqualsIgnoreCase(effective.To.Name))
                 return "ApiFixture.SameDay()";
         }
+        if (RateDocumentPlan.IsCurrency(_model, c, _project) && RateDocumentPlan.For(_model, _project) is { } rateDocument)
+            return ApiSampleValues.Json(rateDocument.BaseCurrency);
         if (IsFreeText(c))
             return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c, _project, _model.TableName))}, {c.CharacterLength})";
         string parentRoute = ParentRoute(c, out string parentKey);

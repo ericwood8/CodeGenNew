@@ -1,0 +1,11 @@
+# the rate lookup and a rate document in every front end (the inverse is said on the lookup, the rate and converted amount are text on the form): python matrix_check.py Rates --settings-file Matrix/rates_screens.settings --frontend
+@schema=rate_documents
+@stack=api,blazor,uno,winui3,react,angular
+RateTables=ExchangeRate
+RateDocuments=SalesInvoice:CurrencyCode:FxRate:Total:BaseTotal:InvoiceDate
+BaseCurrency=USD
+RateInverse=true
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+DesktopTests=true

@@ -110,6 +110,17 @@
     var partyPlan = !scoped && !tenanted && !log ? PartyPlan.PartyOf(Model, Project) : null;
     var partyNames = partyPlan is null ? null : new RustPartyWriter.PartyNames(t.Struct, t.Table, t.SelectList, DialectInfo.For(Model.Dialect).Quote(partyPlan.PartyKey.DbName), RustTable.Of(partyPlan.Identifiers, Project).Table,
         DialectInfo.For(Model.Dialect).Quote(partyPlan.Link.DbName), DialectInfo.For(Model.Dialect).Quote(partyPlan.Scheme.DbName), DialectInfo.For(Model.Dialect).Quote(partyPlan.Value.DbName));
+    // RateTables: a rate keeps its currencies trimmed and upper case, a rate above zero and one row per pair and day, and GET rate answers the latest rate on or before a day
+    var ratePlan = !scoped && !tenanted && !log ? RatePlan.For(Model, Project) : null;
+    var rateNames = ratePlan is null ? null : new RustRateWriter.Names(t.Struct, t.Table, DialectInfo.For(Model.Dialect).Quote(ratePlan.Key.DbName), keyType, t.FieldOf(ratePlan.From).Name, DialectInfo.For(Model.Dialect).Quote(ratePlan.From.DbName),
+        t.FieldOf(ratePlan.To).Name, DialectInfo.For(Model.Dialect).Quote(ratePlan.To.DbName), t.FieldOf(ratePlan.Rate).Name, RustRateWriter.ZeroOf(t.FieldOf(ratePlan.Rate).BaseType), t.FieldOf(ratePlan.Day).Name,
+        DialectInfo.For(Model.Dialect).Quote(ratePlan.Day.DbName), t.FieldOf(ratePlan.Day).BaseType, t.SelectList, Project.RateInverse && RatePlan.InvertibleRate(ratePlan.Rate), RustRateWriter.OneOf(t.FieldOf(ratePlan.Rate).BaseType), t.Key.Name);
+    // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
+    var docPlan = !scoped && !tenanted && !log ? RateDocumentPlan.For(Model, Project) : null;
+    var docRateTable = docPlan is null ? null : RustTable.Of(docPlan.Rates.Table, Project);
+    var docNames = docPlan is null ? null : new RustRateDocumentWriter.Names(t.Struct, t.FieldOf(docPlan.Currency).Name, t.FieldOf(docPlan.Rate).Name, t.FieldOf(docPlan.Rate).BaseType, t.FieldOf(docPlan.Amount).Name,
+        t.FieldOf(docPlan.Amount).BaseType, t.FieldOf(docPlan.BaseAmount).Name, t.FieldOf(docPlan.BaseAmount).BaseType, docPlan.Day is null ? null : t.FieldOf(docPlan.Day).Name, docPlan.Day is null ? null : t.FieldOf(docPlan.Day).BaseType,
+        docRateTable!.FieldOf(docPlan.Rates.Day).BaseType, docRateTable.FieldOf(docPlan.Rates.Rate).Name, docRateTable.FieldOf(docPlan.Rates.Rate).BaseType, docPlan.BaseCurrency, docPlan.BaseAmount.Scale ?? RateDocumentPlan.DefaultScale);
     string DefaultOf(RustField f) => f.BaseType == "bool" ? (f.IsOption ? "Some(false)" : "false") : f.IsOption ? "None" : "String::new()";
     string keyRef = textKey ? "&" : "";
     // SoftDeleteTables: the repository hides flagged rows and flags instead of removing; GET deleted and POST {id}/restore (administrator only) are written for a table not limited to an owner or a tenant
@@ -131,14 +142,14 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
-    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null;
     Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -162,6 +173,8 @@
     if (userPlan is not null)
         Line("use crate::auth::{PROBLEM_COLUMN_NOT_YOURS, PROBLEM_DUPLICATE_VALUE, PROBLEM_LAST_ADMINISTRATOR};");
     Line($"use crate::models::{t.Module}::{t.Struct};");
+    if (docRateTable is not null)
+        Line($"use crate::routes::{docRateTable.Module}::find_rate;");
     Line($"use crate::repos::{t.Module} as repo;");
     Line(log ? "use crate::support::{ApiError, ApiResult, Pool};" : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : usesDb ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
     if (validate && !log)
@@ -228,6 +241,8 @@
         sb.Append(RustDefaultWriter.RouteLine(t.Route, writeLayer));
     if (partyNames is not null)
         sb.Append(RustPartyWriter.RouteLine(t.Route, readLayer));
+    if (rateNames is not null)
+        sb.Append(RustRateWriter.RouteLine(t.Route, readLayer));
     if (contentPlan is not null)
     {
         sb.Append(RustContentWriter.StatusRouteLines(t.Route, writeLayer));
@@ -259,6 +274,10 @@
         Line(RustPartyWriter.CheckCode(idNames));
     if (partyNames is not null)
         Line(RustPartyWriter.FindCode(partyNames));
+    if (rateNames is not null)
+        Line(RustRateWriter.Code(rateNames));
+    if (docNames is not null)
+        Line(RustRateDocumentWriter.Code(docNames));
     if (snapNames is not null)
         Line(RustSnapshotWriter.Code(snapNames));
     if (softRoutes)
@@ -455,7 +474,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || idNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -522,11 +541,15 @@
         Line(RustLinkWriter.CheckLine(t));
     if (idNames is not null)
         Line("    check_identifier(&pool, None, &mut row).await?;");
+    if (rateNames is not null)
+        Line("    check_rate(&pool, None, &mut row).await?;");
+    if (docNames is not null)
+        Line("    convert_currency(&pool, &mut row, None).await?;");
     if (snapNames is not null)
         Line("    fill_snapshot(&pool, &mut row, None).await?;");
     if (defNames is not null)
         Line("    let moves_default = settle_default(&pool, None, &mut row).await?;");
-    Line(idNames is not null ? RustPartyWriter.InsertLines : "    let row = repo::insert(&pool, &row).await?;");
+    Line(idNames is not null ? RustPartyWriter.InsertLines : rateNames is not null ? RustRateWriter.InsertLines : "    let row = repo::insert(&pool, &row).await?;");
     if (defNames is not null)
         Line($"    let row = if moves_default {{\n        move_default(&pool, &row).await?;\n        repo::get_by_id(&pool, {(textKey ? "&" : "")}row.{t.Key.Name}).await?.ok_or(ApiError::NotFound)?\n    }} else {{\n        row\n    }};");
     if (tenantTable)
@@ -576,7 +599,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || idNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -621,6 +644,13 @@
         Line(RustLinkWriter.CheckLine(t));
     if (idNames is not null)
         Line("    check_identifier(&pool, Some(id), &mut row).await?;");
+    if (rateNames is not null)
+        Line("    check_rate(&pool, Some(id), &mut row).await?;");
+    if (docNames is not null)
+    {
+        Line($"    let document_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+        Line("    convert_currency(&pool, &mut row, Some(&document_stored)).await?;");
+    }
     if (snapNames is not null)
     {
         Line($"    let snapshot_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
@@ -638,6 +668,8 @@
     }
     else if (idNames is not null)
         Line(RustPartyWriter.UpdateLines(idArg));
+    else if (rateNames is not null)
+        Line(RustRateWriter.UpdateLines(idArg));
     else
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");

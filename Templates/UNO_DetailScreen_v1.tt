@@ -343,7 +343,7 @@ public class <#= WinUI3Names.LookupOptionClass(table, "Detail", optionKey) #>
 public partial class <#= table #>DetailViewModel : ViewModelBase
 {
     private readonly ApiClients _api;
-    private readonly <#= type #>? _editing;<#= SnapshotPlan.IsListed(Model.TableName, Project) ? DesktopFormCode.SavedRowVisibilityMember : "" #>
+    private readonly <#= type #>? _editing;<#= SnapshotPlan.IsListed(Model.TableName, Project) || RateDocumentPlan.IsListed(Model.TableName, Project) ? DesktopFormCode.SavedRowVisibilityMember : "" #>
 
     public string DialogTitle => _editing is null ? "Add <#= title #>" : "Edit <#= title #>";
 <#

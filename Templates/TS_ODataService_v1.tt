@@ -42,7 +42,8 @@
         string stem = baseName.ToLowerInvariant();
         string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
         L($"@@@FILE {servicesFolder}/{AngularNames.ODataServiceFile(table.TableName)}.ts@@@");
-        bool partyBox = PartyScreens.HasBox(table, Project);   // PartyTables: the screen's Find by identifier box asks the table's REST route
+        bool rateBox = RateScreens.HasBox(table, Project);   // RateTables: the screen's rate lookup asks the table's REST route
+        bool partyBox = PartyScreens.HasBox(table, Project) || rateBox;   // PartyTables: the screen's Find by identifier box asks the table's REST route
         L("import { Injectable } from '@angular/core';");
         if (partyBox) L("import { Observable } from 'rxjs';");
         L("import { HttpClient } from '@angular/common/http';");
@@ -63,8 +64,10 @@
             L($"            lookup: {{ name: '{plan.LookupName}'" + (plan.LookupActive is null ? "" : $", active: '{plan.LookupActive}'") + " }");
         L($"        }}, 'api/{plan.Set}');");
         L("    }");
-        if (partyBox)
+        if (PartyScreens.HasBox(table, Project))
             foreach (string line in PartyScreens.AngularODataServiceLines(baseName)) L(line);
+        if (rateBox)
+            foreach (string line in RateScreens.AngularServiceLines(baseName, "restUrl")) L(line);
         L("}");
     }
     Write(o.ToString());

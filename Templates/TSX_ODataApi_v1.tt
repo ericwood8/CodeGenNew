@@ -43,21 +43,24 @@
         string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
         L($"@@@FILE {apiFolder}/{ReactNames.ODataApiFile(table.TableName)}.ts@@@");
         bool partyBox = PartyScreens.HasBox(table, Project);   // PartyTables: the page's Find by identifier box asks the table's REST route
-        if (partyBox) L("import { request } from './client';");
+        bool rateBox = RateScreens.HasBox(table, Project);   // RateTables: the page's rate lookup asks the table's REST route
+        bool restBox = partyBox || rateBox;
+        if (restBox) L("import { request } from './client';");
         L("import { createODataApi } from './odataClient';");
         L($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         L();
-        L($"export const {ReactNames.ODataApiVar(table.TableName)} = {(partyBox ? "{ ..." : "")}createODataApi<{baseName}{keyGeneric}>('{plan.Set}', {{");
+        L($"export const {ReactNames.ODataApiVar(table.TableName)} = {(restBox ? "{ ..." : "")}createODataApi<{baseName}{keyGeneric}>('{plan.Set}', {{");
         L($"  key: '{plan.KeyProperty}',");
         L($"  filters: [{string.Join(", ", plan.Filters.Select(f => $"{{ key: '{f.Key}', property: '{f.Property}' }}"))}],");
         L($"  sorts: [{string.Join(", ", plan.Sorts.Select(s => $"{{ name: '{s.Name}', path: '{s.Path}' }}"))}],");
         L($"  defaultOrder: [{Items(plan.DefaultOrder)}],");
         if (plan.LookupName is not null)
             L($"  lookup: {{ name: '{plan.LookupName}'" + (plan.LookupActive is null ? "" : $", active: '{plan.LookupActive}'") + " },");
-        if (partyBox)
+        if (restBox)
         {
             L($"}}, '/api/{plan.Set}'),");
-            L(PartyScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
+            if (partyBox) L(PartyScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
+            if (rateBox) L(RateScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
             L("};");
         }
         else

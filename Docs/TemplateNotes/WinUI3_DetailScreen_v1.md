@@ -7,7 +7,7 @@ Generates a WinUI3 ContentDialog for adding or editing ONE row of the table (the
 master/detail pair - see WinUI3_MasterScreen.tt, which opens this dialog, and WinUI3_DetailMasterScreen.tt,
 the same idea plus child grids for tables that hang off this one):
     Views/<TableName>DetailDialog.xaml         one field per column, Save/Cancel
-    Views/<TableName>DetailDialog.xaml.cs       wires PrimaryButtonClick to the ViewModel's SaveAsync
+    Views/<TableName>DetailDialog.xaml.cs       wires PrimaryButtonClick to the ViewModel's SaveAsync (a table of `RateDocuments` first converts the row: `RateScreens.WinUI3DocumentCheck`)
     ViewModels/<TableName>DetailViewModel.cs    loads drop-down options, validates, calls <TableName>Repo
 
 Column selection mirrors TS_Component.tt (its Angular add/edit form): every column except the primary

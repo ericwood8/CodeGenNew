@@ -101,8 +101,9 @@
     };
     string errorConstants = string.Join("\n", errors.Constants.Select(c => "    " + c));
     string errorArms = string.Join("\n", errors.Arms.Select(a => "            " + a));
-    // PartyTables: the unique index on the scheme and the value refuses a pair two requests saved at the same moment; the answer is the rule's own
+    // PartyTables: the unique index on the scheme and the value refuses a pair two requests saved at the same moment; the answer is the rule's own; RateTables: the same for the unique index on the pair and the day of a rate
     var pairMarks = PartyPlan.PairIndexes(Project).Select(i => PartyPlan.RefusalMark(i, dialect)).ToList();
+    var rateMarks = RatePlan.PairIndexes(Project).Select(i => PartyPlan.RefusalMark(i, dialect)).ToList();
     string corsNote = proxied.Count == 0 ? $"The {callers} calls this API from its own origin, which is allowed below."
         : $"The {frontEnd} dev server proxies /api here (see {proxyFile}), so CORS only matters if the front end is served elsewhere." + (stacks.Count > proxied.Count ? $" The {callers} calls this API directly, so its origin is allowed below." : "");
 #>
@@ -407,6 +408,9 @@ public static partial class ApiProblems
 <# if (pairMarks.Count > 0) { #>
             Constraint.Unique when RepeatsIdentifier(error) => Problem(StatusCodes.Status409Conflict, "<#= PartyWords.IdentifierTakenType #>", "<#= PartyWords.IdentifierTakenTitle #>", "<#= PartyWords.IdentifierTaken #>"),
 <# } #>
+<# if (rateMarks.Count > 0) { #>
+            Constraint.Unique when RepeatsRate(error) => Problem(StatusCodes.Status409Conflict, "<#= RateWords.TakenType #>", "<#= RateWords.TakenTitle #>", "<#= RateWords.Taken #>"),
+<# } #>
             Constraint.Unique => Problem(StatusCodes.Status409Conflict, "<#= ProblemTypes.DuplicateValue #>", "Duplicate value", $"A {table} with that value already exists."),
             Constraint.ForeignKey when removing => Problem(StatusCodes.Status409Conflict, "<#= ProblemTypes.InUse #>", "In use", $"The {table} cannot be removed because other rows use it."),
             Constraint.ForeignKey => Problem(StatusCodes.Status400BadRequest, "<#= ProblemTypes.RelatedRowMissing #>", "Related row missing", $"The {table} names a row that does not exist."),
@@ -437,6 +441,14 @@ public static partial class ApiProblems
     // the index that refused the save is that one, not another unique index of the table
     private static bool RepeatsIdentifier(DbUpdateException error) =>
         error.InnerException?.Message is { } message && IdentifierIndexes.Any(mark => message.Contains(mark, StringComparison.OrdinalIgnoreCase));
+
+<# } #>
+<# if (rateMarks.Count > 0) { #>
+    // how the database's message names the unique index on the pair and the day of a rate table (RateTables)
+    private static readonly string[] RateIndexes = [<#= string.Join(", ", rateMarks.Select(m => "\"" + m.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"")) #>];
+
+    private static bool RepeatsRate(DbUpdateException error) =>
+        error.InnerException?.Message is { } message && RateIndexes.Any(mark => message.Contains(mark, StringComparison.OrdinalIgnoreCase));
 
 <# } #>
     // the table of the row that was being saved, in words: "SalesInvoiceLine" is "sales invoice line"

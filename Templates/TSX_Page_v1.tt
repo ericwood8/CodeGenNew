@@ -283,6 +283,9 @@
         bool partyBox = !oneRow && PartyScreens.HasBox(Model, Project);   // the OData page asks the same REST route through its OData module
         if (partyBox)
             foreach (string line in PartyScreens.ReactHandlers(apiVar, setList, !nameActive)) T(line);
+        var rateNames = !oneRow && RateScreens.HasBox(Model, Project) ? RateScreens.Names(Model, Project) : null;   // RateTables: a lookup of the rate in force, over the REST route on the OData page too
+        if (rateNames is { } rateHandlers)
+            foreach (string line in RateScreens.ReactHandlers(apiVar, rateHandlers)) T(line);
         if (nameActive || oneRow)
         {
         }
@@ -815,6 +818,8 @@
         }
         if (partyBox)
             foreach (string line in PartyScreens.ReactBox()) T(line);
+        if (rateNames is not null)
+            foreach (string line in RateScreens.ReactBox()) T(line);
         if (chooseColumns)
         {
             T();
@@ -1262,7 +1267,7 @@
         else if (softScreen)
             S(textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';");
         else
-        S(textKey || partyBox || odata || nameActive || form.Guards.Count > 0 || columnTests || (!nameActive && GridTestRow.For(form, chosen) is not null) ? (textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';") : "import { render, screen } from '@testing-library/react';");
+        S(textKey || partyBox || rateNames is not null || odata || nameActive || form.Guards.Count > 0 || columnTests || (!nameActive && GridTestRow.For(form, chosen) is not null) ? (textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';") : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
@@ -1314,6 +1319,8 @@
         }
         if (partyBox)
             foreach (string line in PartyScreens.ReactBoxTests(apiVar, pageName, nameActive ? "getAll" : odata ? "queryPage" : "getPage")) S(line);
+        if (rateNames is { } rateTests)
+            foreach (string line in RateScreens.ReactBoxTests(apiVar, pageName, rateTests)) S(line);
         var testRow = nameActive ? null : GridTestRow.For(form, chosen);
         if (testRow is not null)
         {

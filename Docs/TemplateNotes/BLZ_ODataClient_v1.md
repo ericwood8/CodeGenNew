@@ -7,3 +7,5 @@ It is the OData twin of `BLZ_Client`: the same model (`Models/<table>`), the sam
 For a table with a `GuardedColumns` rule (`ApiAuth=true`) the class also has `GetGuardsAsync()`, which asks the table's REST route (`/guards`); the OData page shows a guarded column by its answer (see `BLZ_Page_v1.md`).
 
 `PartyTables`: the client of a party table also has `ByIdentifierAsync`, which asks the table's REST route for the page's Find by identifier box.
+
+`RateTables`: the client of a rate table also has `RateOnAsync`, which asks the table's REST route for the page's rate lookup.

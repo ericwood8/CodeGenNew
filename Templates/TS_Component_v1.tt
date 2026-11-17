@@ -224,6 +224,9 @@
         bool partyBox = !oneRow && PartyScreens.HasBox(Model, Project);   // the OData screen asks the same REST route through its OData service
         if (partyBox)
             foreach (string line in PartyScreens.AngularBox()) H(line);
+        var rateNames = !oneRow && RateScreens.HasBox(Model, Project) ? RateScreens.Names(Model, Project) : null;   // RateTables: a lookup of the rate in force, over the REST route on the OData screen too
+        if (rateNames is not null)
+            foreach (string line in RateScreens.AngularBox()) H(line);
         if (chooseColumns)
         {
             H();
@@ -747,7 +750,7 @@
             spec.Append("    expect(component.selectedRow).not.toBeNull();\n    expect(component.adding).toBe(true);\n  });\n});\n");
         }
         else
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + (partyBox ? "\n" + PartyScreens.AngularBoxTest() : "") + "\n});\n");
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + (partyBox ? "\n" + PartyScreens.AngularBoxTest() : "") + (rateNames is { } rateSpec ? "\n" + RateScreens.AngularBoxTest(rateSpec) : "") + "\n});\n");
         if (writeRoles.Count > 0 && !oneRow) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
         if (testRow is not null && !oneRow) spec.Append(testRow.AngularOpenedFromAnotherPage(title, cls));
 
@@ -1083,6 +1086,8 @@
         }
         if (partyBox)
             foreach (string line in PartyScreens.AngularHandlers(!nameActive)) T(line);
+        if (rateNames is { } rateHandlers)
+            foreach (string line in RateScreens.AngularHandlers(rateHandlers)) T(line);
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             // Make default moves the mark of the row's group to this row on the server; the grid is read again.

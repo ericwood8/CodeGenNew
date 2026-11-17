@@ -196,6 +196,8 @@ public static class ApiClientCode
         }
         if (PartyScreens.HasBox(table, project))
             foreach (string line in PartyScreens.CsClientLines(type)) L(line);
+        if (RateScreens.HasBox(table, project))
+            foreach (string line in RateScreens.CsClientLines(type, "{Url}")) L(line);
         if (!nameActive && TableShapes.For(table, project).DefaultRow is not null)
         {
             L();

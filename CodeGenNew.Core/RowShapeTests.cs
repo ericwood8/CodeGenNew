@@ -15,7 +15,7 @@ public static class RowShapeTests
         var asset = TableShapes.For(table, project).Asset;
         var defaultRow = TableShapes.For(table, project).DefaultRow;
         var identifiers = PartyPlan.IdentifiersOf(table, project);
-        if (tree is null && soft is null && effective is null && content is null && asset is null && defaultRow is null && identifiers is null)
+        if (tree is null && soft is null && effective is null && content is null && asset is null && defaultRow is null && identifiers is null && !RateApiTests.Applies(table, project))
             return "";
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
@@ -553,6 +553,7 @@ public static class RowShapeTests
             L("        Assert.AreEqual(0, none.Count, \"once the identifier is gone the search finds nothing\");");
             L("    }");
         }
+        o.Append(RateApiTests.Methods(plan, table, project));
         return o.ToString();
     }
 }

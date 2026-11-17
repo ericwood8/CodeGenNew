@@ -20,3 +20,5 @@ bUnit tests of the Blazor pages, in a test project beside the Blazor app. `Blazo
 - **Not done:** a parent that is searched as the person types has no filter row test. A project made before needs `--replace` of the Tests essentials for the new `FakeApi`.
 
 `PartyTables`: the page tests of a party table include a test of the Find by identifier box (a value typed with spaces is asked for trimmed, an empty box reads the list again).
+
+`RateTables`: the page tests of a rate table include a test of the rate lookup (the currencies are asked for trimmed, the day goes along and the rate found is shown).

@@ -236,6 +236,8 @@
         }
         if (PartyScreens.HasBox(Model, Project))
             foreach (string line in PartyScreens.AngularServiceLines(baseName)) L(line);
+        if (RateScreens.HasBox(Model, Project))
+            foreach (string line in RateScreens.AngularServiceLines(baseName, "apiUrl")) L(line);
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             L();

@@ -10,6 +10,7 @@ the generator and the servers of the run, never written to a file. With --tests 
 Prints the failed checks of each stack and one line with the result."""
 import argparse
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -17,6 +18,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+import httpx
 
 from common import cli_dir, cli_exe, home, run
 from live_inbound_run import KINDS, PASSWORDS, STACKS, connection_string, url
@@ -46,9 +49,14 @@ def serve(args, stack, work, password):
     return [sys.executable, CARGO, str(folder), "run"], folder, env
 
 
-def play(args, stack, work, password):
-    """Starts one API, plays the two checks and stops it. True when a check failed."""
+def play(args, stack, work, password, checks=None, sign_in=None):
+    """Starts one API, plays the checks (the party checks, or the (script, arguments) pairs given) and stops it. True when a check failed.
+    sign_in is (user name, password, a path that needs a sign-in) of an administrator to add with POST /api/auth/first-person (the user table must be empty): a request with no sign-in must then be refused (401) and the checks run signed in."""
     command, folder, env = serve(args, stack, work, password)
+    checked = dict(os.environ)
+    if sign_in:
+        env["Jwt__Key"] = secrets.token_urlsafe(48)
+        checked.update(API_USER=sign_in[0], API_PASSWORD=sign_in[1])
     log = work / f"serve_{stack}.log"
     failed = False
     with open(log, "w") as out:
@@ -66,8 +74,16 @@ def play(args, stack, work, password):
                 return True
             time.sleep(2)
             base = f"http://localhost:{args.port}"
-            for script, extra in (("party_check.py", []), ("party_race_check.py", [str(args.requests), str(args.rounds)])):
-                result = subprocess.run([sys.executable, str(TOOLS / script), base, *extra], capture_output=True, text=True)
+            if sign_in:
+                signed_out = httpx.get(base + sign_in[2], timeout=30)
+                print(stack, "no sign-in:", signed_out.status_code, "ok" if signed_out.status_code == 401 else "FAIL")
+                failed = signed_out.status_code != 401
+                first = httpx.post(base + "/api/auth/first-person", json={"userName": sign_in[0], "password": sign_in[1]}, timeout=30)
+                print(stack, "first person:", first.status_code, "ok" if first.is_success else "FAIL")
+                if not first.is_success:
+                    return True
+            for script, extra in checks or (("party_check.py", []), ("party_race_check.py", [str(args.requests), str(args.rounds)])):
+                result = subprocess.run([sys.executable, str(TOOLS / script), base, *extra], capture_output=True, text=True, env=checked)
                 lines = result.stdout.splitlines()
                 print(stack, script, "exit", result.returncode, "-", sum(1 for l in lines if l.startswith("ok ")), "checks ok")
                 print("\n".join(l[:400] for l in lines if l.startswith("FAIL")), end="")
@@ -79,23 +95,23 @@ def play(args, stack, work, password):
     return failed
 
 
-def tests(args, stack, work, name, password):
-    """Runs the generated tests of the party tables for one stack. True when they failed."""
+def tests(args, stack, work, name, password, api_filter="FullyQualifiedName~PartyIdentifierApiTests|FullyQualifiedName~PartyApiTests", python_file="tests/test_parties.py", rust_filter="party", label="party"):
+    """Runs the generated tests of the party tables (or the filters, file and name given) for one stack. True when they failed."""
     env = dict(os.environ)
     variable = "".join(c if c.isalnum() else "_" for c in name.upper()) + "_TEST_CONNECTION"
     if stack == "api":
         env[variable] = connection_string(args.kind, args.host, args.db, args.user, password)
-        folder, command = next(work.glob("*.Api.Tests")), ["dotnet", "test", "--filter", "FullyQualifiedName~PartyIdentifierApiTests|FullyQualifiedName~PartyApiTests"]
+        folder, command = next(work.glob("*.Api.Tests")), ["dotnet", "test", "--filter", api_filter]
     elif stack == "python":
         if args.kind == "mssql":
-            print("python tests: the generated party tests are not written for SQL Server")
+            print(f"python tests: the generated {label} tests are not written for SQL Server")
             return False
         env[variable] = url(args.kind, args.host, args.db, args.user, password)
-        folder, command = next(work.glob("*.Python")), [args.python, "-m", "pytest", "-q", "tests/test_parties.py"]
+        folder, command = next(work.glob("*.Python")), [args.python, "-m", "pytest", "-q", *python_file.split()]
     else:
         env[variable] = url(args.kind, args.host, args.db, args.user, password, "rust")
         folder = next(work.glob("*.Rust"))
-        command = [sys.executable, CARGO, str(folder), "test", "--test", "api", "party"]
+        command = [sys.executable, CARGO, str(folder), "test", "--test", "api", rust_filter]
     result = subprocess.run(command, cwd=folder, env=env, capture_output=True, text=True)
     lines = (result.stdout + result.stderr).splitlines()
     shown = [l for l in lines if l.startswith(("Passed!", "Failed!", "  Failed", "test result", "FAILED")) or " passed" in l or " failed" in l]

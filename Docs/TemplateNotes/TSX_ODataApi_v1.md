@@ -5,3 +5,5 @@
 It is the OData twin of `TSX_Api`: the same model (`models/<table>`), the same row JSON and the same method names (`getAll`, `getLookup`, `getById`, `create`, `update`, `delete`, `clone`, `getPage`), another route. A name/active table gets one too (`getAll` follows the next links; the page narrows the list itself). The page over it is `TSX_ODataPage`.
 
 `PartyTables`: the module of a party table also has `byIdentifier`, which asks the table's REST route (`/api/<set>/by-identifier`) for the page's Find by identifier box.
+
+`RateTables`: the module of a rate table also has `rateOn`, which asks the table's REST route (`/api/<set>/rate`) for the page's rate lookup.

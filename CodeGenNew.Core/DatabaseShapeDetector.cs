@@ -20,7 +20,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project) })
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
         }
@@ -74,6 +74,31 @@ public static class DatabaseShapeDetector
         string? problem = PartyPlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"PartyTables: {parents[0]}", StringComparison.OrdinalIgnoreCase));
         string why = $"{scheme.Name} and {value.Name} identify a row of {parents[0]}";
         return new ShapeSuggestion("Party identifiers", "PartyTables", item, problem is null, problem is null ? why : $"{why}, but {problem}");
+    }
+
+    private static readonly string[] RateFromNames = [RatePlan.DefaultFrom, "FromCurrencyCode", "BaseCurrency", "BaseCurrencyCode", "SourceCurrency"];
+    private static readonly string[] RateToNames = [RatePlan.DefaultTo, "ToCurrencyCode", "QuoteCurrency", "QuoteCurrencyCode", "TargetCurrency"];
+    private static readonly string[] RateNames = [RatePlan.DefaultRate, "ExchangeRate", "FxRate", "ConversionRate"];
+    private static readonly string[] RateDayNames = [RatePlan.DefaultDay, "ExchangeDate", "EffectiveDate", "AsOfDate", "OnDate", "ValidFrom"];
+
+    /// <summary> A table of exchange rates: two currency columns, a rate and a day. </summary>
+    private static ShapeSuggestion? Rate(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (RatePlan.IsListed(table.TableName, project))
+            return null;
+        ColumnModel? Find(string[] names, Func<ColumnModel, bool> kind) => table.Columns.FirstOrDefault(c => !c.IsNullable && kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
+        var from = Find(RateFromNames, c => c.IsStringColumn);
+        var to = Find(RateToNames, c => c.IsStringColumn);
+        var rate = Find(RateNames, c => c.IsNumericColumn);
+        var day = Find(RateDayNames, c => c.IsDateColumn);
+        if (from is null || to is null || rate is null || day is null)
+            return null;
+        bool plain = from.Name.EqualsIgnoreCase(RatePlan.DefaultFrom) && to.Name.EqualsIgnoreCase(RatePlan.DefaultTo) && rate.Name.EqualsIgnoreCase(RatePlan.DefaultRate) && day.Name.EqualsIgnoreCase(RatePlan.DefaultDay);
+        string item = plain ? table.TableName : $"{table.TableName}:{from.Name}:{to.Name}:{rate.Name}:{day.Name}";
+        var listed = project.WithOverrides([new("RateTables", string.Join(",", project.RateTables.Append(item)))]);
+        string? problem = RatePlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"RateTables: {table.TableName}", StringComparison.OrdinalIgnoreCase));
+        string why = $"{from.Name} and {to.Name} with a {rate.Name} from {day.Name} look like exchange rates";
+        return new ShapeSuggestion("Exchange rates", "RateTables", item, problem is null, problem is null ? why : $"{why}, but {problem}");
     }
 
     private static ShapeSuggestion? Snapshot(TableModel table, DatabaseModel database, ProjectSettings project)
