@@ -82,3 +82,5 @@ The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAhead
 - **Only what changed is checked.** The form is `noValidate`; `handleSubmit` asks `firstBroken(form, storedValues.current)` (`storedValues.ts`) for the first field that is invalid and no longer shows the value the row opened with, shows it with the browser's message (a tabbed form opens its tab first) and sends nothing; otherwise it submits. `storedValues` is a snapshot taken when the row opens (`{}` on a new row, where every field counts). A stored value that breaks a rule (an old email without an @) in a field left alone does not stop the save.
 
 `PartyTables`: the page of a party table has the Find by identifier box and a generated test of it (a value typed with spaces is asked for trimmed, an empty box reads the list again instead of asking).
+
+A whole-number or text key the person gives a new row that is also a foreign key to another table (a customer that is a row of the party table) is a drop-down of the parent's rows on the form, not a number box: it can be chosen for a new row and is disabled once the row is saved (`FormColumn.IsKeyLookupField`).

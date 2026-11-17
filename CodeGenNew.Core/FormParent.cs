@@ -13,8 +13,11 @@ public sealed class FormParent
         UsesLookupEndpoint = foreignKey.ReferencedColumns.Count == 1 && !project.NoApiFor(foreignKey.ReferencedTable, foreignKey.ReferencedLookupShape);
         TypeAhead = UsesLookupEndpoint && project.TypeAheadFor(foreignKey.ReferencedTable, foreignKey.ReferencedLookupShape);
         BaseName = ScreenNames.BaseName(foreignKey.ReferencedTable);
+        _rowVariable = TemplateHelpers.LowerFirst(ScreenNames.BaseName(form.Table.TableName));
         ModelFile = project.ModelFileOf(foreignKey.ReferencedTable, Stem);
     }
+
+    private readonly string _rowVariable;
 
     public ForeignKeyModel ForeignKey { get; }
 
@@ -33,8 +36,9 @@ public sealed class FormParent
     /// <summary> The name of the list of the parent's rows a web screen holds (<c>timeSheets</c>). </summary>
     public string List => Variable.Pluralize();
 
-    /// <summary> The name of the method that turns a key into the parent's display text (<c>timeSheetName</c>). </summary>
-    public string NameMethod => Variable + "Name";
+    /// <summary> The name of the method that turns a key into the parent's display text (<c>timeSheetName</c>). A table called <c>PartyName</c> beside a parent <c>Party</c> would name it like its own row
+    /// (<c>partyName</c>), so the method is <c>partyDisplayName</c> there. </summary>
+    public string NameMethod => _rowVariable == Variable + "Name" ? Variable + "DisplayName" : Variable + "Name";
 
     /// <summary> The parent is the table being edited (a manager is an employee). </summary>
     public bool IsSelf { get; }

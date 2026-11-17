@@ -21,10 +21,23 @@ public static class PartyPlan
     public const string DefaultScheme = "Scheme";
     public const string DefaultValue = "Value";
 
-    public sealed record Entry(string Party, string? Identifiers, string Scheme, string Value);
+    public sealed record Entry(string Party, string? Identifiers, string Scheme, string Value, IReadOnlyList<(string Role, string Table)> Children);
+
+    /// <summary> The kinds of child table an entry can name after the identifiers (<c>names=PartyName</c>): the names and the contact methods of a party are default-row tables (one primary name per type, one
+    /// preferred contact method per type), the tax registrations are effective-dated rows (a period per country), and the roles are the junction table of the party and its roles. </summary>
+    public static readonly string[] ChildRoles = ["names", "contacts", "taxes", "roles"];
 
     public static IReadOnlyList<Entry> Entries(ProjectSettings project) =>
-        SettingParts.Items(project.PartyTables).Select(p => new Entry(p[0], SettingParts.At(p, 1), SettingParts.At(p, 2) ?? DefaultScheme, SettingParts.At(p, 3) ?? DefaultValue)).ToList();
+        SettingParts.Items(project.PartyTables).Select(p =>
+        {
+            var children = p.Skip(1).Where(part => part.Contains('=')).Select(part => (Role: part[..part.IndexOf('=')].Trim().ToLowerInvariant(), Table: part[(part.IndexOf('=') + 1)..].Trim())).ToList();
+            var positional = p.Where(part => !part.Contains('=')).ToArray();
+            return new Entry(positional[0], SettingParts.At(positional, 1), SettingParts.At(positional, 2) ?? DefaultScheme, SettingParts.At(positional, 3) ?? DefaultValue, children);
+        }).ToList();
+
+    /// <summary> The tables the entries name as children of the given roles, as bare table names: <c>DefaultRowTables</c> and <c>EffectiveDatedTables</c> read their columns from the table. </summary>
+    public static IEnumerable<string> ChildTables(ProjectSettings project, params string[] roles) =>
+        Entries(project).SelectMany(e => e.Children).Where(c => roles.Contains(c.Role) && c.Table.Length > 0).Select(c => c.Table).Distinct(StringComparer.OrdinalIgnoreCase);
 
     public static bool IsPartyTable(string table, ProjectSettings project) => Entries(project).Any(e => e.Party.EqualsIgnoreCase(table));
 
@@ -75,9 +88,42 @@ public static class PartyPlan
             if (problem is not null)
                 problems.Add(problem);
         }
+        foreach (var entry in Entries(project))
+            problems.AddRange(ChildProblems(entry, database, project));
         foreach (var repeated in Entries(project).Where(e => e.Identifiers is not null).GroupBy(e => e.Identifiers!, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
             problems.Add($"PartyTables: {repeated.Key} is the identifier table of more than one party table.");
         return problems;
+    }
+
+    private static IEnumerable<string> ChildProblems(Entry entry, DatabaseModel database, ProjectSettings project)
+    {
+        string prefix = $"PartyTables: {entry.Party}";
+        var party = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(entry.Party));
+        foreach (var (role, name) in entry.Children)
+        {
+            if (!ChildRoles.Contains(role))
+            {
+                yield return $"{prefix}: {role}={name} is not a kind of child table ({string.Join(", ", ChildRoles)}).";
+                continue;
+            }
+            var table = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(name));
+            if (table is null)
+            {
+                yield return $"{prefix}: {role}={name}: {name} is not a table of the database.";
+                continue;
+            }
+            if (party is null)
+                continue;
+            int links = table.ForeignKeys.Count(f => f.ReferencedTable.EqualsIgnoreCase(party.TableName) && f.ReferencingColumns.Count == 1);
+            if (links != 1)
+                yield return $"{prefix}: {role}={name}: {name} needs exactly one single-column foreign key to {party.TableName} (it has {links}).";
+            else if (role == "roles" && !table.IsJunctionTable)
+                yield return $"{prefix}: roles={name}: {name} is not a junction table (its key is the two foreign keys).";
+            else if (role is "names" or "contacts" && DefaultRowPlan.Problem(table, project) is { } defaultProblem)
+                yield return defaultProblem;
+            else if (role == "taxes" && EffectiveDatePlan.Problem(table, project) is { } periodProblem)
+                yield return periodProblem;
+        }
     }
 
     /// <summary> One sentence for each identifier table with no unique index on exactly the scheme and the value: the rule is a read and then a save, so only the database stops two saves at the same moment. </summary>

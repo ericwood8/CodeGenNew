@@ -376,7 +376,7 @@ export async function namesOf<K extends number | string = number>(find: LookupFi
  * A box that finds the row of a big parent by what is typed in it: after a short pause it asks the parent's lookup list for the rows whose text contains it and lists a few; picking one sets the key.
  * Typing clears the key, so text that was not picked leaves nothing chosen, and leaving the box without a pick empties it.
  */
-export function TypeAheadBox<K extends number | string = number>({ id, label, placeholder, value, names, find, onChange, required }: {
+export function TypeAheadBox<K extends number | string = number>({ id, label, placeholder, value, names, find, onChange, required, disabled }: {
   id?: string;
   label: string;
   placeholder?: string;
@@ -385,6 +385,7 @@ export function TypeAheadBox<K extends number | string = number>({ id, label, pl
   find: LookupFinder<K>;
   onChange: (id: K | null) => void;
   required?: boolean;
+  disabled?: boolean;
 }) {
   const [typed, setTyped] = useState<string | null>(null);
   const [options, setOptions] = useState<LookupRow<K>[]>([]);
@@ -448,6 +449,7 @@ export function TypeAheadBox<K extends number | string = number>({ id, label, pl
         autoComplete="off"
         placeholder={placeholder}
         required={required}
+        disabled={disabled}
         value={typed ?? names.name(value)}
         onChange={(event) => type(event.target.value)}
         onBlur={leave}

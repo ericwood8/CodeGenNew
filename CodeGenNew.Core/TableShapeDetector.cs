@@ -17,6 +17,7 @@ public static class TableShapeDetector
     private static readonly string[] SoftDeleteStamps = ["DeletedOn", "DeletedAt", "DeletedDate"];
     private static readonly string[] DefaultFlags = ["IsDefault", "Default", "IsPrimary", "Primary", "IsMain", "IsPreferred", "IsCurrent"];
     private static readonly string[] GroupKindSuffixes = ["Type", "Kind"];
+    private static readonly string[] PeriodScopeNames = ["Country", "CountryCode", "Region", "Jurisdiction"];
     private static readonly (string From, string To)[] PeriodPairs =
         [("ValidFrom", "ValidTo"), ("EffectiveFrom", "EffectiveTo"), ("StartDate", "EndDate"), ("FromDate", "ToDate"), ("StartsOn", "EndsOn"), ("StartOn", "EndOn"), ("StartDateTime", "EndDateTime")];
     private static readonly string[] QueueStatusNames = ["Status", "State"];
@@ -72,10 +73,8 @@ public static class TableShapeDetector
         return Judge("Soft delete", "SoftDeleteTables", item, $"{flag.Name} marks a row as deleted", table, project, project.SoftDeleteTables, SoftDeletePlan.Problem);
     }
 
-    private static ShapeSuggestion? DefaultRow(TableModel table, ProjectSettings project, ColumnModel key)
+    private static (ColumnModel Flag, List<string> Parents, string Kind)? DefaultRowParts(TableModel table, ColumnModel key)
     {
-        if (DefaultRowPlan.IsListed(table.TableName, project))
-            return null;
         var flag = table.Columns.FirstOrDefault(c => c.IsBooleanColumn && DefaultFlags.Any(n => c.Name.EqualsIgnoreCase(n)));
         if (flag is null)
             return null;
@@ -85,12 +84,52 @@ public static class TableShapeDetector
             return null;
         string kind = table.Columns.Where(c => !c.IsPrimaryKey && (c.IsStringColumn || c.IsIntegerColumn) && !parents.Any(p => p.EqualsIgnoreCase(c.Name))
             && GroupKindSuffixes.Any(s => c.Name.EndsWithIgnoreCase(s))).Select(c => c.Name).FirstOrDefault() is { } k ? "+" + k : "";
+        return (flag, parents, kind);
+    }
+
+    /// <summary> The yes/no column and the group of a table's default row, found from its columns when the setting names only the table: the column is a default flag (<c>IsDefault</c>, <c>IsPrimary</c>,
+    /// <c>IsPreferred</c>) and the group is the one parent and the type column beside it. Null when there is no flag or the group would be a guess (several parents). </summary>
+    public static (string Flag, string Groups)? DefaultRowColumns(TableModel table) =>
+        table.PrimaryKeyColumns is [{ } key] && DefaultRowParts(table, key) is { Parents.Count: 1 } found ? (found.Flag.Name, found.Parents[0] + found.Kind) : null;
+
+    private static ShapeSuggestion? DefaultRow(TableModel table, ProjectSettings project, ColumnModel key)
+    {
+        if (DefaultRowPlan.IsListed(table.TableName, project))
+            return null;
+        if (DefaultRowParts(table, key) is not { } found)
+            return null;
+        var (flag, parents, kind) = found;
         string item = $"{table.TableName}:{flag.Name}:{parents[0]}{kind}";
         if (parents.Count > 1)
             return new ShapeSuggestion("Default row", "DefaultRowTables", item, false, $"{flag.Name} marks one row per group, but {string.Join(" and ", parents)} could each be the group; name the group columns");
         bool oneAllowed = table.PartialIndexes.Any(i => i.IsUnique && i.Filter.Contains(flag.DbName, StringComparison.OrdinalIgnoreCase));
         string why = $"{flag.Name} marks one row per {parents[0]}" + (oneAllowed ? ", and a unique filtered index allows only one" : "");
         return Judge("Default row", "DefaultRowTables", item, why, table, project, project.DefaultRowTables, DefaultRowPlan.Problem);
+    }
+
+    private static (List<(ColumnModel First, ColumnModel Last)> Ordered, IEnumerable<(ColumnModel First, ColumnModel Last)> Pairs) PeriodsOf(TableModel table)
+    {
+        var ordered = table.CheckConstraints.Select(k => CheckConstraintParser.DateOrder(k.Definition)).OfType<(string Start, string End)>()
+            .Select(o => (First: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.DbName.EqualsIgnoreCase(o.Start)), Last: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.DbName.EqualsIgnoreCase(o.End))))
+            .Where(p => p.First is not null && p.Last is not null).Select(p => (First: p.First!, Last: p.Last!)).ToList();
+        var pairs = ordered.Concat(PeriodPairs.Select(p => (First: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.Name.EqualsIgnoreCase(p.Item1)),
+            Last: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.Name.EqualsIgnoreCase(p.Item2)))).Where(p => p.First is not null && p.Last is not null).Select(p => (First: p.First!, Last: p.Last!)));
+        return (ordered, pairs);
+    }
+
+    private static string ScopeOf(TableModel table, List<string> parents) =>
+        parents.Count == 1 ? table.Columns.Where(c => c.IsStringColumn && !c.IsPrimaryKey && PeriodScopeNames.Any(n => c.Name.EqualsIgnoreCase(n))).Select(c => "+" + c.Name).FirstOrDefault() ?? "" : "";
+
+    /// <summary> The first and last day columns and the group of a table's periods, found from its columns when the setting names only the table: the pair is a check-constrained or conventionally named period
+    /// (<c>ValidFrom</c> and <c>ValidTo</c>), and the group is the one parent and the country, region or jurisdiction beside it. Null when there is no period or no single parent. </summary>
+    public static (string From, string To, string Groups)? EffectiveColumns(TableModel table)
+    {
+        var parents = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1).Select(f => f.ReferencingColumns[0]).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (parents.Count != 1)
+            return null;
+        foreach (var (first, last) in PeriodsOf(table).Pairs)
+            return (first.Name, last.Name, parents[0] + ScopeOf(table, parents));
+        return null;
     }
 
     private static ShapeSuggestion? Effective(TableModel table, ProjectSettings project)
@@ -100,16 +139,13 @@ public static class TableShapeDetector
         var parents = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1).Select(f => f.ReferencingColumns[0]).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (parents.Count == 0)
             return null;
-        var ordered = table.CheckConstraints.Select(k => CheckConstraintParser.DateOrder(k.Definition)).OfType<(string Start, string End)>()
-            .Select(o => (First: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.DbName.EqualsIgnoreCase(o.Start)), Last: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.DbName.EqualsIgnoreCase(o.End))))
-            .Where(p => p.First is not null && p.Last is not null).Select(p => (First: p.First!, Last: p.Last!)).ToList();
-        var pairs = ordered.Concat(PeriodPairs.Select(p => (First: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.Name.EqualsIgnoreCase(p.Item1)),
-            Last: table.Columns.FirstOrDefault(c => c.IsDateColumn && c.Name.EqualsIgnoreCase(p.Item2)))).Where(p => p.First is not null && p.Last is not null).Select(p => (First: p.First!, Last: p.Last!)));
+        var (ordered, pairs) = PeriodsOf(table);
         foreach (var (first, last) in pairs)
         {
             bool checkedByDatabase = ordered.Any(o => o.First == first && o.Last == last);
-            string item = $"{table.TableName}:{first.Name}:{last.Name}" + (parents.Count == 1 ? ":" + parents[0] : "");
-            string why = $"{first.Name} to {last.Name} is a period of {string.Join(" and ", parents)}" + (checkedByDatabase ? $", and a check constraint keeps {first.Name} from being after {last.Name}" : "");
+            string scope = ScopeOf(table, parents);
+            string item = $"{table.TableName}:{first.Name}:{last.Name}" + (parents.Count == 1 ? ":" + parents[0] + scope : "");
+            string why = $"{first.Name} to {last.Name} is a period of {string.Join(" and ", parents)}" + (scope.Length > 0 ? $" and {scope[1..]}" : "") + (checkedByDatabase ? $", and a check constraint keeps {first.Name} from being after {last.Name}" : "");
             return Judge("Effective dated rows", "EffectiveDatedTables", item, why, table, project, project.EffectiveDatedTables, EffectiveDatePlan.Problem);
         }
         return null;

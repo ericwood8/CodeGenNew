@@ -23,6 +23,7 @@ public sealed class FormColumn
     // The editor a column gets on the form. The order is the rule every stack follows: the first that fits wins.
     private FieldKind Editor => _editor ??=
         Column.IsSystemStampColumn || _form.IsGuardStamp(Column) || ContentScreens.IsStateColumn(_form.Table, _project, Column) || DefaultRowScreens.IsFlagColumn(_form.Table, _project, Column) || SnapshotPlan.IsOwnedColumn(_form.Table, _project, Column) || AssetScreens.IsUploadColumn(_form.Table, _project, Column) ? FieldKind.SystemStamp
+        : _form.TypedKey && Column.IsPrimaryKey && _form.LookupOf(Column) is not null ? FieldKind.Lookup
         : _form.TypedKey && Column.IsPrimaryKey ? (_form.TextKey ? FieldKind.TypedKey : FieldKind.TypedNumberKey)
         : _form.LookupOf(Column) is not null ? FieldKind.Lookup
         : Column.HasChoices ? FieldKind.Choices
@@ -54,6 +55,8 @@ public sealed class FormColumn
     public bool IsTypedNumberKeyField => Editor == FieldKind.TypedNumberKey;
     /// <summary> A foreign key: a drop-down of the parent's rows. </summary>
     public bool IsLookupField => Editor == FieldKind.Lookup;
+    /// <summary> The key a person gives a new row is also a foreign key (a customer is a row of the party table): the drop-down is for a new row and cannot be changed afterwards. </summary>
+    public bool IsKeyLookupField => IsLookupField && _form.TypedKey && Column.IsPrimaryKey;
     /// <summary> A column whose values the database lists: a drop-down of them. </summary>
     public bool IsChoicesField => Editor == FieldKind.Choices;
     public bool IsBooleanField => Editor == FieldKind.Boolean;

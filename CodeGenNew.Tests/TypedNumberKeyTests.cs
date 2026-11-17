@@ -39,6 +39,29 @@ public class TypedNumberKeyTests
     }
 
     [TestMethod]
+    public void A_typed_key_that_is_also_a_foreign_key_is_a_drop_down_of_the_parent_and_not_a_number_box()
+    {
+        var customer = Sample.Table("Customer",
+            [Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, ordinal: 1), Sample.Column("CreditLimit", SqlDbType.Int, ordinal: 2)],
+            [new ForeignKeyModel { ConstraintName = "FK_Customer_Party", ReferencingColumns = ["CustomerId"], ReferencedSchema = "dbo", ReferencedTable = "Party", ReferencedColumns = ["PartyId"], ReferencesPrimaryKey = true, ReferencedDisplayColumns = ["LegalName"] }]);
+        var field = FormModel.For(customer, Project()).Field(customer.Columns[0]);
+        Assert.IsTrue(field.IsKeyLookupField);
+        Assert.IsTrue(field.IsLookupField);
+        Assert.IsFalse(field.IsTypedNumberKeyField);
+        Assert.IsFalse(FormModel.For(Ticket(), Project()).Field(Ticket().Columns[0]).IsKeyLookupField, "a key that is no foreign key stays a number box");
+    }
+
+    [TestMethod]
+    public void A_table_named_like_its_parent_with_a_name_does_not_name_the_display_method_like_its_own_row()
+    {
+        ForeignKeyModel Link(string table) => new() { ConstraintName = "FK_Link", ReferencingColumns = ["PartyId"], ReferencedSchema = "dbo", ReferencedTable = table, ReferencedColumns = ["PartyId"], ReferencesPrimaryKey = true, ReferencedDisplayColumns = ["LegalName"] };
+        TableModel Child(string name) => Sample.Table(name, [Sample.Column(name + "Id", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("PartyId", SqlDbType.Int, ordinal: 2),
+            Sample.Column("Label", SqlDbType.VarChar, characters: 20, ordinal: 3)], [Link("Party")]);
+        Assert.AreEqual("partyName", FormModel.For(Child("PartyIdentifier"), Project()).Parents.Single().NameMethod);
+        Assert.AreEqual("partyDisplayName", FormModel.For(Child("PartyName"), Project()).Parents.Single().NameMethod, "a PartyName row is the variable partyName");
+    }
+
+    [TestMethod]
     public void A_text_key_is_still_typed_and_still_text()
     {
         var country = Sample.Table("Country", [Sample.Column("Alpha3Code", SqlDbType.Char, primaryKey: true, characters: 3, ordinal: 1), Sample.Column("Name", SqlDbType.NVarChar, characters: 40, ordinal: 2)]);

@@ -134,7 +134,8 @@ public class RowShapePlanTests
         Assert.Contains("depth limit x must be a whole number", Problems(new() { ["TreeTables"] = "Category:ParentCategoryId:x" }));
         Assert.Contains("needs a yes/no column IsDeleted", Problems(new() { ["SoftDeleteTables"] = "Item" }));
         Assert.Contains("is in SingleRowTables", Problems(new() { ["SingleRowTables"] = "Price", ["EffectiveDatedTables"] = "Price:ValidFrom:ValidTo" }));
-        Assert.Contains("needs the first and last day columns", Problems(new() { ["EffectiveDatedTables"] = "Price" }));
+        Assert.Contains("needs the first and last day columns", Problems(new() { ["EffectiveDatedTables"] = "Item" }));
+        Assert.IsEmpty(Problems(new() { ["EffectiveDatedTables"] = "Price" }), "a bare table name finds its period from the columns");
         Assert.Contains("same type", Problems(new() { ["EffectiveDatedTables"] = "Price:ValidFrom:Currency" }));
         Assert.Contains("Missing is not a table", Problems(new() { ["SoftDeleteTables"] = "Missing" }));
         var sqlServer = new DatabaseModel { DatabaseName = "Shop", SchemaName = "dbo", Dialect = SqlDialect.SqlServer, Tables = database.Tables };

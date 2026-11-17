@@ -182,6 +182,8 @@ public static class EffectiveDatePlan
             problem = $"{prefix} needs a single whole-number key.";
             return null;
         }
+        if (entry.From is null && entry.To is null && TableShapeDetector.EffectiveColumns(table) is { } period)
+            entry = (entry.Table, period.From, period.To, entry.Groups ?? period.Groups);
         if (entry.From is null || entry.To is null)
         {
             problem = $"{prefix} needs the first and last day columns (EffectiveDatedTables={table.TableName}:ValidFrom:ValidTo).";
@@ -261,6 +263,8 @@ public static class DefaultRowPlan
             problem = $"{prefix} is limited to a tenant or an owner, which a default row does not serve yet.";
             return null;
         }
+        if (entry.Flag is null && entry.Groups is null && TableShapeDetector.DefaultRowColumns(table) is { } found)
+            entry = (entry.Table, found.Flag, found.Groups);
         if (entry.Flag is null || entry.Groups is null)
         {
             problem = $"{prefix} needs the yes/no column and the group columns ({syntax}).";

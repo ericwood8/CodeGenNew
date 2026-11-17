@@ -594,9 +594,10 @@
             {
                 var p = form.ParentOf(c)!;
                 string blank = c.IsNullable ? "<option value=\"\">None</option>" : c.CSharpBase() == "string" ? "<option value=\"\">Select</option>" : $"<option value=\"@(default({c.CSharpBase()}))\">Select</option>";
+                string keyLocked = formColumn.IsKeyLookupField ? " disabled=\"@(!isNew)\"" : "";   // the key of a saved row is not changed
                 input = Ahead(p)
-                    ? $"<TypeAhead TValue=\"{Cs(p)}\" Id=\"{id}\" Label=\"{label}\" Required=\"{(c.IsNullable ? "false" : "true")}\" Name=\"@Name{p.BaseName}({bind})\" Find=\"@Find{p.BaseName}\" OnPick=\"@Pick{Prop(c)}\" />"
-                    : $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {BlazorNames.LookupField(p)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(p)}\">@parent.{BlazorNames.DisplayProperty(p)}</option> }}</InputSelect>";
+                    ? $"<TypeAhead TValue=\"{Cs(p)}\" Id=\"{id}\" Label=\"{label}\" Required=\"{(c.IsNullable ? "false" : "true")}\"{(formColumn.IsKeyLookupField ? " Disabled=\"@(!isNew)\"" : "")} Name=\"@Name{p.BaseName}({bind})\" Find=\"@Find{p.BaseName}\" OnPick=\"@Pick{Prop(c)}\" />"
+                    : $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"{keyLocked}>{blank}@foreach (var parent in {BlazorNames.LookupField(p)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(p)}\">@parent.{BlazorNames.DisplayProperty(p)}</option> }}</InputSelect>";
             }
             else if (formColumn.IsChoicesField)
             {

@@ -29,3 +29,5 @@ TS_JunctionComponent.tt have - generate those first.
 ```
 
 **The page the menu opens.** For a junction table whose anchor table has a lookup endpoint the template also writes `pages/<Table>LinksPage.tsx` (and its test): a drop-down of the anchor's rows (`GET /api/<anchors>/lookup`) and the shuttle for the row picked, made again for each row (`key`). `TSX_Screens` lists it after the screens with the junction table's read roles. The route (`<table>-links`), the label (`<Table> Links`), the heading, the roles and the list of tables are `JunctionPlan` in Core, the same for every stack.
+
+The generated test answers the component's `fetch` with an empty list, so it makes no request to a server that is not there.

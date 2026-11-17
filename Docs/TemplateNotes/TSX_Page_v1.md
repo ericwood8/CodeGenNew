@@ -158,3 +158,5 @@ The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAhead
 **Single-row tables.** A table the project lists in `SingleRowTables` (and does not serve as OData) gets this page as a form: the heading is the table's singular title, the first row (`getPage(1, 1)`) fills an inline form (a `<section>`, not a dialog) or a blank one when the table is empty, Submit saves and reads the row again, and Reload reads it again. There is no grid, no search, no paging, no Columns list, no Add New, no Clone and no Delete, and no master-detail page (its child grids are not shown). Its test checks the blank form and the form of one row.
 
 `PartyTables`: the page of a party table has the Find by identifier box and a generated test of it (a value typed with spaces is asked for trimmed, an empty box reads the list again instead of asking).
+
+A whole-number or text key the person gives a new row that is also a foreign key to another table (a customer that is a row of the party table) is a drop-down of the parent's rows on the form, not a number box: it can be chosen for a new row and is disabled once the row is saved (`FormColumn.IsKeyLookupField`).

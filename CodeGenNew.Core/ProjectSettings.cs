@@ -744,7 +744,7 @@ public partial class ProjectSettings
     public string[] PolymorphicLinks => Items("PolymorphicLinks");
 
     /// <summary> Tables of which one row per group is the default (<c>DefaultRowTables=CustomerAddress:IsDefault:CustomerId+AddressType</c>: the table, its yes/no column, the columns that make a group). Empty when not set. </summary>
-    public string[] DefaultRowTables => Items("DefaultRowTables");
+    public string[] DefaultRowTables => [.. Items("DefaultRowTables"), .. PartyPlan.ChildTables(this, "names", "contacts")];
 
     /// <summary> Party tables and the table of their identifiers (<c>PartyTables=Party:PartyIdentifier:Scheme:Value</c>: the party table, its identifier table, the scheme and the value column). Empty when not set. </summary>
     public string[] PartyTables => Items("PartyTables");
@@ -765,7 +765,7 @@ public partial class ProjectSettings
     public string[] SoftDeleteTables => Items("SoftDeleteTables");
 
     /// <summary> Tables whose rows are valid for a period (<c>EffectiveDatedTables=Price:ValidFrom:ValidTo:ItemId</c>): no overlap within a group, <c>GET current?on=</c>. See <see cref="EffectiveDatePlan"/>. </summary>
-    public string[] EffectiveDatedTables => Items("EffectiveDatedTables");
+    public string[] EffectiveDatedTables => [.. Items("EffectiveDatedTables"), .. PartyPlan.ChildTables(this, "taxes")];
 
     /// <summary> The table of tenants (<c>TenantTable=Tenant</c>): with ApiAuth every table that has a NOT NULL whole-number <see cref="TenantColumn"/> pointing at it is tenant-owned, and a caller reaches only the rows of the tenant in their token. See <see cref="TenantPlan"/>. </summary>
     public string? TenantTable => Explicit("TenantTable") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;

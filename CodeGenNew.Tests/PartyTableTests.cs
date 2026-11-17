@@ -303,6 +303,44 @@ public class PartyTableTests
             "public async Task<List<Party>> ByIdentifierAsync(string value) => await (await http.GetAsync($\"api/parties/by-identifier?value={Uri.EscapeDataString(value)}\")).ReadAsync<List<Party>>();");
     }
 
+    private static TableModel Child(string name, params (string Name, SqlDbType Type, bool Nullable)[] columns) => Sample.Table(name,
+        [Sample.Column(name + "Id", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("PartyId", SqlDbType.Int, ordinal: 2),
+            .. columns.Select((c, i) => Sample.Column(c.Name, c.Type, characters: c.Type == SqlDbType.VarChar ? 20 : 0, nullable: c.Nullable, ordinal: i + 3))],
+        [Sample.ForeignKey("PartyId", "Party", "PartyId")]);
+
+    [TestMethod]
+    public void The_children_of_a_party_are_named_in_its_entry_and_found_from_the_columns_of_the_tables()
+    {
+        var project = Project("Party:PartyIdentifier:names=PartyName:contacts=ContactMethod:taxes=TaxRegistration:roles=PartyRole");
+        var entry = PartyPlan.Entries(project).Single();
+        Assert.AreEqual("PartyIdentifier", entry.Identifiers);
+        Assert.AreEqual("Scheme", entry.Scheme);
+        CollectionAssert.AreEqual(new[] { ("names", "PartyName"), ("contacts", "ContactMethod"), ("taxes", "TaxRegistration"), ("roles", "PartyRole") }, entry.Children.ToArray());
+        CollectionAssert.AreEqual(new[] { "PartyName", "ContactMethod" }, project.DefaultRowTables);
+        CollectionAssert.AreEqual(new[] { "TaxRegistration" }, project.EffectiveDatedTables);
+
+        var name = Child("PartyName", ("NameType", SqlDbType.VarChar, false), ("IsPrimary", SqlDbType.Bit, false));
+        var contact = Child("ContactMethod", ("MethodType", SqlDbType.VarChar, false), ("IsPreferred", SqlDbType.Bit, false));
+        var tax = Child("TaxRegistration", ("Country", SqlDbType.VarChar, false), ("ValidFrom", SqlDbType.Date, false), ("ValidTo", SqlDbType.Date, true));
+        Assert.AreEqual("IsPrimary", DefaultRowPlan.For(name, project)!.Flag.Name);
+        CollectionAssert.AreEqual(new[] { "PartyId", "NameType" }, DefaultRowPlan.For(name, project)!.Groups.Select(c => c.Name).ToArray());
+        Assert.AreEqual("IsPreferred", DefaultRowPlan.For(contact, project)!.Flag.Name);
+        var period = EffectiveDatePlan.For(tax, project)!;
+        Assert.AreEqual("ValidFrom", period.From.Name);
+        CollectionAssert.AreEqual(new[] { "PartyId", "Country" }, period.Groups.Select(c => c.Name).ToArray());
+
+        var role = Sample.Table("PartyRole", [Sample.Column("PartyId", SqlDbType.Int, primaryKey: true, ordinal: 1), Sample.Column("RoleId", SqlDbType.Int, primaryKey: true, ordinal: 2)],
+            [Sample.ForeignKey("PartyId", "Party", "PartyId"), Sample.ForeignKey("RoleId", "Role", "RoleId")]);
+        var database = new DatabaseModel { DatabaseName = "Shop", SchemaName = "dbo", Tables = [Party(), Identifier(), name, contact, tax, role] };
+        CollectionAssert.AreEqual(Array.Empty<string>(), PartyPlan.Problems(database, project));
+
+        var missing = Project("Party:PartyIdentifier:names=Nowhere:cards=PartyName:roles=PartyName");
+        var problems = PartyPlan.Problems(database, missing);
+        Assert.IsTrue(problems.Any(p => p.Contains("Nowhere is not a table")), string.Join("|", problems));
+        Assert.IsTrue(problems.Any(p => p.Contains("cards=PartyName is not a kind of child table")), string.Join("|", problems));
+        Assert.IsTrue(problems.Any(p => p.Contains("roles=PartyName: PartyName is not a junction table")), string.Join("|", problems));
+    }
+
     [TestMethod]
     public void A_scheme_and_a_value_under_one_parent_are_suggested_as_party_identifiers()
     {

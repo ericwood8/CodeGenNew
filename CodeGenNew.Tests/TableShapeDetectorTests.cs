@@ -125,6 +125,27 @@ public class TableShapeDetectorTests
     }
 
     [TestMethod]
+    public void A_period_of_a_parent_in_a_country_is_one_group_per_country()
+    {
+        var table = Sample.Table("TaxRegistration", [Key("TaxRegistrationId"), Sample.Column("PartyId", SqlDbType.Int, ordinal: 2), Sample.Column("Country", SqlDbType.VarChar, characters: 2, ordinal: 3),
+            Sample.Column("ValidFrom", SqlDbType.Date, ordinal: 4), Sample.Column("ValidTo", SqlDbType.Date, nullable: true, ordinal: 5)], [Sample.ForeignKey("PartyId", "Party", "PartyId")]);
+        var period = Find(table, "Effective dated rows")!;
+        Assert.AreEqual("TaxRegistration:ValidFrom:ValidTo:PartyId+Country", period.Item);
+        StringAssert.Contains(period.Text, "and Country");
+    }
+
+    [TestMethod]
+    public void The_name_and_contact_tables_of_a_party_are_default_rows_per_party_and_type()
+    {
+        var name = Sample.Table("PartyName", [Key("PartyNameId"), Sample.Column("PartyId", SqlDbType.Int, ordinal: 2), Sample.Column("NameType", SqlDbType.VarChar, characters: 20, ordinal: 3),
+            Sample.Column("IsPrimary", SqlDbType.Bit, ordinal: 4)], [Sample.ForeignKey("PartyId", "Party", "PartyId")]);
+        var contact = Sample.Table("ContactMethod", [Key("ContactMethodId"), Sample.Column("PartyId", SqlDbType.Int, ordinal: 2), Sample.Column("MethodType", SqlDbType.VarChar, characters: 20, ordinal: 3),
+            Sample.Column("IsPreferred", SqlDbType.Bit, ordinal: 4)], [Sample.ForeignKey("PartyId", "Party", "PartyId")]);
+        Assert.AreEqual("PartyName:IsPrimary:PartyId+NameType", Find(name, "Default row")!.Item);
+        Assert.AreEqual("ContactMethod:IsPreferred:PartyId+MethodType", Find(contact, "Default row")!.Item);
+    }
+
+    [TestMethod]
     public void A_check_constraint_that_orders_two_dates_finds_a_period_the_names_do_not_show()
     {
         var table = Sample.Table("Rate", [Key("RateId"), Sample.Column("ItemId", SqlDbType.Int, ordinal: 2), Sample.Column("Opens", SqlDbType.Date, ordinal: 3), Sample.Column("Closes", SqlDbType.Date, nullable: true, ordinal: 4)],

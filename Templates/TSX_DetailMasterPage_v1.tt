@@ -1216,6 +1216,7 @@
                     T($"              find={{(query) => {ReactNames.ApiVar(p.Table)}.getLookup(query)}}");
                     T($"              onChange={{(key) => setSelectedRow({{ ...selectedRow, {prop}: {(c.IsNullable ? "key ?? undefined" : (p.KeyTs == "number" ? "key ?? 0" : "key ?? ''"))} }})}}");
                     if (form.Field(c).IsRequired) T("              required");
+                    if (formColumn.IsKeyLookupField) T("              disabled={!adding}");   // the key of a saved row is not changed
                     T("            />");
                 }
                 else
@@ -1231,6 +1232,7 @@
                 T($"              aria-label=\"{c.Label}\"");
                 T($"              value={{selectedRow.{prop} {blankTest} ''}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: {numeric} }})}}");
+                if (formColumn.IsKeyLookupField) T("              disabled={!adding}");   // the key of a saved row is not changed
                 if (form.Field(c).IsRequired) T("              required");
                 T("            >");
                 T("              <option value=\"\"></option>");
@@ -1585,13 +1587,13 @@
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
             S($"    fireEvent.click(await screen.findByText('Add New'));");
             S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");
-            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{keyColumn.Label}')).not.toHaveAttribute('readonly');");
+            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{keyColumn.Label}')).{(form.Field(keyColumn).IsKeyLookupField ? "not.toBeDisabled()" : "not.toHaveAttribute('readonly')")};");
             if (gridChildren.Count > 0)
                 S($"    expect(screen.getAllByText(/Save this {title} first/)).toHaveLength({gridChildren.Count});");   // one note per child grid
             S("    fireEvent.click(screen.getByText('Cancel'));");
             S("    fireEvent.click(await screen.findByText('Edit'));");
             S($"    expect(await screen.findByText('Edit {title}')).toBeInTheDocument();");
-            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{keyColumn.Label}')).toHaveAttribute('readonly');");
+            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{keyColumn.Label}')).{(form.Field(keyColumn).IsKeyLookupField ? "toBeDisabled()" : "toHaveAttribute('readonly')")};");
             if (gridChildren.Count > 0)
                 S($"    expect(screen.queryAllByText(/Save this {title} first/)).toHaveLength(0);");
             S("  });");

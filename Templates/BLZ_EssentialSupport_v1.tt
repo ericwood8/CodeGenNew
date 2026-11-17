@@ -270,7 +270,7 @@ public record TypeAheadOption<TValue>(TValue Id, string Name);
    OnPick with it. Typing calls OnPick with null (nothing is chosen any more), and leaving the box without a pick empties it. Name is the text of the chosen key. *@
 <div class="type-ahead">
     <input id="@Id" type="text" role="combobox" aria-autocomplete="list" aria-expanded="@(open ? "true" : "false")" aria-label="@Label" placeholder="@Placeholder" autocomplete="off"
-           required="@Required" pattern="@Unpicked" title="@(Unpicked is null ? null : "Pick one of the matches.")" value="@(typed ?? Name)" @oninput="TypeAsync" @onblur="Leave" />
+           required="@Required" disabled="@Disabled" pattern="@Unpicked" title="@(Unpicked is null ? null : "Pick one of the matches.")" value="@(typed ?? Name)" @oninput="TypeAsync" @onblur="Leave" />
     @if (open)
     {
         <ul class="type-ahead-list" role="listbox">
@@ -287,6 +287,7 @@ public record TypeAheadOption<TValue>(TValue Id, string Name);
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
     [Parameter] public string Name { get; set; } = "";
     [Parameter, EditorRequired] public Func<string, Task<IReadOnlyList<TypeAheadOption<TValue>>>> Find { get; set; } = default!;
     [Parameter] public EventCallback<TypeAheadOption<TValue>?> OnPick { get; set; }

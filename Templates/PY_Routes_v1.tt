@@ -254,6 +254,19 @@
     if (writeRoles.Count > 0)
         Line($"WRITE_ROLES = {RoleTuple(writeRoles)}");
     Line($"IN_USE = \"The database refused the row (a missing parent row, or a value that must be unique).\"");
+    if (!log)
+    {
+        string tableWords = System.Text.RegularExpressions.Regex.Replace(Model.TableName.Replace('_', ' '), "(?<=[a-z0-9])(?=[A-Z])", " ").ToLowerInvariant();
+        Line($"DUPLICATE = \"A {tableWords} with that value already exists.\"");
+        Line();
+        Line();
+        Line("def save_refusal(error: IntegrityError) -> ApiError:");
+        Line("    \"\"\"A value that must be unique is the 409 the ASP.NET API answers; any other refusal of the database (a missing parent row) stays a 400.\"\"\"");
+        Line("    text = str(error.orig).lower()");
+        Line("    if \"unique\" in text or \"duplicate\" in text:");
+        Line($"        return ApiError({HttpStatus.Conflict}, \"Duplicate value\", problem_type=\"{ProblemTypes.DuplicateValue}\", detail=DUPLICATE)");
+        Line($"    return ApiError({HttpStatus.BadRequest}, IN_USE)");
+    }
     Line();
     if (softNames is not null)
     {
@@ -662,11 +675,11 @@
     Line("    session.add(row)");
     Line("    try:");
     Line("        session.commit()");
-    Line("    except IntegrityError:");
+    Line("    except IntegrityError as error:");
     Line("        session.rollback()");
     if (idNames is not null)
         Line(PythonPartyWriter.RefusedLines("None"));
-    Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
+    Line("        raise save_refusal(error)");
     Line("    session.refresh(row)");
     if (tenantTable)
         Line($"    attach_creator(session, user, row.{key})");
@@ -707,9 +720,9 @@
         Line("        session.flush()");
         Line($"        attach_admin(session, request.admin_id, row.{key}, request.admin, request.admin_password)");
         Line("        session.commit()");
-        Line("    except IntegrityError:");
+        Line("    except IntegrityError as error:");
         Line("        session.rollback()");
-        Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
+        Line("        raise save_refusal(error)");
         Line("    except ApiError:");
         Line("        session.rollback()");
         Line("        raise");
@@ -780,11 +793,11 @@
         Line($"    row.{defNames.Flag} = settle_default(session, id, {PythonDefaultWriter.GroupArgument(defNames, a => "row." + a)}, row.{defNames.Flag})");
     Line("    try:");
     Line("        session.commit()");
-    Line("    except IntegrityError:");
+    Line("    except IntegrityError as error:");
     Line("        session.rollback()");
     if (idNames is not null)
         Line(PythonPartyWriter.RefusedLines("id"));
-    Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
+    Line("        raise save_refusal(error)");
     Line("    session.refresh(row)");
     Line("    return row");
     Line();

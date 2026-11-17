@@ -103,7 +103,7 @@ public static class DesktopFormXaml
             {
                 L(I + "<AutoSuggestBox" + (form.IsMarked(column) ? "" : " Header=\"" + label + "\"") + RequiredMark.XamlAttributes(form.IsRequired(column), false)
                     + $" AutomationProperties.Name=\"{label}\" PlaceholderText=\"Type to find\" DisplayMemberPath=\"Text\" TextMemberPath=\"Text\"");
-                L(I + $"                Text=\"{{x:Bind ViewModel.{prop}Text, Mode=TwoWay}}\" TextChanged=\"On{prop}TextChanged\" SuggestionChosen=\"On{prop}Chosen\">");
+                L(I + $"                Text=\"{{x:Bind ViewModel.{prop}Text, Mode=TwoWay}}\"{(formColumn.IsKeyLookupField ? " IsEnabled=\"{x:Bind ViewModel.IsNewRow}\"" : "")} TextChanged=\"On{prop}TextChanged\" SuggestionChosen=\"On{prop}Chosen\">");
                 if (form.IsMarked(column))
                 {
                     // an AutoSuggestBox has no header template: the caption and its red asterisk are the header itself
@@ -117,7 +117,7 @@ public static class DesktopFormXaml
             {
                 L(I + $"<ComboBox Header=\"{label}\"{required} ItemsSource=\"{{x:Bind ViewModel.{WinUI3Names.OptionsProperty(p)}}}\"");
                 L(I + "          SelectedValuePath=\"Id\" DisplayMemberPath=\"Text\"");
-                L(I + $"          SelectedValue=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\" />");
+                L(I + $"          SelectedValue=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{(formColumn.IsKeyLookupField ? " IsEnabled=\"{x:Bind ViewModel.IsNewRow}\"" : "")} />");
             }
         }
         else if (formColumn.IsChoicesField)

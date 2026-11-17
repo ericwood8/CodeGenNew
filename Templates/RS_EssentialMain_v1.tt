@@ -332,12 +332,36 @@ pub enum ApiError {
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
+/// A table name as words: TaxRegistration and tax_registration are both "tax registration".
+fn table_words(name: &str) -> String {
+    let mut words = String::new();
+    let mut after_lower = false;
+    for c in name.chars() {
+        if c == '_' {
+            words.push(' ');
+            after_lower = false;
+            continue;
+        }
+        if c.is_uppercase() && after_lower {
+            words.push(' ');
+        }
+        words.extend(c.to_lowercase());
+        after_lower = c.is_lowercase() || c.is_ascii_digit();
+    }
+    words
+}
+
 impl From<sqlx::Error> for ApiError {
     fn from(error: sqlx::Error) -> Self {
         if let sqlx::Error::Database(database) = &error {
             match database.kind() {
                 ErrorKind::ForeignKeyViolation => return ApiError::BadRequest("The row is in use, or refers to a row that does not exist.".into()),
-                ErrorKind::UniqueViolation | ErrorKind::CheckViolation | ErrorKind::NotNullViolation => return ApiError::BadRequest(database.message().to_string()),
+                ErrorKind::UniqueViolation => {
+                    let named = database.table().map(str::to_string).or_else(|| database.message().split("failed: ").nth(1).and_then(|rest| rest.split('.').next()).map(str::to_string));
+                    let table = named.map(|name| table_words(&name)).unwrap_or_else(|| "row".to_string());
+                    return ApiError::Rejected(<#= HttpStatus.Conflict #>, "<#= ProblemTypes.DuplicateValue #>", "Duplicate value", format!("A {table} with that value already exists."));
+                }
+                ErrorKind::CheckViolation | ErrorKind::NotNullViolation => return ApiError::BadRequest(database.message().to_string()),
                 _ => {}
             }
         }
