@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.RegularExpressions;
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
+using CodeGenNew.Core.Sql;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Python;
 using CodeGenNew.Core.Rust;

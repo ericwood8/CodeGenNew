@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Web;
+
 namespace CodeGenNew.Core.Desktop;
 
 /// <summary> What the Uno templates agree on: the namespaces of the app, and which tables get a model and an API client. The Uno app calls the same API as the Blazor app and reads the same wire

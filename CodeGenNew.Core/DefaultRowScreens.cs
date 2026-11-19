@@ -3,6 +3,7 @@ using CodeGenNew.Core.Api;
 
 
 
+
 namespace CodeGenNew.Core;
 
 /// <summary> What the screens of a default-row table (<c>DefaultRowTables</c>) add to the ordinary list: a "Make default" button on every row that is not the default of its group, which calls the API route that moves

@@ -1,6 +1,8 @@
 using System.Text;
 using CodeGenNew.Core.Usage;
+using CodeGenNew.Core.Sql;
 using CodeGenNew.Core.Tenant;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Core.Python;
 

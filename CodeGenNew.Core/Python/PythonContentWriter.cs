@@ -3,6 +3,7 @@ using CodeGenNew.Core.Content;
 
 
 
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> The Python (FastAPI) counterpart of the content part of <see cref="RowShapeWriter"/>: the slug and status rules, the publish, unpublish and archive routes and the two public reads of a table listed in

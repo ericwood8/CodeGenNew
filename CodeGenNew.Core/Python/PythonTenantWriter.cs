@@ -1,6 +1,7 @@
 using static CodeGenNew.Core.TemplateText;
 using System.Text;
 using CodeGenNew.Core.Tenant;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Core.Python;
 

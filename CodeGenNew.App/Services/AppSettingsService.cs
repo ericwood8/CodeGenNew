@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Settings;
 
 namespace CodeGenNew.App.Services;
 

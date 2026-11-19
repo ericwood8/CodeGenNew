@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Naming;
+
 
 namespace CodeGenNew.Core;
 

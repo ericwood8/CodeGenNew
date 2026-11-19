@@ -3,6 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Generation;
 using CodeGenNew.TemplateEngine;
 using Microsoft.OpenApi.Readers;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

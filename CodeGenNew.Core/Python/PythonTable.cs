@@ -1,4 +1,6 @@
 using System.Data;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Core.Python;
 

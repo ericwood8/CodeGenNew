@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using Microsoft.Data.Sqlite;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.SchemaIntrospection;
 

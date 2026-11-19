@@ -1,4 +1,5 @@
 using CodeGenNew.Core;
+using CodeGenNew.Core.Settings;
 
 namespace CodeGenNew.Tests;
 

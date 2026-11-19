@@ -4,6 +4,7 @@ using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using Microsoft.Data.SqlClient;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Naming;
 
 namespace CodeGenNew.SchemaIntrospection;
 

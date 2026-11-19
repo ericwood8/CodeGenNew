@@ -4,6 +4,8 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Readers;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Naming;
+
 namespace CodeGenNew.Core.Api;
 
 /// <summary> The kind of control a column gets in the filter row of an OData screen. </summary>

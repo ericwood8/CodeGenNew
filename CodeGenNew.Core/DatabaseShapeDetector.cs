@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
 
 namespace CodeGenNew.Core;

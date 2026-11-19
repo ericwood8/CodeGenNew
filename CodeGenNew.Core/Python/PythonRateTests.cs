@@ -1,3 +1,7 @@
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Rate;
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> <c>tests/test_rates.py</c> of the Python API (PY_TestRates), beside the <c>conftest.py</c> the approval tests share: the cases add rates through the route and remove them after the test. They play

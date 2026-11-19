@@ -1,5 +1,7 @@
 using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
+
 
 
 

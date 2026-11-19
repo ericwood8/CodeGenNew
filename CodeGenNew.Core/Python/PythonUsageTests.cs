@@ -3,6 +3,7 @@ using System.Text;
 using CodeGenNew.Core.Usage;
 using CodeGenNew.Core.Rust;
 using CodeGenNew.Core.Tenant;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Core.Python;
 

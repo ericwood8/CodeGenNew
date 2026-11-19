@@ -2,6 +2,8 @@ using System.Data;
 using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

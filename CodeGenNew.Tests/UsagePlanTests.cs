@@ -2,6 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.Core.Python;
 using CodeGenNew.Core.Rust;
+using CodeGenNew.Core.Settings;
 using CodeGenNew.Core.Usage;
 
 namespace CodeGenNew.Tests;

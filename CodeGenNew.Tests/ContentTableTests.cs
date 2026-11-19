@@ -3,6 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Settings;
 
 namespace CodeGenNew.Tests;
 

@@ -3,6 +3,7 @@ using CodeGenNew.Core.Api;
 
 
 
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> <c>tests/api/approval_routes.rs</c> of the Rust API (RS_TestApprovals): seeds the people and a row (<see cref="ApprovalTestSeed"/>) in the scratch database and plays the cycle through the router, the same

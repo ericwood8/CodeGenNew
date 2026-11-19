@@ -1,5 +1,6 @@
 using CodeGenNew.Core;
 using System.Data;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.SchemaIntrospection;
 

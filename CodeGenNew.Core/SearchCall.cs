@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core;
 
 /// <summary> How generated C# calls a table's search / count routine, which differs by database: SQL Server runs the

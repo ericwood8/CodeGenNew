@@ -1,5 +1,6 @@
 using System.Data;
 using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Party;
 
 namespace CodeGenNew.Core;
 

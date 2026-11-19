@@ -1,4 +1,6 @@
 using CodeGenNew.Core.Tenant;
+using CodeGenNew.Core.Sql;
+
 
 
 

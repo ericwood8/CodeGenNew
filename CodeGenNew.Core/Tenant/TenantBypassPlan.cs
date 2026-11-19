@@ -3,6 +3,7 @@ using CodeGenNew.Core.Content;
 
 
 
+
 namespace CodeGenNew.Core.Tenant;
 
 /// <summary> What the generated tests of a multi-tenant API (<c>TenantTable</c>) play beyond the query filter, decided once for the ASP.NET, Python and Rust tests: the tables a dashboard widget counts, the junction

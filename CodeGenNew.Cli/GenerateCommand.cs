@@ -3,6 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Settings;
 
 namespace CodeGenNew.Cli;
 

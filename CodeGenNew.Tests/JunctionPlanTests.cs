@@ -1,5 +1,6 @@
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Tests;
 

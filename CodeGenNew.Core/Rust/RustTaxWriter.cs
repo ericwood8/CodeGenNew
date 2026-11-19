@@ -3,6 +3,7 @@ using CodeGenNew.Core.Tax;
 
 
 
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> The Rust (axum, sqlx) counterpart of <see cref="TaxLineWriter"/> (<c>TaxLines</c>): the line's router gets <c>apply_tax</c>, called before the row is written, and a <c>GET tax-subtotals</c> route when the

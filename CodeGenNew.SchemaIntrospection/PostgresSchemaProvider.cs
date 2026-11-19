@@ -4,6 +4,8 @@ using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using Npgsql;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.SchemaIntrospection;
 

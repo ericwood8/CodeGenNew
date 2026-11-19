@@ -1,9 +1,10 @@
 using System.Data;
 using CodeGenNew.Core;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 
-/// <summary> The PostgreSQL functions written for the SP_* templates (CodeGenNew.Core.PostgresProcedures). They are checked against a
+/// <summary> The PostgreSQL functions written for the SP_* templates (CodeGenNew.Core.Sql.PostgresProcedures). They are checked against a
 /// live database by hand (see the PostgreSQL sample); these tests pin the text each one writes. </summary>
 [TestClass]
 public class PostgresProcedureTests

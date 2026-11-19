@@ -1,5 +1,6 @@
 using CodeGenNew.Core;
 using CodeGenNew.Connections;
+using CodeGenNew.Core.Naming;
 
 namespace CodeGenNew.SchemaIntrospection;
 

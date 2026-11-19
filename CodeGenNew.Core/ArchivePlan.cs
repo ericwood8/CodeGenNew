@@ -1,3 +1,6 @@
+using CodeGenNew.Core.Settings;
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core;
 
 /// <summary> One table a script keeps small: the rows older than <c>Days</c> (by <c>Age</c>) move to the archive table, or are deleted. A work queue only gives up its finished rows. <c>Archive</c> is the table the database

@@ -4,6 +4,7 @@ using CodeGenNew.Core.Desktop;
 
 
 
+
 namespace CodeGenNew.Core.Tenant;
 
 /// <summary> The sentences and problem types of the tenant routes, the same in every stack that writes them. </summary>

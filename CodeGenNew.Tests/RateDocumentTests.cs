@@ -3,6 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Desktop;
 using CodeGenNew.Core.Python;
+using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Rust;
 
 namespace CodeGenNew.Tests;

@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Settings;
+
 namespace CodeGenNew.Core;
 
 public enum StrategyUi { WinUI3, React, Angular, Blazor, Uno }

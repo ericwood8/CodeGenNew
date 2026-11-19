@@ -5,6 +5,7 @@ using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using Microsoft.Data.Sqlite;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Settings;
 
 namespace CodeGenNew.Tests;
 

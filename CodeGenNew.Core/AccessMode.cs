@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core;
 
 /// <summary> How the code a project generates reaches the database for search, sort, paging, clone and the many-to-many editors. </summary>

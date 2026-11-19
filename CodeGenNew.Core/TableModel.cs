@@ -1,5 +1,6 @@
 using System.Data;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Usage;
 
 namespace CodeGenNew.Core;

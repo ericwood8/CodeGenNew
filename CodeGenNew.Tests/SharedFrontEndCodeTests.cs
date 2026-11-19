@@ -4,6 +4,7 @@ using CodeGenNew.SchemaIntrospection;
 using Microsoft.Data.Sqlite;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Tests;
 

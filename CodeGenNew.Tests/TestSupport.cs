@@ -4,6 +4,7 @@ using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

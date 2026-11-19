@@ -3,6 +3,7 @@ using CodeGenNew.Core.Tax;
 
 
 
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> The Python (FastAPI) counterpart of <see cref="TaxLineWriter"/> (<c>TaxLines</c>): the line's router gets <c>apply_tax</c>, called before a create or an update commits, and a

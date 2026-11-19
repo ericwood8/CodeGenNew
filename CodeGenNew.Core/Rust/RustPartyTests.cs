@@ -1,3 +1,6 @@
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Party;
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> <c>tests/api/party_routes.rs</c> of the Rust API (RS_TestParties): the cases add two parties and their identifiers through the router and remove them again. The same cases and words as the Python

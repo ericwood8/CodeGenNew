@@ -3,6 +3,7 @@ using CodeGenNew.Core.Tenant;
 
 
 
+
 namespace CodeGenNew.Core.Api;
 
 /// <summary> What the project's settings change in the base classes every table's API derives from (<c>API_EssentialCrudApi</c>): the namespaces, whether the bodies are the entity or an input and output type (Dtos), whether the

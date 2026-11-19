@@ -1,5 +1,8 @@
 using System.Data;
 using CodeGenNew.Core;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Settings;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

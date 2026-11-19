@@ -1,6 +1,9 @@
 using System.Text;
 using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Core.Api;
 

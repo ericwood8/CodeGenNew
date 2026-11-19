@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Naming;
+
 namespace CodeGenNew.Core;
 
 /// <summary> A foreign key of a child grid that is shown as the parent's name (a customer's purchase history lists item numbers, not item ids). </summary>

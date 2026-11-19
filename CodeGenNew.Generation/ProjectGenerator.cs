@@ -2,6 +2,9 @@ using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Rate;
 
 namespace CodeGenNew.Generation;
 

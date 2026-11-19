@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Rate;
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> The Python (FastAPI) counterpart of the rate document part of <see cref="RowShapeWriter"/> (<c>RateDocuments</c>): the document's router gets <c>convert_currency</c>, called before a create or an

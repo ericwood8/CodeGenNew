@@ -1,10 +1,13 @@
 using System.Collections.Concurrent;
+using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Rust;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Tenant;
 using CodeGenNew.Core.Usage;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Core;
 
@@ -638,7 +641,7 @@ public partial class ProjectSettings
         : spec.Replace("import { provideNoopAnimations } from '@angular/platform-browser/animations';\n", "").Replace(", provideNoopAnimations()", "");
 
     /// <summary> The generated html with the built-in control flow when <see cref="AngularControlFlow"/> says so. </summary>
-    public string AdaptAngularHtml(string html) => AngularControlFlow ? CodeGenNew.Core.AngularControlFlow.Convert(html) : html;
+    public string AdaptAngularHtml(string html) => AngularControlFlow ? CodeGenNew.Core.Web.AngularControlFlow.Convert(html) : html;
 
     /// <summary> Columns left out of every table (<c>IgnoredColumns=Tags,Place.Location</c>: a column name for every table, or <c>Table.Column</c>): a type CodeGenNew cannot map
     /// (PostGIS geometry, a range of timestamps) is listed here so the rest of the table still generates. A primary key column is never left out. </summary>

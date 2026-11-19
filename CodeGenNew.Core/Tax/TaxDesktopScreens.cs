@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Rate;
+
 namespace CodeGenNew.Core.Tax;
 
 /// <summary> The WinUI3 and Uno parts of the tax subtotals (<c>TaxLines</c> with the document part): a document box, a button and a line of text on the list of the line table, and a read-only line of text under the

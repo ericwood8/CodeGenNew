@@ -3,6 +3,7 @@ using CodeGenNew.Core.Tenant;
 
 
 
+
 namespace CodeGenNew.Core;
 
 /// <summary> Who may read and who may create, change and delete the rows of a table (the project's <c>ReadRoles</c>, <c>TableReadRoles</c>, <c>WriteRoles</c> and <c>TableWriteRoles</c>, with <c>ApiAuth</c>).

@@ -1,6 +1,7 @@
 using System.Text;
 using CodeGenNew.Core.Tenant;
 using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Naming;
 
 namespace CodeGenNew.Core.Desktop;
 

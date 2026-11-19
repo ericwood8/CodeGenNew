@@ -2,6 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

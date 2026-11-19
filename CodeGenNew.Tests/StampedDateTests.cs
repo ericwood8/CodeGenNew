@@ -1,6 +1,7 @@
 using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.Core.Rust;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

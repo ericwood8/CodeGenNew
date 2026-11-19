@@ -1,3 +1,6 @@
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> <c>tests/test_queue.py</c> of the Python API (PY_TestQueue), beside the <c>conftest.py</c> the approval tests share: three pending rows (<see cref="QueueTestSeed"/>) are added to the scratch database before

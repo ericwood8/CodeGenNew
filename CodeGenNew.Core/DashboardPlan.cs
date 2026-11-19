@@ -1,4 +1,6 @@
 using System.Data;
+using CodeGenNew.Core.Sql;
+using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Tenant;
 
 namespace CodeGenNew.Core;

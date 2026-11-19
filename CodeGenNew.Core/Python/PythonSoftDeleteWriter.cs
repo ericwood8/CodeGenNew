@@ -3,6 +3,7 @@ using CodeGenNew.Core.Api;
 
 
 
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> The Python (FastAPI) counterpart of the soft-delete part of <see cref="RowShapeWriter"/>: a table listed in <c>SoftDeleteTables</c> hides its flagged rows from every read, its delete sets the flag, and <c>GET deleted</c> and

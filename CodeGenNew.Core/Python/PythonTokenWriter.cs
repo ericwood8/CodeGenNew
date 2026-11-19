@@ -1,5 +1,7 @@
 using System.Text;
 using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Core.Python;
 

@@ -1,3 +1,6 @@
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Web;
+
 namespace CodeGenNew.Core;
 
 /// <summary> How a front end reaches the editor of a many-to-many junction table: a menu entry whose page picks the anchor's row and shows the two-list editor. Every stack names the route, the label and the

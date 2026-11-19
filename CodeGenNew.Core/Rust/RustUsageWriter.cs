@@ -1,5 +1,6 @@
 using System.Text;
 using CodeGenNew.Core.Usage;
+using CodeGenNew.Core.Sql;
 using CodeGenNew.Core.Tenant;
 
 namespace CodeGenNew.Core.Rust;

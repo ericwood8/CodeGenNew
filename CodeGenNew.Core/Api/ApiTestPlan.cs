@@ -1,4 +1,6 @@
 using System.Globalization;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Rate;
 
 namespace CodeGenNew.Core.Api;
 

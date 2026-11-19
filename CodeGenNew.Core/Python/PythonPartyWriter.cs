@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Party;
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> The Python (FastAPI) counterpart of the party part of <see cref="RowShapeWriter"/> (<c>PartyTables</c>): the identifier table's router gets <c>check_identifier</c>, called before a create or an update commits, and

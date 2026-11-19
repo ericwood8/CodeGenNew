@@ -3,6 +3,7 @@ using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using MySqlConnector;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Naming;
 
 namespace CodeGenNew.SchemaIntrospection;
 

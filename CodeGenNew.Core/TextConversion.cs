@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core;
 
 /// <summary> How the EF Core context turns a column's text into what the database stores, for the column types that are text to the generator but not text to the database (<see cref="ColumnModel.Conversion"/> decides which): a PostgreSQL array, interval,

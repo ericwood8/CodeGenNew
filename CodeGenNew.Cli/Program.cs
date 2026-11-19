@@ -2,6 +2,8 @@ using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Settings;
 
 namespace CodeGenNew.Cli;
 

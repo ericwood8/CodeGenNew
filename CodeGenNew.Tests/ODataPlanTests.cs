@@ -1,6 +1,9 @@
 using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Settings;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Tests;
 

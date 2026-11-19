@@ -1,5 +1,6 @@
 using static CodeGenNew.Core.TemplateText;
 using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Core.Rust;
 

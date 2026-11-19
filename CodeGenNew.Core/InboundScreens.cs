@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Naming;
+
 namespace CodeGenNew.Core;
 
 /// <summary> What the list screens of an inbound event table (<c>InboundTables</c>) add to the read-only list: a Processed button on a row that is not processed yet, which calls <c>POST {id}/processed</c> of the API (or the same

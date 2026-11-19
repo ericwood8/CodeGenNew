@@ -1,3 +1,6 @@
+using CodeGenNew.Core.Rate;
+using CodeGenNew.Core.Settings;
+
 namespace CodeGenNew.Core.Tax;
 
 /// <summary> A document line that carries the tax rate of its category (<c>TaxLines=InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate</c>): <c>Category</c> is the key of the category

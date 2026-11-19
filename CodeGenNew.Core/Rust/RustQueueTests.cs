@@ -1,3 +1,6 @@
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> <c>tests/api/queue_routes.rs</c> of the Rust API (RS_TestQueue): three pending rows (<see cref="QueueTestSeed"/>) are added to the scratch database before each test and removed after it, and the cases play

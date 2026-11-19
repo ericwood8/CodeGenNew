@@ -1,3 +1,6 @@
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Rate;
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> <c>tests/api/rate_document_routes.rs</c> of the Rust API (RS_TestRates): the same cases and words as <see cref="PythonRateDocumentTests"/>, played in process through the router. </summary>

@@ -2,6 +2,8 @@
 using System.Data.Common;
 using CodeGenNew.Core;
 using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.SchemaIntrospection;
 

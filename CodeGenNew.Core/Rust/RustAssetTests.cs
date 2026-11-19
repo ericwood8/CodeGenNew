@@ -3,6 +3,7 @@ using CodeGenNew.Core.Content;
 
 
 
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> <c>tests/api/asset_routes.rs</c> of the Rust API (RS_TestAssets): an upload, a download and a delete through the router, the refusals (no file, too large, a type that is not allowed) and the storage key

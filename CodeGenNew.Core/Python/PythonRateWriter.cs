@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Rate;
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> The Python (FastAPI) counterpart of the rate part of <see cref="RowShapeWriter"/> (<c>RateTables</c>): the table's router gets <c>check_rate</c>, called before a create or an update commits, and

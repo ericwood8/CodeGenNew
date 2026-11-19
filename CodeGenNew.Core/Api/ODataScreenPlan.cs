@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Naming;
+
 namespace CodeGenNew.Core.Api;
 
 /// <summary> One header a grid can sort by and the OData path that sorts by it: the column itself (<c>accountNumber</c>) or, for a foreign key, what the grid shows of the parent (<c>customerStatus/description</c>). </summary>

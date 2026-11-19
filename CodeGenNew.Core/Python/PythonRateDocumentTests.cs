@@ -1,3 +1,7 @@
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Rate;
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> <c>tests/test_rate_documents.py</c> of the Python API (PY_TestRates), beside the rate tests: a document is written with the rate in force on its date, keeps it while its currency and date stay, gets the

@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Settings;
+
 namespace CodeGenNew.Core;
 
 /// <summary> One table a script splits into a partition for each month of <c>Date</c>. <c>Key</c> is the primary key the script extends with the date, <c>Indexes</c> the other indexes it recreates on the partition scheme and

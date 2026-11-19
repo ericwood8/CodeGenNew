@@ -4,6 +4,8 @@ using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using Microsoft.Data.Sqlite;
+using CodeGenNew.Core.Settings;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Tests;
 

@@ -4,6 +4,8 @@ using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Desktop;
 using CodeGenNew.Core.Python;
 using CodeGenNew.Core.Rust;
+using CodeGenNew.Core.Settings;
+using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Tests;
 

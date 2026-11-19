@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Naming;
+
 namespace CodeGenNew.Core.Desktop;
 
 /// <summary> The page the menu opens for a junction table on WinUI3 and Uno (<see cref="JunctionPlan"/>): a drop-down of the anchor's rows and an Edit links button that opens the two-list editor dialog on the

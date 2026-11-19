@@ -1,5 +1,6 @@
 using System.Text;
 using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Naming;
 
 namespace CodeGenNew.Core.Tenant;
 

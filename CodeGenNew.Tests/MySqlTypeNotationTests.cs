@@ -5,6 +5,7 @@ using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Python;
 using CodeGenNew.Core.Rust;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

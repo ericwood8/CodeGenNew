@@ -1,3 +1,6 @@
+using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Rate;
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> <c>tests/api/rate_routes.rs</c> of the Rust API (RS_TestRates): the cases add rates through the router and remove them again. The same cases and words as the Python tests

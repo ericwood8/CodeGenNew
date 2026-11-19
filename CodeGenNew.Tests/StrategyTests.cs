@@ -3,6 +3,7 @@ using CodeGenNew.Cli;
 using CodeGenNew.Core;
 using CodeGenNew.Generation;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Settings;
 
 namespace CodeGenNew.Tests;
 

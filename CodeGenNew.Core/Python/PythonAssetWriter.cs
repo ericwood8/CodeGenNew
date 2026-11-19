@@ -3,6 +3,7 @@ using CodeGenNew.Core.Content;
 
 
 
+
 namespace CodeGenNew.Core.Python;
 
 /// <summary> The Python (FastAPI) counterpart of the asset part of <see cref="RowShapeWriter"/>: <c>app/routes/asset_files.py</c>, the upload and download routes of every table in <c>AssetTables</c>, the store

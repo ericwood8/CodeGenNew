@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Rate;
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> The Rust (axum, sqlx) counterpart of the rate part of <see cref="RowShapeWriter"/> (<c>RateTables</c>): the table's router gets <c>check_rate</c>, called before a create or an update writes the row, and

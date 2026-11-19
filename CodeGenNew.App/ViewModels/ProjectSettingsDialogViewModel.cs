@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CodeGenNew.Core;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CodeGenNew.Core.Settings;
 
 namespace CodeGenNew.App.ViewModels;
 

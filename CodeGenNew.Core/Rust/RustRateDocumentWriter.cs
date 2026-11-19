@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Rate;
+
 namespace CodeGenNew.Core.Rust;
 
 /// <summary> The Rust (axum, sqlx) counterpart of the rate document part of <see cref="RowShapeWriter"/> (<c>RateDocuments</c>): the document's router gets <c>convert_currency</c>, called before the row is written,

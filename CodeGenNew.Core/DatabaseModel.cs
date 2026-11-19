@@ -4,6 +4,7 @@ using CodeGenNew.Core.Api;
 
 
 
+
 namespace CodeGenNew.Core;
 
 /// <summary> Everything a database-level template needs: every table of one schema, each read the same way a single-table template reads

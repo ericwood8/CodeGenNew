@@ -2,6 +2,7 @@ using System.Data;
 using System.Text;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
 
 namespace CodeGenNew.Core.Desktop;

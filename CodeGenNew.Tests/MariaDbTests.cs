@@ -1,5 +1,6 @@
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
+using CodeGenNew.Core.Sql;
 
 namespace CodeGenNew.Tests;
 

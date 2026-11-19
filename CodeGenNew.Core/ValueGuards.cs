@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Sql;
+
 namespace CodeGenNew.Core;
 
 /// <summary> A rule the database does not state but the project does. </summary>

@@ -1,3 +1,5 @@
+using CodeGenNew.Core.Naming;
+
 namespace CodeGenNew.Core;
 
 /// <summary> A parent table the form's drop-downs read: the foreign key, the column that holds it, what the parent's rows are keyed and named by, and how the screen reads them. The screens of
