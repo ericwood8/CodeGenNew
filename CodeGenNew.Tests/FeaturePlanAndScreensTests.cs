@@ -9,6 +9,8 @@ using CodeGenNew.Core.Python;
 using CodeGenNew.Core.Rust;
 using CodeGenNew.Core.Web;
 
+using CodeGenNew.Tests.Tenant;
+
 namespace CodeGenNew.Tests;
 
 /// <summary> FeaturePlanTable (the flags a plan switches on) and FeatureScreens (the screens a flag hides), over a SQLite copy of the tables of <c>Schemas/features.sql</c>. </summary>

@@ -1,6 +1,8 @@
 using CodeGenNew.Core;
 using CodeGenNew.Core.Tenant;
 
+using CodeGenNew.Tests.Tenant;
+
 namespace CodeGenNew.Tests;
 
 /// <summary> The sign-in, tenant box and tenant switcher of the WinUI3 app (Auth with the WinUI3 stack and a UserTable), and the first administrator of an onboarded tenant as a new person. </summary>

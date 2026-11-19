@@ -1,5 +1,7 @@
 using CodeGenNew.Core;
 
+using CodeGenNew.Tests.Tenant;
+
 namespace CodeGenNew.Tests;
 
 /// <summary> The people of the WinUI3 app: the user table's screen (a Set password box, the administrator flag for administrators only), the first administrator created by the sign-in of an empty user table,
