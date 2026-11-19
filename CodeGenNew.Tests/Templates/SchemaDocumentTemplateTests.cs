@@ -7,7 +7,7 @@ using Microsoft.OpenApi.Readers;
 using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The templates that write what the schema says for tools and people: an OpenAPI document, a data dictionary, an ER diagram and FluentValidation validators. </summary>
 [TestClass]

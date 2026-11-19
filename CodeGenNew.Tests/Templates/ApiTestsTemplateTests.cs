@@ -4,7 +4,7 @@ using CodeGenNew.Generation;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The integration tests API_Test writes per table, the test project API_EssentialTests writes, and the setting that adds them to a plan. </summary>
 [TestClass]

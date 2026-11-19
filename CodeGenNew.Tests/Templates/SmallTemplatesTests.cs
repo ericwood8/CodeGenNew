@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The zod schema, the Angular validators, the proto file, the Mapperly mapper and the foreign-key index script, and the column rules the first two share with CS_Validator. </summary>
 [TestClass]

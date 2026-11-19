@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Web;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> What the test and entity templates used to decide inside themselves and Core now decides: the members of an entity class, the plan of an API test class, of a Blazor page test and of the transfer-class tests, and the junction test's keys. </summary>
 [TestClass]

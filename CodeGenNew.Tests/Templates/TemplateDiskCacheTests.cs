@@ -1,7 +1,7 @@
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> Compiled templates kept on disk: a second run reads them back instead of calling the compiler. </summary>
 [TestClass]

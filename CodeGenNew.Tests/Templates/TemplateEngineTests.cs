@@ -4,7 +4,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Content;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 [TestClass]
 public class TemplateInfoBuildFileNameTests

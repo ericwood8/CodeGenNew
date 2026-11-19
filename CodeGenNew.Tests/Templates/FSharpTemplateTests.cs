@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The F# family: an immutable record per table with validate / ofStrings, and the Rop module they share. </summary>
 [TestClass]

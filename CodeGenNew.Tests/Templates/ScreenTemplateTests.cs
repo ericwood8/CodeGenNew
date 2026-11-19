@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Naming;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The screen-list templates (TSX_Screens, TS_Screens, WinUI3_Screens) write the menu and routes of each app from the table list. </summary>
 [TestClass]

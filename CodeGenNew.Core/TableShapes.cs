@@ -170,7 +170,7 @@ public sealed class TableShapes
         if (shape == typeof(EffectiveShape)) return EffectiveDatePlan.For(_table, _project);
         if (shape == typeof(DefaultRowShape)) return DefaultRowPlan.For(_table, _project);
         if (shape == typeof(ExtensionShape)) return ExtensionPlan.For(_table, _project);
-        if (shape == typeof(TaxLineShape)) return TaxLinePlan.For(_table, _project);
+        if (shape == typeof(TaxLineShape)) return _database is null ? TaxLinePlan.For(_table, _project) : TaxLinePlan.For(_table, _project, _database);
         if (shape == typeof(NameActiveShape)) return NameActiveShape.For(_table, _project);
         if (shape == typeof(TenantOwnedShape)) return TenantPlan.OwnedBy(_table, _project);
         if (shape == typeof(JunctionShape)) return _table.Junction;

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> Runs the SHIPPED templates (the files in Templates\) against hand-built tables -- no database -- and checks
 /// the text they produce. These are the guard rails for the templates' rules, refusals and project settings. </summary>

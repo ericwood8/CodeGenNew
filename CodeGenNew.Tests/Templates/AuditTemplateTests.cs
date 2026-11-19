@@ -4,7 +4,7 @@ using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The audit trail (SP_AuditTable) and temporal table (SP_TemporalTable) scripts and the settings that choose their tables. </summary>
 [TestClass]

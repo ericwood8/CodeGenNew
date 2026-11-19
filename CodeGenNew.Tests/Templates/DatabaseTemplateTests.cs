@@ -1,7 +1,7 @@
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The database-level templates (CS_DbContext, API_Registration): one file for the whole database, fed every table as
 /// <c>Database</c>. Checked per provider, with no database. </summary>

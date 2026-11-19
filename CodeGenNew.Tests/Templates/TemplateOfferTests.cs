@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Generation;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The menu offers a project-dependent template only for a table a whole-project run would write it for. </summary>
 [TestClass]

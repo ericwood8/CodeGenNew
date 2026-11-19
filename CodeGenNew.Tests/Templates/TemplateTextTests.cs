@@ -1,6 +1,6 @@
 using CodeGenNew.Core;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The one place text with <c>§</c> tokens is filled. </summary>
 [TestClass]

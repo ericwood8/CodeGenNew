@@ -2,7 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The data-transfer family: a reader-filled class, the mapper to the entity, and the data-contract, typed-DataSet and serialization shapes of the same table. </summary>
 [TestClass]

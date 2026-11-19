@@ -5,7 +5,7 @@ using CodeGenNew.TemplateEngine;
 using Microsoft.OpenApi.Readers;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Templates;
 
 /// <summary> The request files, the fake-data generators, the settings that add them to a plan, the validation endpoint filter, the Swagger page, and the descriptions the database holds. </summary>
 [TestClass]
