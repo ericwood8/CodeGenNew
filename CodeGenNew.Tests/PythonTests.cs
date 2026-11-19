@@ -6,6 +6,7 @@ using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using Microsoft.Data.Sqlite;
+using CodeGenNew.Core.Python;
 
 namespace CodeGenNew.Tests;
 

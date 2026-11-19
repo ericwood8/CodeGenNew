@@ -1,4 +1,10 @@
 using System.Collections.Concurrent;
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Rust;
+using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Tenant;
+using CodeGenNew.Core.Usage;
 
 namespace CodeGenNew.Core;
 
@@ -27,7 +33,7 @@ public partial class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode", "MaxGridColumns",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "OnlyTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "InboundTables", "InboundSecret", "InboundSourceSecrets", "InboundEditTables", "InboundMaxBytes", "InboundToleranceSeconds", "InboundClientTables", "InboundClientPerMinute", "InboundClientMaxBytes", "PartitionTables", "PartitionMonthsAhead", "PartitionKeepMonths", "TokenTables", "TokenAnonymousSpend", "UsageTables", "UsageLimits", "UsageRollup", "UsageRollupDays", "UsageRollupHours", "UsageRefuse", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "ContentTables", "ContentPublicColumns", "AssetTables", "AssetStoreFolder", "AssetMaxBytes", "AssetAllowedTypes", "PolymorphicLinks", "DefaultRowTables", "PartyTables", "RateTables", "RateInverse", "BaseCurrency", "RateDocuments", "SnapshotColumns", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "FeatureTables", "FeaturePlanTable", "FeatureScreens", "FeatureFields", "FeatureCacheSeconds", "FeatureRefreshSeconds", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "OnlyTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "InboundTables", "InboundSecret", "InboundSourceSecrets", "InboundEditTables", "InboundMaxBytes", "InboundToleranceSeconds", "InboundClientTables", "InboundClientPerMinute", "InboundClientMaxBytes", "PartitionTables", "PartitionMonthsAhead", "PartitionKeepMonths", "TokenTables", "TokenAnonymousSpend", "UsageTables", "UsageLimits", "UsageRollup", "UsageRollupDays", "UsageRollupHours", "UsageRefuse", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "ContentTables", "ContentPublicColumns", "AssetTables", "AssetStoreFolder", "AssetMaxBytes", "AssetAllowedTypes", "PolymorphicLinks", "DefaultRowTables", "PartyTables", "RateTables", "RateInverse", "BaseCurrency", "RateDocuments", "TaxLines", "SnapshotColumns", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "FeatureTables", "FeaturePlanTable", "FeatureScreens", "FeatureFields", "FeatureCacheSeconds", "FeatureRefreshSeconds", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "PythonTests", "OutputSql", "AppNamespace", "DatabaseProvider", "MySqlFlavour", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"
     ];
@@ -379,6 +385,7 @@ public partial class ProjectSettings
                 if (QueueTables.Length > 0) yield return "RS_TestQueue";
                 if (PartyTables.Length > 0) yield return "RS_TestParties";
                 if (RateTables.Length > 0) yield return "RS_TestRates";
+                if (TaxLines.Length > 0) yield return "RS_TestTax";
                 if (InboundTables.Length > 0) yield return "RS_TestInbound";
                 if (ApiAuth && TokenTables.Length > 0) yield return "RS_TestTokens";
                 if (ApiAuth && TenantTable is not null) yield return "RS_TestTenants";
@@ -389,6 +396,7 @@ public partial class ProjectSettings
             if (PythonTests && QueueTables.Length > 0) yield return "PY_TestQueue";
             if (PythonTests && PartyTables.Length > 0) yield return "PY_TestParties";
             if (PythonTests && RateTables.Length > 0) yield return "PY_TestRates";
+            if (PythonTests && TaxLines.Length > 0) yield return "PY_TestTax";
             if (PythonTests && InboundTables.Length > 0) yield return "PY_TestInbound";
             if (PythonTests && ApiAuth && TokenTables.Length > 0) yield return "PY_TestTokens";
             if (PythonTests && ApiAuth && TenantTable is not null) yield return "PY_TestTenants";
@@ -763,6 +771,9 @@ public partial class ProjectSettings
     /// <summary> Documents that keep the exchange rate they were written with (<c>RateDocuments=Invoice:Currency:Rate:Amount:BaseAmount:Day</c>). Empty when not set. </summary>
     public string[] RateDocuments => Items("RateDocuments");
 
+    /// <summary> Document lines that carry the tax rate of their category (<c>TaxLines=InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate</c>). Empty when not set. </summary>
+    public string[] TaxLines => Items("TaxLines");
+
     /// <summary> Child rows that keep what their parent looked like when they were written (<c>SnapshotColumns=OrderItem:ProductName&lt;-Product.Name+UnitPrice&lt;-Product.Price:LineTotal=Quantity*UnitPrice</c>: the table, the copied columns, an optional line total). Empty when not set. </summary>
     public string[] SnapshotColumns => Items("SnapshotColumns");
 
@@ -779,7 +790,7 @@ public partial class ProjectSettings
     public string[] SoftDeleteTables => Items("SoftDeleteTables");
 
     /// <summary> Tables whose rows are valid for a period (<c>EffectiveDatedTables=Price:ValidFrom:ValidTo:ItemId</c>): no overlap within a group, <c>GET current?on=</c>. See <see cref="EffectiveDatePlan"/>. </summary>
-    public string[] EffectiveDatedTables => [.. Items("EffectiveDatedTables"), .. PartyPlan.ChildTables(this, "taxes")];
+    public string[] EffectiveDatedTables => [.. Items("EffectiveDatedTables"), .. PartyPlan.ChildTables(this, "taxes"), .. TaxLinePlan.EffectiveItems(this).Where(item => !Items("EffectiveDatedTables").Any(own => own.Split(':')[0].EqualsIgnoreCase(item.Split(':')[0])))];
 
     /// <summary> The table of tenants (<c>TenantTable=Tenant</c>): with ApiAuth every table that has a NOT NULL whole-number <see cref="TenantColumn"/> pointing at it is tenant-owned, and a caller reaches only the rows of the tenant in their token. See <see cref="TenantPlan"/>. </summary>
     public string? TenantTable => Explicit("TenantTable") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
@@ -843,7 +854,7 @@ public partial class ProjectSettings
     public string[] MoneyColumns => Items("MoneyColumns");
 
     /// <summary> Columns the project says are not money (<c>NotMoneyColumns=Rate,Item.Cost</c>) though their name or their size (MySQL decimal(19,4)) says so. </summary>
-    public string[] NotMoneyColumns => Items("NotMoneyColumns");
+    public string[] NotMoneyColumns => [.. Items("NotMoneyColumns"), .. TaxLinePlan.RateColumns(this)];
 
     /// <summary> WinUI3_DirectoryListing: the class stem (<c>DocumentListPage</c>), the folder whose files are listed (environment variables are expanded when the app runs) and
     /// the file pattern. Null when not set; the template then uses <c>Document</c>, <c>%LocalAppData%\&lt;ProjectName&gt;\&lt;ListingName&gt;</c> and <c>*.*</c>. </summary>

@@ -1,6 +1,7 @@
 using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Api;
 
 namespace CodeGenNew.Tests;
 

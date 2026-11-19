@@ -116,6 +116,15 @@
         t.FieldOf(ratePlan.To).Name, DialectInfo.For(Model.Dialect).Quote(ratePlan.To.DbName), t.FieldOf(ratePlan.Rate).Name, RustRateWriter.ZeroOf(t.FieldOf(ratePlan.Rate).BaseType), t.FieldOf(ratePlan.Day).Name,
         DialectInfo.For(Model.Dialect).Quote(ratePlan.Day.DbName), t.FieldOf(ratePlan.Day).BaseType, t.SelectList, Project.RateInverse && RatePlan.InvertibleRate(ratePlan.Rate), RustRateWriter.OneOf(t.FieldOf(ratePlan.Rate).BaseType), t.Key.Name);
     // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
+    // TaxLines: the line carries the rate of its category, the tax is worked out, and GET tax-subtotals answers a document's tax by category
+    var taxPlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).TaxLine : null;
+    var taxCategoryTable = taxPlan is null ? null : RustTable.Of(taxPlan.CategoryTable, Project);
+    var taxNames = taxPlan is null || taxCategoryTable is null ? null : new RustTaxWriter.Names(t.Struct, t.Table, t.SelectList, taxCategoryTable.Module, t.FieldOf(taxPlan.Category).Name, t.FieldOf(taxPlan.Category).BaseType, taxPlan.Category.IsNullable,
+        t.FieldOf(taxPlan.Rate).Name, t.FieldOf(taxPlan.Rate).BaseType, t.FieldOf(taxPlan.Taxable).Name, t.FieldOf(taxPlan.Taxable).BaseType, t.FieldOf(taxPlan.Tax).Name, t.FieldOf(taxPlan.Tax).BaseType, taxPlan.Tax.Scale ?? TaxWords.DefaultScale,
+        taxCategoryTable.FieldOf(taxPlan.CategoryRate).Name, taxCategoryTable.FieldOf(taxPlan.CategoryRate).BaseType, taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).Name,
+        taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).BaseType, taxPlan.ValidTo is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidTo).Name, taxPlan.ValidTo?.IsNullable ?? false,
+        taxPlan.Day is null ? null : t.FieldOf(taxPlan.Day).Name, taxPlan.Day is null ? null : t.FieldOf(taxPlan.Day).BaseType, taxPlan.Document is null ? null : t.FieldOf(taxPlan.Document).Name,
+        taxPlan.Document is null ? null : DialectInfo.For(Model.Dialect).Quote(taxPlan.Document.DbName), taxPlan.Document is null ? null : t.FieldOf(taxPlan.Document).BaseType, taxPlan.Label is null ? null : taxCategoryTable.FieldOf(taxPlan.Label).Name);
     var docPlan = !scoped && !tenanted && !log ? RateDocumentPlan.For(Model, Project) : null;
     var docRateTable = docPlan is null ? null : RustTable.Of(docPlan.Rates.Table, Project);
     var docNames = docPlan is null ? null : new RustRateDocumentWriter.Names(t.Struct, t.FieldOf(docPlan.Currency).Name, t.FieldOf(docPlan.Rate).Name, t.FieldOf(docPlan.Rate).BaseType, t.FieldOf(docPlan.Amount).Name,
@@ -142,14 +151,14 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || taxNames?.Document is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
-    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || taxNames?.Document is not null;
     Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -243,6 +252,8 @@
         sb.Append(RustPartyWriter.RouteLine(t.Route, readLayer));
     if (rateNames is not null)
         sb.Append(RustRateWriter.RouteLine(t.Route, readLayer));
+    if (taxNames?.Document is not null)
+        sb.Append(RustTaxWriter.RouteLine(t.Route, readLayer));
     if (contentPlan is not null)
     {
         sb.Append(RustContentWriter.StatusRouteLines(t.Route, writeLayer));
@@ -278,6 +289,11 @@
         Line(RustRateWriter.Code(rateNames));
     if (docNames is not null)
         Line(RustRateDocumentWriter.Code(docNames));
+    if (taxNames is not null)
+    {
+        Line(RustTaxWriter.Code(taxNames));
+        Line(RustTaxWriter.Subtotals(taxNames));
+    }
     if (snapNames is not null)
         Line(RustSnapshotWriter.Code(snapNames));
     if (softRoutes)
@@ -474,7 +490,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -545,6 +561,8 @@
         Line("    check_rate(&pool, None, &mut row).await?;");
     if (docNames is not null)
         Line("    convert_currency(&pool, &mut row, None).await?;");
+    if (taxNames is not null)
+        Line("    apply_tax(&pool, &mut row, None).await?;");
     if (snapNames is not null)
         Line("    fill_snapshot(&pool, &mut row, None).await?;");
     if (defNames is not null)
@@ -599,7 +617,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -650,6 +668,11 @@
     {
         Line($"    let document_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
         Line("    convert_currency(&pool, &mut row, Some(&document_stored)).await?;");
+    }
+    if (taxNames is not null)
+    {
+        Line($"    let tax_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+        Line("    apply_tax(&pool, &mut row, Some(&tax_stored)).await?;");
     }
     if (snapNames is not null)
     {

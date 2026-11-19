@@ -68,6 +68,8 @@
             foreach (string line in PartyScreens.AngularODataServiceLines(baseName)) L(line);
         if (rateBox)
             foreach (string line in RateScreens.AngularServiceLines(baseName, "restUrl")) L(line);
+        if (TaxScreens.HasBox(table, Project))
+            foreach (string line in TaxScreens.AngularServiceLines("restUrl")) L(line);
         L("}");
     }
     Write(o.ToString());

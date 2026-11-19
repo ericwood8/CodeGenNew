@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestTax_v1.tt
+    // Generates: tests/api/tax_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of what RS_Routes writes for TaxLines, run in process over a scratch database like RS_Test. Each test adds its own categories and lines through the router and removes them again.
+    // The cases: the rate is the category's and the tax is worked out from it, the rate is kept when the category's rate changes, a category that does not exist is refused, and with the validity and
+    // document parts a category outside its validity is refused and the subtotals of a document add up. The words are TaxWords, as in the Python tests.
+    // Written only for a project with RustTests=true and a line table the tests can fill (TaxTestPlan).
+    // Needs Client.start of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (RustTaxTests.Applies(Database, Project))
+        Write("@@@FILE tests/api/tax_routes.rs@@@\n" + RustTaxTests.File(Database, Project));
+#>

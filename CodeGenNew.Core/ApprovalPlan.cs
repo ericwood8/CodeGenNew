@@ -1,3 +1,4 @@
+
 namespace CodeGenNew.Core;
 
 /// <summary> The values of the approval status column of a <c>&lt;Table&gt;Approval</c> row. </summary>

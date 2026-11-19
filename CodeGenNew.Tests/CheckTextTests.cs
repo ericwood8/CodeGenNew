@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.RegularExpressions;
 using CodeGenNew.Core;
+using CodeGenNew.Core.Api;
 
 namespace CodeGenNew.Tests;
 

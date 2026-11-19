@@ -1,3 +1,4 @@
+
 namespace CodeGenNew.Core;
 
 /// <summary> A session or token table and the columns the routes use. <c>Ends</c> are the flags and stamps that say a token was used or revoked (a row is active when none is set); without any, ending a token sets its

@@ -1,3 +1,8 @@
+using CodeGenNew.Core.Api;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> What the generated rate tests of the Python and Rust APIs (PY_TestRates, RS_TestRates) send: a rate row with an example value for every column that must have one. The tests fill the key, the

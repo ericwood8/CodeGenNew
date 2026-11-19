@@ -1,0 +1,10 @@
+# tax lines in every stack (the rate and tax amount are text on the form, the dating and subtotals route are served): python matrix_check.py Tax --settings-file Matrix/tax_screens.settings --frontend
+@schema=tax_lines
+@stack=api,python,rust,blazor,uno,winui3,react,angular
+TaxLines=InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate:ValidFrom:ValidTo:LineDate:InvoiceId:Code
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+DesktopTests=true
+PythonTests=true
+RustTests=true

@@ -1,0 +1,10 @@
+# the tax of a document in the Invoice dialog (the lines are its child grid) and the document box on the line list: python matrix_check.py TaxDoc --settings-file Matrix/tax_document.settings
+@schema=tax_lines_document
+@stack=api,winui3,uno
+TaxLines=InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate:ValidFrom:ValidTo:LineDate:InvoiceId:Code
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+DesktopTests=true
+PythonTests=true
+RustTests=true

@@ -1,4 +1,5 @@
 using System.Text;
+using CodeGenNew.Core.Api;
 
 namespace CodeGenNew.Core;
 

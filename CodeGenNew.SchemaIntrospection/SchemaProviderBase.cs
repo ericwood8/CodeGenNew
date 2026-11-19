@@ -1,6 +1,7 @@
 ﻿using System.Data;
 using System.Data.Common;
 using CodeGenNew.Core;
+using CodeGenNew.Core.Desktop;
 
 namespace CodeGenNew.SchemaIntrospection;
 

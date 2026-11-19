@@ -1,3 +1,8 @@
+using CodeGenNew.Core.Api;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> What the generated party tests of the Python and Rust APIs (PY_TestParties, RS_TestParties) send: a party and an identifier row, each with an example value for every column that must have one.

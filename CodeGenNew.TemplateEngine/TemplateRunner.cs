@@ -46,6 +46,7 @@ public static class TemplateRunner
         // Make CodeGenNew.Core (and therefore TableModel/ColumnModel/ForeignKeyModel) resolvable
         // when the T4 engine compiles the generated template class.
         generator.Refs.Add(typeof(TableModel).Assembly.Location);
+        CoreNamespaces.AddTo(generator);
 
         var session = generator.GetOrCreateSession();
         if (parameterName is not null)

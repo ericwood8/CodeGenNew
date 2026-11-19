@@ -1,0 +1,10 @@
+# a tax line whose category cannot be NULL: the WinUI3 test project adds a category row before the sample line: python matrix_check.py TaxReq --settings-file Matrix/tax_required.settings
+@schema=tax_lines_required
+@stack=api,winui3,uno
+TaxLines=InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate:ValidFrom:ValidTo:LineDate:InvoiceId:Code
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+DesktopTests=true
+PythonTests=true
+RustTests=true

@@ -1,3 +1,4 @@
+
 namespace CodeGenNew.Core;
 
 /// <summary> The notation a text column that holds more than text must be written in: a regular expression the whole value matches (no anchors; the syntax every generated stack shares), what a value is

@@ -1,0 +1,472 @@
+using System.Data;
+using CodeGenNew.Core.Api;
+
+namespace CodeGenNew.Core.Rust;
+
+/// <summary> One column of a Rust struct: its names, type, the attributes serde and sqlx need, and the pieces of SQL that read and write it. </summary>
+public sealed record RustField(ColumnModel Column, string Name, string Json, string Type, bool IsOption, string? SerdeWith, string Select)
+{
+    /// <summary> The field's type without <c>Option</c>. </summary>
+    public string BaseType => IsOption ? Type[7..^1] : Type;
+}
+
+/// <summary> A navigation property the .NET entity has (and so the JSON of the other stacks: always null in a list): the Rust struct carries it as an empty <c>Option</c> so the JSON has the same names. </summary>
+public sealed record RustNavigation(string Name, string Json);
+
+/// <summary> A filter of the search: the Rust field of the request, the query-string name, and the SQL text before and after the bound value. </summary>
+public sealed record RustFilter(string Field, string Query, string Before, string After);
+
+/// <summary> One whole-number foreign key the search can filter by: an exact match, the quoted column as the SQL names it. </summary>
+public sealed record RustKeyFilter(string Field, string Query, string Column, string Type)
+{
+    public bool IsText => Type == "String";
+}
+
+/// <summary> A sort the grid may ask for: the name in lower case and the SQL expression to order by. </summary>
+public sealed record RustSort(string Name, string Expression);
+
+/// <summary> The clone of a row: one INSERT ... SELECT. The columns in <see cref="Overrides"/> take a bound value (a free one the repository suggests), in the order of the placeholders. </summary>
+public sealed record RustClone(string Sql, IReadOnlyList<RustField> Overrides);
+
+/// <summary> What a Rust API needs to know about one table, worked out once from the schema: the struct, and every statement of the repository written for the database (PostgreSQL, MySQL
+/// or SQLite) as fixed text. The templates only lay this out. A column whose type Rust has no mapping for here (binary, xml, a type CodeGenNew cannot map) is left out of the struct and the
+/// statements and is listed in <see cref="Skipped"/>. </summary>
+public sealed class RustTable
+{
+    private readonly DialectInfo _di;
+    private readonly bool _mariaDb;
+    private readonly Dictionary<ColumnModel, RustField> _fieldOf;
+
+    private readonly TableModel _model;
+    private readonly ProjectSettings _project;
+
+    private RustTable(TableModel model, ProjectSettings project)
+    {
+        _model = model;
+        _project = project;
+        Model = model;
+        _di = DialectInfo.For(model.Dialect);
+        _mariaDb = project.MariaDbSetting == true;
+        Struct = RustNames.Pascal(model.TableName);
+        Module = RustNames.Snake(model.TableName);
+        Route = "/api/" + ScreenNames.BaseName(model.TableName).ToLowerInvariant().Pluralize();
+
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        var fields = new List<RustField>();
+        var skipped = new List<ColumnModel>();
+        foreach (var column in model.Columns)
+        {
+            string? type = RustType(column, model.Dialect);
+            if (type is null)
+            {
+                skipped.Add(column);
+                continue;
+            }
+
+            string snake = RustNames.Snake(column.Name);
+            for (int n = 2; !used.Add(snake); n++)
+                snake = RustNames.Snake(column.Name) + "_" + n;
+            fields.Add(new RustField(column, RustNames.Ident(snake), JsonNames.Camel(column.Name), column.IsNullable ? $"Option<{type}>" : type, column.IsNullable,
+                SerdeWith(type, column.IsNullable), SelectExpression(column)));
+        }
+
+        Fields = fields;
+        Skipped = skipped;
+        Key = fields.First(f => f.Column.IsPrimaryKey);
+        // the user table's password hash is read into the struct (the sign-in needs it) but is in no JSON, no INSERT, no UPDATE, no filter, no sort and no clone: only set-password writes it
+        string? hashName = TableShapes.For(model, project).User?.PasswordHash.Name;
+        HashField = hashName is null ? null : fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(hashName));
+        var fieldOf = new Dictionary<ColumnModel, RustField>();
+        foreach (var field in fields.Where(f => f != HashField))
+            fieldOf.TryAdd(field.Column, field);
+        _fieldOf = fieldOf;
+        ActiveField = model.IsActiveColumn is { } activeColumn && fieldOf.TryGetValue(activeColumn, out var activeField) ? activeField : null;
+        Navigations = EntityNavigations.Of(model, fk => project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false)
+            .Where(n => fieldOf.ContainsKey(n.Column))
+            .Select(n => new RustNavigation(RustNames.Ident(RustNames.Snake(n.Role)), JsonNames.Camel(n.Role))).ToList();
+        Returning = DialectInfo.For(model.Dialect).SupportsReturning;
+        Table = _di.QuoteTable(model.SchemaName, model.DbTableName);
+        SelectList = string.Join(", ", fields.Select(f => f.Select));
+
+        // what an INSERT writes: everything the database does not assign (an identity or computed column is left out)
+        Written = fields.Where(f => f != HashField && !f.Column.IsIdentity && !f.Column.IsComputed).ToList();
+        // the audit dates the server sets in the statement itself: a create date and the last-changed date on a new row, the modified and last-changed dates on a changed one; a body need not carry them
+        StampedOnNew = Written.Where(f => f.Column.IsDateColumn && f.Column.IsInsertStampColumn).ToList();
+        StampedOnChange = Written.Where(f => f.Column.IsDateColumn && (f.Column.IsModifiedDateColumn || f.Column.IsLastChangedDateColumn)).ToList();
+        InsertBound = Written.Where(f => !StampedOnNew.Contains(f)).ToList();
+        string columns = string.Join(", ", Written.Select(f => _di.Quote(f.Column.DbName)));
+        string values = string.Join(", ", Written.Select(f => StampedOnNew.Contains(f) ? _di.CurrentTimestamp : Parameter(f, InsertBound.ToList().IndexOf(f) + 1)));
+        string returning = Returning ? $" RETURNING {SelectList}" : "";
+        string key = _di.Quote(Key.Column.DbName);
+
+        BuildSoftDelete(model, project, fieldOf, key);
+        SelectAll = $"SELECT {SelectList} FROM {Table}{LiveWhere()} ORDER BY {key}";
+        SelectOne = $"SELECT {SelectList} FROM {Table} WHERE {key} = {_di.Placeholder(1)}{LiveAnd()}";
+        Insert = $"INSERT INTO {Table} ({columns}) VALUES ({values}){returning}";
+
+        // an UPDATE sets every written column except the key, then finds the row by the key (last, so the positional placeholders of MySQL and SQLite follow the bind order)
+        Updated = Written.Where(f => !f.Column.IsPrimaryKey && !StampedOnNew.Contains(f) && !StampedOnChange.Contains(f)).ToList();
+        string sets = string.Join(", ", Updated.Select((f, i) => $"{_di.Quote(f.Column.DbName)} = {Parameter(f, i + 1)}")
+            .Concat(StampedOnChange.Select(f => $"{_di.Quote(f.Column.DbName)} = {_di.CurrentTimestamp}")));
+        Update = $"UPDATE {Table} SET {sets} WHERE {key} = {_di.Placeholder(Updated.Count + 1)}{LiveAnd()}{returning}";
+        Delete = $"DELETE FROM {Table} WHERE {key} = {_di.Placeholder(1)}";
+
+        BuildSearch(project);
+        BuildLookup();
+        Clone = CloneShape.CanClone(model, project) ? BuildClone() : null;
+    }
+
+    public static RustTable Of(TableModel model, ProjectSettings project) => new(model, project);
+
+    private void BuildSoftDelete(TableModel model, ProjectSettings project, Dictionary<ColumnModel, RustField> fieldOf, string key)
+    {
+        if (TableShapes.For(model, project).SoftDelete is not { } soft || !fieldOf.TryGetValue(soft.Flag, out var flag))
+            return;
+        SoftFlag = flag;
+        SoftOn = soft.DeletedOn is not null && fieldOf.TryGetValue(soft.DeletedOn, out var on) ? on : null;
+        SoftBy = soft.DeletedBy is not null && fieldOf.TryGetValue(soft.DeletedBy, out var by) ? by : null;
+        string flagName = _di.Quote(flag.Column.DbName);
+        string setOn = SoftOn is null ? "" : $", {_di.Quote(SoftOn.Column.DbName)} = {_di.CurrentTimestamp}";
+        string setBy = SoftBy is null ? "" : $", {_di.Quote(SoftBy.Column.DbName)} = {_di.Placeholder(1)}";
+        string clear = (SoftOn is null ? "" : $", {_di.Quote(SoftOn.Column.DbName)} = NULL") + (SoftBy is null ? "" : $", {_di.Quote(SoftBy.Column.DbName)} = NULL");
+        SoftDeleteSql = $"UPDATE {Table} SET {flagName} = {_di.BooleanLiteral(true)}{setOn}{setBy} WHERE {key} = {_di.Placeholder(SoftBy is null ? 1 : 2)} AND {flagName} = {_di.BooleanLiteral(false)}";
+        SoftRestoreSql = $"UPDATE {Table} SET {flagName} = {_di.BooleanLiteral(false)}{clear} WHERE {key} = {_di.Placeholder(1)} AND {flagName} = {_di.BooleanLiteral(true)}";
+        string order = SoftOn is null ? $"{key} DESC" : $"{_di.Quote(SoftOn.Column.DbName)} DESC, {key} DESC";
+        SoftDeletedSql = $"SELECT {SelectList} FROM {Table} WHERE {flagName} = {_di.BooleanLiteral(true)} ORDER BY {order} LIMIT 500";
+        SoftExistsSql = $"SELECT COUNT(*) FROM {Table} WHERE {key} = {_di.Placeholder(1)}";
+    }
+
+    /// <summary> The field of the column. </summary>
+    public RustField FieldOf(ColumnModel column) => Fields.First(f => f.Column.Name.EqualsIgnoreCase(column.Name));
+
+    /// <summary> The value a field has when nothing was entered, as Rust writes it: <c>None</c>, <c>false</c>, <c>String::new()</c>, <c>0</c>. </summary>
+    public static string DefaultValue(RustField f) => f.IsOption ? "None" : f.BaseType switch { "bool" => "false", "String" => "String::new()", "f32" or "f64" => "0.0", "Decimal" => "rust_decimal::Decimal::ZERO", _ => "0" };
+
+    /// <summary> Whether the field has left its default, in Rust: a yes / no is true, a text is not empty, a number is not 0. </summary>
+    public static string NotDefault(RustField f, string access) => f.BaseType switch
+    {
+        "bool" => f.IsOption ? $"{access} == Some(true)" : access,
+        "String" => f.IsOption ? $"{access}.as_deref().is_some_and(|v| !v.is_empty())" : $"!{access}.is_empty()",
+        "Decimal" => f.IsOption ? $"{access}.is_some_and(|v| !v.is_zero())" : $"!{access}.is_zero()",
+        "f32" or "f64" => f.IsOption ? $"{access}.unwrap_or(0.0) != 0.0" : $"{access} != 0.0",
+        _ => f.IsOption ? $"{access}.unwrap_or(0) != 0" : $"{access} != 0"
+    };
+
+    /// <summary> The Rust expression for "now" in a date field's type, wrapped in <c>Some</c> for an optional field. </summary>
+    public static string Now(RustField f)
+    {
+        string now = f.BaseType switch { "NaiveDate" => "chrono::Local::now().date_naive()", "NaiveDateTime" => "chrono::Local::now().naive_local()", _ => "chrono::Utc::now()" };
+        return f.IsOption ? $"Some({now})" : now;
+    }
+
+    /// <summary> SQL as a Rust raw string literal (<c>r#"..."#</c>), so the quotes of an identifier need no escape. </summary>
+    public static string Raw(string text) => text.Contains("\"#", StringComparison.Ordinal) ? "r##\"" + text + "\"##" : "r#\"" + text + "\"#";
+
+    public TableModel Model { get; }
+
+    /// <summary> The struct's name: <c>SalesInvoice</c>. </summary>
+    public string Struct { get; }
+
+    /// <summary> The module and file name: <c>sales_invoice</c>. </summary>
+    public string Module { get; }
+
+    /// <summary> The route every stack uses for the table: <c>/api/customers</c> (the plural of <see cref="Pluralizer"/>). </summary>
+    public string Route { get; }
+
+    public IReadOnlyList<RustField> Fields { get; }
+
+    /// <summary> The field of the NOT NULL <c>IsActive</c> flag (<see cref="TableModel.IsActiveColumn"/>), or null when the table has none or the crate does not carry it. </summary>
+    public RustField? ActiveField { get; }
+    public IReadOnlyList<ColumnModel> Skipped { get; }
+    public RustField Key { get; }
+
+    /// <summary> The password hash field of the user table (<c>UserTable</c> with <c>ApiAuth</c>); null for any other table. </summary>
+    public RustField? HashField { get; }
+
+    /// <summary> The navigation properties of the entity, which a Rust row carries only as null. </summary>
+    public IReadOnlyList<RustNavigation> Navigations { get; }
+
+    /// <summary> False for MySQL, which cannot return the row an INSERT or UPDATE wrote: the repository reads it back by key. </summary>
+    public bool Returning { get; }
+
+    public string Table { get; }
+    public string SelectList { get; }
+
+    /// <summary> The fields an INSERT writes, in order (the ones it binds are <see cref="InsertBound"/>). </summary>
+    public IReadOnlyList<RustField> Written { get; }
+
+    /// <summary> The fields an UPDATE binds, in order, before the key. </summary>
+    public IReadOnlyList<RustField> Updated { get; }
+
+    /// <summary> The create and last-changed dates the INSERT sets itself. </summary>
+    public IReadOnlyList<RustField> StampedOnNew { get; }
+
+    /// <summary> The modified and last-changed dates the UPDATE sets itself. </summary>
+    public IReadOnlyList<RustField> StampedOnChange { get; }
+
+    /// <summary> The fields an INSERT binds a value for: <see cref="Written"/> without the dates it sets itself. </summary>
+    public IReadOnlyList<RustField> InsertBound { get; }
+
+    /// <summary> A field the server stamps, so a body may leave it out. </summary>
+    public bool IsStamped(RustField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field) || SnapshotPlan.IsOwnedColumn(_model, _project, field.Column);
+
+    public string SelectAll { get; private set; } = "";
+
+    /// <summary> The flag column of a table in <c>SoftDeleteTables</c> (the plan's own columns, as fields); null for any other table. </summary>
+    public RustField? SoftFlag { get; private set; }
+
+    /// <summary> The optional stamp columns of a soft-delete table: when and by whom. </summary>
+    public RustField? SoftOn { get; private set; }
+
+    public RustField? SoftBy { get; private set; }
+
+    /// <summary> The statements of a soft-delete table: flag a row (<c>UPDATE ... WHERE key AND not flagged</c>; a second bind is the caller's name when there is a <see cref="SoftBy"/>), bring one back, list the flagged rows and
+    /// count the rows with a key whatever their flag. </summary>
+    public string SoftDeleteSql { get; private set; } = "";
+
+    public string SoftRestoreSql { get; private set; } = "";
+
+    public string SoftDeletedSql { get; private set; } = "";
+
+    public string SoftExistsSql { get; private set; } = "";
+
+    /// <summary> <c> AND flag = false</c> (with the alias in front of the column when one is given), or nothing for a table without soft delete. </summary>
+    public string LiveAnd(string? alias = null) => SoftFlag is null ? "" : " AND " + LiveTest(alias);
+
+    public string LiveWhere(string? alias = null) => SoftFlag is null ? "" : " WHERE " + LiveTest(alias);
+
+    private string LiveTest(string? alias) => (alias is null ? "" : alias + ".") + _di.Quote(SoftFlag!.Column.DbName) + " = " + _di.BooleanLiteral(false);
+    public string SelectOne { get; private set; } = "";
+    public string Insert { get; private set; } = "";
+    public string Update { get; private set; } = "";
+    public string Delete { get; private set; } = "";
+
+    /// <summary> The search statement before the filters: <c>SELECT ... FROM t AS t WHERE 1 = 1</c>. </summary>
+    public string SearchItems { get; private set; } = "";
+    public string SearchCount { get; private set; } = "";
+    public IReadOnlyList<RustFilter> Filters { get; private set; } = [];
+
+    /// <summary> The key filters (<see cref="SearchPlan.KeyFilters"/>): an optional integer query parameter each, compared with the column as written. </summary>
+    public IReadOnlyList<RustKeyFilter> KeyFilters { get; private set; } = [];
+
+    // the field's type without the Option a nullable column adds
+    private static string BareType(RustField field) => field.IsOption && field.Type.StartsWith("Option<") ? field.Type["Option<".Length..^1] : field.Type;
+    public IReadOnlyList<RustSort> Sorts { get; private set; } = [];
+
+    /// <summary> The order that applies without a sort and follows a chosen one: the best display column, then the key (a log table: the timestamp, then the key, newest first). </summary>
+    public string DefaultOrder { get; private set; } = "";
+
+    /// <summary> The timestamp field of a table in <c>LogTables</c> (an insert-only ledger the API only reads: no write routes, a date range, newest first); null for any other table. </summary>
+    public RustField? LogStamp { get; private set; }
+
+    /// <summary> The timestamp column as the search statement names it: <c>t."LoggedOn"</c>. Empty for a table that is not a log. </summary>
+    public string LogColumn => LogStamp is null ? "" : "t." + _di.Quote(LogStamp.Column.DbName);
+
+    /// <summary> The statement behind <c>GET &lt;route&gt;/lookup</c>, the list the drop-downs and the "name of" columns of other screens read: <c>id</c>, <c>name</c> (the display column as text, blank when null)
+    /// and <c>is_active</c> (the IsActive flag, null when the table has none) of every row, ordered by name. Null when the table has no display column. </summary>
+    public string? LookupSql { get; private set; }
+
+    /// <summary> The pieces a lookup that is narrowed is built from: the statement up to <c>WHERE 1 = 1</c>, the name expression the list is ordered by, the quoted key column, and the text before and
+    /// after the bound pattern of a "name contains" test. </summary>
+    public string LookupBase { get; private set; } = "";
+    public string LookupOrder { get; private set; } = "";
+    public string LookupKey { get; private set; } = "";
+    public string LookupBefore { get; private set; } = "";
+    public string LookupAfter { get; private set; } = "";
+
+    /// <summary> Null when the table gets no Clone button (<see cref="CloneShape.CanClone"/>). </summary>
+    public RustClone? Clone { get; }
+
+    /// <summary> The Rust type of a column, or null when there is none (the column is left out). </summary>
+    public static string? RustType(ColumnModel column, SqlDialect dialect)
+    {
+        string declaration = column.SqlTypeDeclaration.ToLowerInvariant();
+        bool unsigned = declaration.Contains("unsigned");
+        if (column.IsInt32Column)
+            return unsigned ? "u32" : "i32";
+        if (column.IsBigIntColumn)
+            return unsigned ? "u64" : "i64";
+        if (column.IsSmallIntColumn)
+            return unsigned ? "u16" : declaration.StartsWith("tinyint", StringComparison.Ordinal) ? "i8" : declaration == "year" ? "u16" : "i16";
+        if (column.IsTinyIntColumn)
+            return "u8";
+        if (column.IsBooleanColumn)
+            return "bool";
+        if (column.IsDecimalColumn && unsigned)
+            return "u64";
+        if (column.IsDecimalColumn || column.IsMoneyColumn)
+            return dialect == SqlDialect.Sqlite ? "f64" : "Decimal";
+        if (column.IsFloatColumn)
+            return "f64";
+        if (column.IsRealColumn)
+            return "f32";
+        if (column.IsDateOnlyColumn)
+            return "NaiveDate";
+        if (column.IsDateTimeColumn)
+            return "NaiveDateTime";
+        if (column.IsDateTimeOffsetColumn)
+            return "DateTime<Utc>";
+        if (column.IsTimeColumn)
+            return "NaiveTime";
+        if (column.IsGuidColumn)
+            return "Uuid";
+        if (column.IsStringColumn)
+            return "String";
+        return null;
+    }
+
+    // The module of src/support.rs (or the serde feature of a crate) that writes and reads the type the way ASP.NET does.
+    private static string? SerdeWith(string type, bool option) => type switch
+    {
+        "Decimal" => option ? "rust_decimal::serde::float_option" : "rust_decimal::serde::float",
+        "NaiveDate" => option ? "crate::support::json_date_option" : "crate::support::json_date",
+        "NaiveDateTime" => option ? "crate::support::json_date_time_option" : "crate::support::json_date_time",
+        _ => null
+    };
+
+    /// <summary> True for a PostgreSQL column of a type that is not text (an enum and the like): it is read and compared as text. </summary>
+    private bool NeedsTextCast(ColumnModel column) => _di.IsPostgreSql && column.DbCastType is not null;
+
+    private string SelectExpression(ColumnModel column)
+    {
+        string q = _di.Quote(column.DbName);
+        if (_di.IsPostgreSql)
+        {
+            if (column.IsMoneyColumn)
+                return $"{q}::numeric AS {q}";
+            if (NeedsTextCast(column))
+                return $"{q}::text AS {q}";
+        }
+        if (_di.Dialect == SqlDialect.MySql)
+        {
+            if (column.IsSpatialColumn)
+                return $"{_di.SpatialAsText(q, _mariaDb)} AS {q}";
+            if (column.IsBitColumn)
+                return column.DbBitWidth < 64 ? $"CAST({q} AS SIGNED) AS {q}" : $"CAST({q} AS DECIMAL(20,0)) AS {q}";
+        }
+        // SQLite stores a whole number that was written to a DECIMAL or FLOAT column as an integer, and sqlx refuses to read an integer as a double: read the value as the real it means
+        if (_di.Dialect == SqlDialect.Sqlite && (column.IsNumericColumn || column.IsMoneyColumn))
+            return $"CAST({q} AS REAL) AS {q}";
+        return q;
+    }
+
+    // The placeholder of a bound value, with the cast PostgreSQL needs for the types sqlx sends as something else: money (sent as numeric), and an enum, array, interval, range or shape (sent as text;
+    // blank text is no value of those last types, so it is NULL).
+    private string Parameter(RustField field, int index)
+    {
+        string p = _di.Placeholder(index);
+        if (_di.Dialect == SqlDialect.MySql && field.Column.IsSpatialColumn)
+            return _di.SpatialFromText(p, field.Column.DbSrid, _mariaDb);
+        if (!_di.IsPostgreSql)
+            return p;
+        if (field.Column.IsMoneyColumn)
+            return $"{p}::numeric::money";
+        if (field.Column.IsPgTextColumn)
+            return $"CAST(NULLIF({p}::text, '') AS {field.Column.DbTextType})";
+        if (field.Column.DbEnumType is { } type)
+            return $"CAST({p}::text AS {string.Join(".", type.Split('.').Select(_di.Quote))})";
+        return p;
+    }
+
+    private void BuildSearch(ProjectSettings project)
+    {
+        var log = TableShapes.For(Model, project).Log;
+        var plan = SearchPlan.For(Model, [], log);
+        LogStamp = log is not null && _fieldOf.TryGetValue(log.Timestamp, out var stamp) ? stamp : null;
+        string from = $"{Table} AS t";
+        SearchItems = $"SELECT {SelectList} FROM {from} WHERE 1 = 1{LiveAnd("t")}";
+        SearchCount = $"SELECT COUNT(*) FROM {from} WHERE 1 = 1{LiveAnd("t")}";
+
+        string TextOf(ColumnModel c) => "t." + _di.Quote(c.DbName) + (NeedsTextCast(c) ? "::text" : "");
+
+        Filters = plan.Filters.Where(f => _fieldOf.ContainsKey(f.Column)).Select(f =>
+        {
+            var (before, after) = _di.ContainsParts(TextOf(f.Column));
+            string field = _fieldOf[f.Column].Name;
+            return new RustFilter(field, f.ParameterName, before, after);
+        }).ToList();
+
+        KeyFilters = plan.KeyFilters.Where(k => _fieldOf.ContainsKey(k.Column))
+            .Select(k => new RustKeyFilter(_fieldOf[k.Column].Name, k.ParameterName, "t." + _di.Quote(k.Column.DbName), k.Column.IsIntegerColumn ? "i64" : BareType(_fieldOf[k.Column]))).ToList();
+
+        Sorts = SearchSort.Entries(Model)
+            .Where(e => _fieldOf.ContainsKey(e.Column))
+            .Select(e =>
+            {
+                string expression = e.Parent is { } fk
+                    ? $"(SELECT p.{_di.Quote(fk.ReferencedDisplayDbColumns[0])} FROM {_di.QuoteTable(fk.ReferencedSchema, fk.ReferencedDbTable)} AS p WHERE p.{_di.Quote(fk.ReferencedDbColumns[0])} = t.{_di.Quote(e.Column.DbName)} LIMIT 1)"
+                    : TextOf(e.Column);
+                return new RustSort(e.Name.ToLowerInvariant(), expression);
+            }).ToList();
+
+        DefaultOrder = string.Join(", ", plan.DefaultOrder.Select(c => "t." + _di.Quote(c.DbName) + (log is null ? "" : " DESC")));
+    }
+
+    private void BuildLookup()
+    {
+        var display = Model.DisplayColumns.FirstOrDefault(c => _fieldOf.ContainsKey(c));
+        if (display is null)
+            return;
+        string name = _di.Quote(display.DbName);
+        if (NeedsTextCast(display))
+            name += "::text";
+        else if (!display.IsStringColumn)
+            name = _di.ToText(name);
+        if (display.IsNullable)
+            name = $"COALESCE({name}, '')";
+        string flag = ActiveField is null ? "NULL" : _di.Quote(ActiveField.Column.DbName);
+        string select = $"SELECT {_di.Quote(Key.Column.DbName)} AS id, {name} AS name, {flag} AS is_active FROM {Table}";
+        LookupSql = $"{select}{LiveWhere()} ORDER BY {name}";
+        LookupBase = $"{select} WHERE 1 = 1{LiveAnd()}";
+        LookupOrder = name;
+        LookupKey = _di.Quote(Key.Column.DbName);
+        (LookupBefore, LookupAfter) = _di.ContainsParts(name);
+    }
+
+    private RustClone BuildClone()
+    {
+        var m = Model;
+        var overrides = CloneShape.OverrideColumns(m);
+        var active = m.HasActiveInactivePair ? m.ActiveColumn : null;
+        var inactiveDate = m.HasActiveInactivePair ? m.InactiveDateColumn : null;
+        bool activeNegative = active is not null && active.IsInactive;
+        var columns = new List<string>();
+        var values = new List<string>();
+        var bound = new List<RustField>();
+
+        foreach (var column in CloneShape.Copyable(m))
+        {
+            if (!_fieldOf.TryGetValue(column, out var field) || column.IsPrimaryKey)
+                continue;
+
+            string? value;
+            if (column.IsInsertStampColumn)
+                value = column.IsDateColumn ? _di.CurrentTimestamp : null;
+            else if (column.IsModifiedDateColumn || column.IsModifiedUserColumn || column.IsInactiveReasonColumn || column == inactiveDate || (m.HasSoftDelete && column == m.DeletedDateColumn))
+                value = "NULL";
+            else if (column == active)
+                value = column.IsStringColumn ? (activeNegative ? "'0'" : "'1'") : _di.BooleanLiteral(!activeNegative);
+            else if (column.IsAdminFlagColumn || (m.HasSoftDelete && column == m.IsDeletedColumn))
+                value = column.IsStringColumn ? "'False'" : _di.BooleanLiteral(false);
+            else if (column.IsCreateUserColumn)
+                value = column.IsStringColumn ? "''" : "NULL";
+            else if (overrides.Contains(column))
+            {
+                bound.Add(field);
+                value = _di.Placeholder(bound.Count);
+            }
+            else
+                value = "src." + _di.Quote(column.DbName);
+
+            if (value is null)
+                continue;
+            columns.Add(_di.Quote(column.DbName));
+            values.Add(value);
+        }
+
+        string key = _di.Quote(Key.Column.DbName);
+        string sql = $"INSERT INTO {Table} ({string.Join(", ", columns)}) SELECT {string.Join(", ", values)} FROM {Table} AS src WHERE src.{key} = {_di.Placeholder(bound.Count + 1)}"
+            + (Returning ? $" RETURNING {key}" : "");
+        return new RustClone(sql, bound);
+    }
+}

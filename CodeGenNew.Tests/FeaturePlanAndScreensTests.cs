@@ -4,6 +4,9 @@ using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using Microsoft.Data.Sqlite;
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Python;
+using CodeGenNew.Core.Rust;
 
 namespace CodeGenNew.Tests;
 

@@ -3,6 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Desktop;
 
 namespace CodeGenNew.Tests;
 
@@ -19,6 +20,11 @@ internal static class Repo
     public static string Root { get; } = FindRoot();
     public static string TemplatesDirectory => Path.Combine(Root, "Templates");
     public static string Template(string fileName) => Path.Combine(TemplatesDirectory, fileName);
+
+    /// <summary> The source files of CodeGenNew.Core matching <paramref name="pattern"/>, in its folders too (not the build output). </summary>
+    public static IEnumerable<string> CoreSources(string pattern) =>
+        Directory.EnumerateFiles(Path.Combine(Root, "CodeGenNew.Core"), pattern, SearchOption.AllDirectories)
+            .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) && !p.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar));
 
     private static readonly Lazy<TemplateCache> SharedCache = new(() =>
     {

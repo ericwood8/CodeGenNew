@@ -1,3 +1,9 @@
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Content;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> The words of a polymorphic link table (a record type name and a record id that may name a row of any listed table): the problem types and sentences, the same in every stack that writes them. </summary>

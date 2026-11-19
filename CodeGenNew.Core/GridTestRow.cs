@@ -1,3 +1,8 @@
+using CodeGenNew.Core.Api;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> A believable row for the generated front-end tests of a list page: the object literal a mocked list answer returns and the text of one cell the page must show.

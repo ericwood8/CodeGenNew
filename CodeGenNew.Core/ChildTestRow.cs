@@ -1,3 +1,8 @@
+using CodeGenNew.Core.Api;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> A believable row of a child table as JSON, for the generated tests of a master-detail page: the key, the foreign key to the parent row being edited, and a value for every other required column. </summary>

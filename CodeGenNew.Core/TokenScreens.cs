@@ -1,3 +1,4 @@
+
 namespace CodeGenNew.Core;
 
 /// <summary> The words of the sessions and tokens page, the same in every front end. </summary>

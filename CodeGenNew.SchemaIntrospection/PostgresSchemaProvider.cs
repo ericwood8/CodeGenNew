@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using Npgsql;
+using CodeGenNew.Core.Desktop;
 
 namespace CodeGenNew.SchemaIntrospection;
 

@@ -1,6 +1,7 @@
 using CodeGenNew.Core;
 using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
+using CodeGenNew.Core.Tenant;
 
 namespace CodeGenNew.Tests;
 

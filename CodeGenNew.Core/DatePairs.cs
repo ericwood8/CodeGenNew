@@ -1,3 +1,4 @@
+
 namespace CodeGenNew.Core;
 
 /// <summary> Two date columns of one table where the second must not be earlier than the first (a start and its end): the form refuses an end before its start, the end's picker starts at the start, and the validators

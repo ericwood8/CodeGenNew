@@ -1,3 +1,9 @@
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Tenant;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> A party table and the table of its identifiers (<c>PartyTables=Party:PartyIdentifier:Scheme:Value</c>): <c>Link</c> is the identifier table's foreign key to the party, <c>Scheme</c> names the kind of

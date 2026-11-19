@@ -1,3 +1,9 @@
+using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Tax;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> One column as a form shows it: the column plus the facts only its form knows (is it a drop-down of a parent, is the key typed by a person, did a guard make it a stamp). It answers for
@@ -22,7 +28,7 @@ public sealed class FormColumn
 
     // The editor a column gets on the form. The order is the rule every stack follows: the first that fits wins.
     private FieldKind Editor => _editor ??=
-        Column.IsSystemStampColumn || _form.IsGuardStamp(Column) || ContentScreens.IsStateColumn(_form.Table, _project, Column) || DefaultRowScreens.IsFlagColumn(_form.Table, _project, Column) || SnapshotPlan.IsOwnedColumn(_form.Table, _project, Column) || RateDocumentPlan.IsOwnedColumn(_form.Table, _project, Column) || AssetScreens.IsUploadColumn(_form.Table, _project, Column) ? FieldKind.SystemStamp
+        Column.IsSystemStampColumn || _form.IsGuardStamp(Column) || ContentScreens.IsStateColumn(_form.Table, _project, Column) || DefaultRowScreens.IsFlagColumn(_form.Table, _project, Column) || SnapshotPlan.IsOwnedColumn(_form.Table, _project, Column) || RateDocumentPlan.IsOwnedColumn(_form.Table, _project, Column) || TaxLinePlan.IsOwnedColumn(_form.Table, _project, Column) || AssetScreens.IsUploadColumn(_form.Table, _project, Column) ? FieldKind.SystemStamp
         : _form.TypedKey && Column.IsPrimaryKey && _form.LookupOf(Column) is not null ? FieldKind.Lookup
         : _form.TypedKey && Column.IsPrimaryKey ? (_form.TextKey ? FieldKind.TypedKey : FieldKind.TypedNumberKey)
         : _form.LookupOf(Column) is not null ? FieldKind.Lookup

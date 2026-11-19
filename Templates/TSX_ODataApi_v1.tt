@@ -44,7 +44,8 @@
         L($"@@@FILE {apiFolder}/{ReactNames.ODataApiFile(table.TableName)}.ts@@@");
         bool partyBox = PartyScreens.HasBox(table, Project);   // PartyTables: the page's Find by identifier box asks the table's REST route
         bool rateBox = RateScreens.HasBox(table, Project);   // RateTables: the page's rate lookup asks the table's REST route
-        bool restBox = partyBox || rateBox;
+        bool taxBox = TaxScreens.HasBox(table, Project);   // TaxLines: the page's tax box asks the table's REST route
+        bool restBox = partyBox || rateBox || taxBox;
         if (restBox) L("import { request } from './client';");
         L("import { createODataApi } from './odataClient';");
         L($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
@@ -61,6 +62,7 @@
             L($"}}, '/api/{plan.Set}'),");
             if (partyBox) L(PartyScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
             if (rateBox) L(RateScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
+            if (taxBox) L(TaxScreens.ReactODataApiLine($"/api/{plan.Set}"));
             L("};");
         }
         else

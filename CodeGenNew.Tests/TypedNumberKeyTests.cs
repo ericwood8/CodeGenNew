@@ -1,5 +1,7 @@
 using System.Data;
 using CodeGenNew.Core;
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Desktop;
 
 namespace CodeGenNew.Tests;
 

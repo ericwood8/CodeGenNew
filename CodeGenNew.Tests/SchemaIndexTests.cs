@@ -1,6 +1,7 @@
 using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
+using CodeGenNew.Core.Desktop;
 
 namespace CodeGenNew.Tests;
 

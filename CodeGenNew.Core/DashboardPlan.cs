@@ -1,4 +1,5 @@
 using System.Data;
+using CodeGenNew.Core.Tenant;
 
 namespace CodeGenNew.Core;
 

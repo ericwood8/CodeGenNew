@@ -1,3 +1,8 @@
+using CodeGenNew.Core.Api;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> Which stacks show a table the project keeps one row of (<c>SingleRowTables</c>) as a form, and when it applies. A table served as OData keeps its OData pages. </summary>

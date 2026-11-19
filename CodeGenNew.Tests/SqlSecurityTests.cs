@@ -72,7 +72,7 @@ public class SqlSecurityTests
     public void No_template_builds_a_raw_sql_statement_from_an_interpolated_or_joined_string()
     {
         var found = new List<string>();
-        foreach (string path in Directory.GetFiles(Repo.TemplatesDirectory, "*.tt").Concat(Directory.GetFiles(Path.Combine(Repo.Root, "CodeGenNew.Core"), "*.cs")))
+        foreach (string path in Directory.GetFiles(Repo.TemplatesDirectory, "*.tt").Concat(Repo.CoreSources("*.cs")))
             foreach (string line in File.ReadLines(path))
                 if (InterpolatedRawSql.IsMatch(line))
                     found.Add(Path.GetFileName(path) + ": " + line.Trim());

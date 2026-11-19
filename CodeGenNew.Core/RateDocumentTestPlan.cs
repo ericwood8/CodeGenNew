@@ -1,3 +1,8 @@
+using CodeGenNew.Core.Api;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> What the generated rate document tests of the Python and Rust APIs send: a rate row and a document row with an example value for every column that must have one. The tests fill the keys, the

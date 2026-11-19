@@ -73,6 +73,7 @@ public sealed class TemplateCache : IDisposable
     {
         var generator = new TemplateGenerator();
         generator.Refs.Add(typeof(TableModel).Assembly.Location);
+        CoreNamespaces.AddTo(generator);
         var (textPath, variant) = TemplateAlias.Resolve(path);
         string text = await File.ReadAllTextAsync(textPath);
         string? key = _store is null ? null : CompiledTemplateStore.KeyOf(text);

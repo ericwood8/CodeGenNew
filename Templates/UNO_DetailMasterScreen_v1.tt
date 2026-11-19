@@ -289,7 +289,7 @@
                         </ListView.ItemTemplate>
                     </ListView>
                 </Grid>
-            </Border>
+            </Border><#= TaxDesktopScreens.DialogRow(child.Table, child.FkColumn, child.Member, Project) #>
 <#
         }
         foreach (var child in editChildren)
@@ -608,7 +608,7 @@ public class <#= table #>ChildGridHeader
 public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 {
     private readonly ApiClients _api;
-    private readonly <#= type #>? _editing;<#= SnapshotPlan.IsListed(Model.TableName, Project) || RateDocumentPlan.IsListed(Model.TableName, Project) ? DesktopFormCode.SavedRowVisibilityMember : "" #>
+    private readonly <#= type #>? _editing;<#= SnapshotPlan.IsListed(Model.TableName, Project) || RateDocumentPlan.IsListed(Model.TableName, Project) || TaxLinePlan.IsListed(Model.TableName, Project) ? DesktopFormCode.SavedRowVisibilityMember : "" #>
 
     public string DialogTitle => _editing is null ? "Add <#= title #>" : "Edit <#= title #>";
 <#
@@ -938,7 +938,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         {
 #>
         await Load<#= child.Member #>Async();
-<#
+<#= TaxDesktopScreens.LoadCall(child.Table, child.FkColumn, child.Member, Project) #><#
         }
 #>
     }
@@ -947,7 +947,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         foreach (var child in gridChildren)
         {
 #>
-    private async Task Load<#= child.Member #>Async()
+<#= TaxDesktopScreens.UnoDialogMembers(child.Table, child.FkColumn, child.Member, Project, "_api." + UnoNames.ClientProperty(child.Table), "_editing!." + keyProp) #>    private async Task Load<#= child.Member #>Async()
     {
         <#= child.Var #>ColumnHeaders.Clear();
         <#= child.Var #>Rows.Clear();

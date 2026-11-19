@@ -1,4 +1,9 @@
 using System.Runtime.CompilerServices;
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Tenant;
+using CodeGenNew.Core.Usage;
 
 namespace CodeGenNew.Core;
 
@@ -50,6 +55,9 @@ public sealed class TableShapes
     public EffectiveShape? Effective => Shape<EffectiveShape>();
     public DefaultRowShape? DefaultRow => Shape<DefaultRowShape>();
     public ExtensionShape? Extension => Shape<ExtensionShape>();
+
+    /// <summary> The table as a document line that carries the rate of its tax category (<c>TaxLines</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
+    public TaxLineShape? TaxLine => Shape<TaxLineShape>();
     public LogShape? Log => Shape<LogShape>();
     public NameActiveShape? NameActive => Shape<NameActiveShape>();
 
@@ -68,7 +76,7 @@ public sealed class TableShapes
         return (T?)ShapeOf(typeof(T));
     }
 
-    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(InboundShape), typeof(TokenShape), typeof(UsageShape), typeof(LogShape), typeof(TreeShape), typeof(ContentShape), typeof(AssetShape), typeof(EffectiveShape), typeof(DefaultRowShape), typeof(ExtensionShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape)];
+    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(InboundShape), typeof(TokenShape), typeof(UsageShape), typeof(LogShape), typeof(TreeShape), typeof(ContentShape), typeof(AssetShape), typeof(EffectiveShape), typeof(DefaultRowShape), typeof(ExtensionShape), typeof(TaxLineShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape)];
     private static readonly Type[] NeedDatabase = [typeof(TenantMembershipShape), typeof(ApprovalTableShape), typeof(ApprovalSide)];
 
     /// <summary> Every shape the table has, in a fixed order; a table with none gives an empty list. </summary>
@@ -101,6 +109,7 @@ public sealed class TableShapes
         if (shape == typeof(EffectiveShape)) return EffectiveDatePlan.For(_table, _project);
         if (shape == typeof(DefaultRowShape)) return DefaultRowPlan.For(_table, _project);
         if (shape == typeof(ExtensionShape)) return ExtensionPlan.For(_table, _project);
+        if (shape == typeof(TaxLineShape)) return TaxLinePlan.For(_table, _project);
         if (shape == typeof(NameActiveShape)) return NameActiveShape.For(_table, _project);
         if (shape == typeof(TenantOwnedShape)) return TenantPlan.OwnedBy(_table, _project);
         if (shape == typeof(JunctionShape)) return _table.Junction;

@@ -1,5 +1,6 @@
 using CodeGenNew.Core;
 using CodeGenNew.Generation;
+using CodeGenNew.Core.Desktop;
 
 namespace CodeGenNew.Tests;
 

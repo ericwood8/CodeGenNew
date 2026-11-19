@@ -414,6 +414,8 @@
                 o.Append(PartyScreens.BlazorBoxTest());
             if (!form.IsNameActive && RateScreens.HasBox(Model, Project))
                 o.Append(RateScreens.BlazorBoxTest(RateScreens.Names(Model, Project)!.Value));
+            if (!form.IsNameActive && TaxScreens.HasBox(Model, Project))
+                o.Append(TaxScreens.BlazorBoxTest());
             if (TableShapes.For(Model, Project).SoftDelete is not null)
                 o.Append("\n    [TestMethod]\n    public void Opens_the_deleted_rows_and_says_when_there_are_none()\n    {\n        var page = Open();\n        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Show deleted\").Click();\n"
                     + $"        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, \"Nothing is deleted.\"));\n        Assert.IsTrue(Api.Requests.Any(r => r.Path.EndsWith(\"{apiRoute}/deleted\")));\n    }}\n");

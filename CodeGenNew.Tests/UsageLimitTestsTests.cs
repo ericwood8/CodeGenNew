@@ -1,5 +1,8 @@
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
+using CodeGenNew.Core.Python;
+using CodeGenNew.Core.Rust;
+using CodeGenNew.Core.Usage;
 
 namespace CodeGenNew.Tests;
 

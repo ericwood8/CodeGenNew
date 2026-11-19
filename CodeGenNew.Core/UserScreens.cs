@@ -1,3 +1,8 @@
+using CodeGenNew.Core.Tenant;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> The sentences of the user table's screen and of the sign-in that creates the first person, the same in every front end. </summary>

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using CodeGenNew.Core.Tax;
 
 namespace CodeGenNew.Core;
 
@@ -20,7 +21,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project) })
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), TaxLine(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
         }
@@ -99,6 +100,53 @@ public static class DatabaseShapeDetector
         string? problem = RatePlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"RateTables: {table.TableName}", StringComparison.OrdinalIgnoreCase));
         string why = $"{from.Name} and {to.Name} with a {rate.Name} from {day.Name} look like exchange rates";
         return new ShapeSuggestion("Exchange rates", "RateTables", item, problem is null, problem is null ? why : $"{why}, but {problem}");
+    }
+
+    private static readonly string[] TaxRateNames = ["TaxRate", "VatRate", "SalesTaxRate", "TaxPercent", "TaxPercentage"];
+    private static readonly string[] TaxAmountNames = ["TaxAmount", "VatAmount", "Tax", "Vat", "SalesTax"];
+    private static readonly string[] TaxableNames = ["LineTotal", "LineAmount", "TaxableAmount", "NetAmount", "Net", "Subtotal", "Amount"];
+    private static readonly string[] CategoryRateNames = [TaxWords.DefaultCategoryRate, "Percent", "Percentage", "TaxRate", "RatePercent"];
+    private static readonly string[] CategoryFromNames = ["ValidFrom", "EffectiveFrom", "StartDate", "EffectiveDate"];
+    private static readonly string[] CategoryToNames = ["ValidTo", "EffectiveTo", "EndDate", "ExpiryDate"];
+    private static readonly string[] LineDayNames = ["LineDate", "TaxPoint", "TaxDate", "InvoiceDate", "DocumentDate"];
+    private static readonly string[] DocumentNames = ["InvoiceId", "DocumentId", "OrderId", "SalesInvoiceId", "SalesOrderId"];
+
+    /// <summary> A document line with a key to a tax category table, a tax rate, a taxable amount and a tax amount. </summary>
+    private static ShapeSuggestion? TaxLine(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (TaxLinePlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        ColumnModel? Find(IEnumerable<ColumnModel> columns, string[] names, Func<ColumnModel, bool> kind) => columns.FirstOrDefault(c => kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
+        bool Number(ColumnModel c) => !c.IsNullable && c.CSharpBase() is "decimal" or "double" or "float";
+        var rate = Find(table.Columns, TaxRateNames, Number);
+        var tax = Find(table.Columns, TaxAmountNames, Number);
+        var taxable = Find(table.Columns, TaxableNames, Number);
+        if (rate is null || tax is null || taxable is null)
+            return null;
+        foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !f.ReferencedTable.EqualsIgnoreCase(table.TableName)))
+        {
+            var category = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
+            var parent = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable));
+            if (category is not { IsIntegerColumn: true } || parent is null || !parent.TableName.ContainsIgnoreCase("Tax") && !parent.TableName.ContainsIgnoreCase("Vat") && !parent.TableName.ContainsIgnoreCase("Levy"))
+                continue;
+            var parentRate = Find(parent.Columns, CategoryRateNames, Number);
+            if (parentRate is null)
+                continue;
+            var from = Find(parent.Columns, CategoryFromNames, c => !c.IsNullable && c.IsDateColumn);
+            var to = from is null ? null : Find(parent.Columns, CategoryToNames, c => c.IsDateColumn);
+            var day = from is null ? null : Find(table.Columns, LineDayNames, c => !c.IsNullable && c.IsDateColumn);
+            var document = Find(table.Columns, DocumentNames, c => c.IsIntegerColumn && !c.IsPrimaryKey);
+            var label = parent.Columns.FirstOrDefault(c => c.IsStringColumn && (c.Name.EqualsIgnoreCase("Code") || c.Name.EqualsIgnoreCase("Name")));
+            var parts = new List<string> { table.TableName, category.Name, rate.Name, taxable.Name, tax.Name, parent.TableName, parentRate.Name, from?.Name ?? "", to?.Name ?? "", day?.Name ?? "", document?.Name ?? "", document is null ? "" : label?.Name ?? "" };
+            while (parts[^1].Length == 0)
+                parts.RemoveAt(parts.Count - 1);
+            string item = string.Join(":", parts);
+            var listed = project.WithOverrides([new("TaxLines", string.Join(",", project.TaxLines.Append(item)))]);
+            string? problem = TaxLinePlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"TaxLines: {table.TableName}", StringComparison.OrdinalIgnoreCase));
+            string why = $"{category.Name} points at {parent.TableName}, whose {parentRate.Name} looks like the rate the line carries in {rate.Name}, with the tax in {tax.Name}";
+            return new ShapeSuggestion("Tax lines", "TaxLines", item, problem is null, problem is null ? why : $"{why}, but {problem}");
+        }
+        return null;
     }
 
     private static ShapeSuggestion? Snapshot(TableModel table, DatabaseModel database, ProjectSettings project)

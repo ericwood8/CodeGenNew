@@ -1,3 +1,4 @@
+
 namespace CodeGenNew.Core;
 
 /// <summary> What the list screen of a party table (<c>PartyTables</c>) adds: a box that finds the parties holding an identifier, through <c>GET by-identifier</c>, and a button that shows every row again.

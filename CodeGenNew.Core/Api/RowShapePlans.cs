@@ -1,0 +1,349 @@
+using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Tenant;
+
+
+
+
+namespace CodeGenNew.Core.Api;
+
+/// <summary> The sentences and problem types of the row-shape routes (trees, soft delete, effective dating), the same in every stack that writes them. </summary>
+public static class RowShapeWords
+{
+    public const string TreeCycleType = ProblemTypes.Prefix + "tree-cycle";
+    public const string TreeTooDeepType = ProblemTypes.Prefix + "tree-too-deep";
+    public const string TreeHasChildrenType = ProblemTypes.Prefix + "tree-has-children";
+    public const string EffectiveRangeType = ProblemTypes.Prefix + "effective-range";
+    public const string EffectiveOverlapType = ProblemTypes.Prefix + "effective-overlap";
+    public const string NotDeletedType = ProblemTypes.Prefix + "not-deleted";
+    public const string SnapshotParentType = ProblemTypes.Prefix + "snapshot-parent-missing";
+    public const string SnapshotParentTitle = "Not a valid reference";
+
+    public const string OwnParent = "A row cannot be its own parent.";
+    public const string UnderItself = "A row cannot be moved under one of its own descendants.";
+    public const string HasChildren = "It has child rows: move or delete them first, or promote them to its parent.";
+    public const string BackwardsRange = "The valid-to date is before the valid-from date.";
+    public const string Overlap = "Another row of the same kind is in effect during that period.";
+    public const string NotDeleted = "Only a deleted row can be restored.";
+
+    /// <summary> The sentence when the parent a snapshot is copied from is not there. </summary>
+    public static string SnapshotParentMissing(string parent) => $"The {parent} the row refers to does not exist.";
+
+    /// <summary> Why a table has no soft delete and no periods: a log table is only appended to, and a single-row table keeps its one row. Null for any other table. </summary>
+    public static string? NeverChanged(TableModel table, ProjectSettings project) =>
+        LogTablePlan.For(table, project) is not null ? "is in LogTables (a log is only appended to)"
+        : project.SingleRowTables.Any(t => t.Split(':')[0].Trim().EqualsIgnoreCase(table.TableName)) ? "is in SingleRowTables (it keeps its one row)"
+        : null;
+
+    public static string TooDeep(int maxDepth) => $"The tree can be {maxDepth} levels deep at most.";
+}
+
+/// <summary> A self-referencing table the project lists in <c>TreeTables</c>: <c>Parent</c> is the nullable column that points at the table's own key; <c>MaxDepth</c> is 0 for no limit (a root is depth 1). </summary>
+public sealed record TreeShape(TableModel Table, ColumnModel Key, ColumnModel Parent, int MaxDepth, ColumnModel? Text);
+
+/// <summary> <c>TreeTables=Category:ParentCategoryId:4</c> (a table, optionally its parent column, optionally the deepest level allowed): a comment with a parent, a category, an organization chart. The write routes refuse a parent that is
+/// the row itself or one of its descendants (a cycle) and a level past the depth limit, the delete is refused while the row has children (<c>POST {id}/promote-children</c> hands them to the row's own parent first),
+/// and <c>GET tree</c> answers the rows depth first for an indented list. </summary>
+public static class TreePlan
+{
+    public static IReadOnlyList<(string Table, string? Parent, string? MaxDepth)> Entries(ProjectSettings project) =>
+        SettingParts.Items(project.TreeTables).Select(p => (p[0], SettingParts.At(p, 1), SettingParts.At(p, 2))).ToList();
+
+    public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
+
+    public static TreeShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } tree ? tree : null;
+
+    /// <summary> Why a listed table cannot be a tree, or null when it can (or is not listed). </summary>
+    public static string? Problem(TableModel table, ProjectSettings project)
+    {
+        if (!IsListed(table.TableName, project))
+            return null;
+        Resolve(table, project, out string? problem);
+        return problem;
+    }
+
+    private static TreeShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
+    {
+        problem = null;
+        var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
+        string prefix = $"TreeTables: {table.TableName}";
+        if (table.PrimaryKeyColumns is not [{ IsIntegerColumn: true } key])
+        {
+            problem = $"{prefix} needs a single whole-number key.";
+            return null;
+        }
+        var own = table.ForeignKeys.Where(f => f.ReferencedTable.EqualsIgnoreCase(table.TableName) && f.ReferencingColumns.Count == 1 && f.ReferencedColumns.Count == 1
+            && f.ReferencedColumns[0].EqualsIgnoreCase(key.Name)).ToList();
+        string? parentName = entry.Parent ?? (own.Count == 1 ? own[0].ReferencingColumns[0] : null);
+        if (parentName is null)
+        {
+            problem = own.Count == 0
+                ? $"{prefix} has no foreign key to its own key. Name the parent column (TreeTables={table.TableName}:ParentId) after adding the key."
+                : $"{prefix} has more than one foreign key to itself ({string.Join(", ", own.Select(f => f.ReferencingColumns[0]))}): name the parent column (TreeTables={table.TableName}:{own[0].ReferencingColumns[0]}).";
+            return null;
+        }
+        var parent = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(parentName));
+        if (parent is null || !parent.IsIntegerColumn || !parent.IsNullable || parent.Name.EqualsIgnoreCase(key.Name))
+        {
+            problem = $"{prefix}: {parentName} must be a whole-number column that allows NULL (a root has no parent) and is not the key.";
+            return null;
+        }
+        int maxDepth = 0;
+        if (entry.MaxDepth is { } depthText && !(int.TryParse(depthText, out maxDepth) && maxDepth >= 1))
+        {
+            problem = $"{prefix}: the depth limit {depthText} must be a whole number of 1 or more.";
+            return null;
+        }
+        var text = table.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")))
+            ?? table.DisplayColumns.FirstOrDefault(c => c.IsStringColumn);
+        return new TreeShape(table, key, parent, maxDepth, text);
+    }
+}
+
+/// <summary> A table whose rows are flagged instead of removed (<c>SoftDeleteTables=Customer</c> or <c>Customer:IsRemoved</c>). <c>DeletedOn</c> and <c>DeletedBy</c> are optional and filled when the table has them. </summary>
+public sealed record SoftDeleteShape(TableModel Table, ColumnModel Key, ColumnModel Flag, ColumnModel? DeletedOn, ColumnModel? DeletedBy);
+
+/// <summary> <c>SoftDeleteTables=Customer</c>: the delete route sets the flag (<c>IsDeleted</c>, else the column named after the colon) and the stamps instead of removing the row, the context filters flagged rows out of every list, look-up and
+/// read, <c>GET deleted</c> lists them and <c>POST {id}/restore</c> brings one back. </summary>
+public static class SoftDeletePlan
+{
+    public const string DefaultFlag = "IsDeleted";
+
+    public static IReadOnlyList<(string Table, string Flag)> Entries(ProjectSettings project) =>
+        SettingParts.Items(project.SoftDeleteTables).Select(p => (p[0], SettingParts.At(p, 1) ?? DefaultFlag)).ToList();
+
+    public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
+
+    public static SoftDeleteShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } soft ? soft : null;
+
+    public static string? Problem(TableModel table, ProjectSettings project)
+    {
+        if (!IsListed(table.TableName, project))
+            return null;
+        Resolve(table, project, out string? problem);
+        return problem;
+    }
+
+    private static SoftDeleteShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
+    {
+        problem = null;
+        var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
+        string prefix = $"SoftDeleteTables: {table.TableName}";
+        if (RowShapeWords.NeverChanged(table, project) is { } never)
+        {
+            problem = $"{prefix} {never}, so no row is ever deleted.";
+            return null;
+        }
+        if (table.PrimaryKeyColumns is not [{ IsIntegerColumn: true } key])
+        {
+            problem = $"{prefix} needs a single whole-number key.";
+            return null;
+        }
+        var flag = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.Flag));
+        if (flag is not { IsBooleanColumn: true, IsNullable: false })
+        {
+            problem = $"{prefix} needs a yes/no column {entry.Flag} that cannot be NULL (false = in use).";
+            return null;
+        }
+        var on = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase("DeletedOn") && LogTablePlan.HasTimeOfDay(c) && c.IsNullable);
+        var by = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase("DeletedBy") && c.IsStringColumn && c.IsNullable);
+        return new SoftDeleteShape(table, key, flag, on, by);
+    }
+}
+
+/// <summary> A table whose rows are valid for a period (<c>EffectiveDatedTables=Price:ValidFrom:ValidTo:ItemId</c>: the first and the last day, then the columns that say what the row is a price of). <c>To</c> allows NULL for an open end.
+/// <c>Groups</c> are those columns (default: the table's single-column foreign keys); rows of one group may not overlap. </summary>
+public sealed record EffectiveShape(TableModel Table, ColumnModel Key, ColumnModel From, ColumnModel To, IReadOnlyList<ColumnModel> Groups);
+
+/// <summary> <c>EffectiveDatedTables=Price:ValidFrom:ValidTo[:ItemId+CurrencyId]</c>: a save is refused when the period runs backwards or overlaps another row of the same group, and <c>GET current?on=</c> answers the rows in effect on a
+/// date. The end is inclusive; an empty end is open. </summary>
+public static class EffectiveDatePlan
+{
+    public static IReadOnlyList<(string Table, string? From, string? To, string? Groups)> Entries(ProjectSettings project) =>
+        SettingParts.Items(project.EffectiveDatedTables).Select(p => (p[0], SettingParts.At(p, 1), SettingParts.At(p, 2), SettingParts.At(p, 3))).ToList();
+
+    public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
+
+    public static EffectiveShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } effective ? effective : null;
+
+    public static string? Problem(TableModel table, ProjectSettings project)
+    {
+        if (!IsListed(table.TableName, project))
+            return null;
+        Resolve(table, project, out string? problem);
+        return problem;
+    }
+
+    private static EffectiveShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
+    {
+        problem = null;
+        var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
+        string prefix = $"EffectiveDatedTables: {table.TableName}";
+        if (RowShapeWords.NeverChanged(table, project) is { } never)
+        {
+            problem = $"{prefix} {never}, so it has no periods to keep apart.";
+            return null;
+        }
+        if (table.PrimaryKeyColumns is not [{ IsIntegerColumn: true } key])
+        {
+            problem = $"{prefix} needs a single whole-number key.";
+            return null;
+        }
+        if (entry.From is null && entry.To is null && TableShapeDetector.EffectiveColumns(table) is { } period)
+            entry = (entry.Table, period.From, period.To, entry.Groups ?? period.Groups);
+        if (entry.From is null || entry.To is null)
+        {
+            problem = $"{prefix} needs the first and last day columns (EffectiveDatedTables={table.TableName}:ValidFrom:ValidTo).";
+            return null;
+        }
+        var from = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.From));
+        var to = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.To));
+        if (from is not { IsDateColumn: true, IsNullable: false } || to is not { IsDateColumn: true } || !from.HasSameTypeAs(to))
+        {
+            problem = $"{prefix}: {entry.From} (cannot be NULL) and {entry.To} must be date columns of the same type.";
+            return null;
+        }
+        List<ColumnModel> groups;
+        if (entry.Groups is { } named)
+        {
+            groups = [];
+            foreach (string name in named.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                var column = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name));
+                if (column is null)
+                {
+                    problem = $"{prefix}: {name} is not a column of the table.";
+                    return null;
+                }
+                groups.Add(column);
+            }
+        }
+        else
+        {
+            groups = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1).Select(f => table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(f.ReferencingColumns[0])))
+                .OfType<ColumnModel>().Where(c => !c.Name.EqualsIgnoreCase(from.Name) && !c.Name.EqualsIgnoreCase(to.Name)).DistinctBy(c => c.Name).ToList();
+        }
+        return new EffectiveShape(table, key, from, to, groups);
+    }
+}
+
+/// <summary> A table with one default row per group (<c>DefaultRowTables=CustomerAddress:IsDefault:CustomerId+AddressType</c>): <c>Flag</c> is the yes/no column that marks the default, <c>Groups</c> the columns that make a group. </summary>
+public sealed record DefaultRowShape(TableModel Table, ColumnModel Key, ColumnModel Flag, IReadOnlyList<ColumnModel> Groups);
+
+/// <summary> <c>DefaultRowTables=CustomerAddress:IsDefault:CustomerId+AddressType</c>: exactly one row of each group is the default. A save that marks a row clears the mark of the others of its group in the same transaction; a save that
+/// leaves a group without a default marks the row instead (the first row of a group is the default); <c>POST {id}/make-default</c> moves the mark; deleting the default row hands the mark to the next row of its group. </summary>
+public static class DefaultRowPlan
+{
+    public static IReadOnlyList<(string Table, string? Flag, string? Groups)> Entries(ProjectSettings project) =>
+        SettingParts.Items(project.DefaultRowTables).Select(p => (p[0], SettingParts.At(p, 1), SettingParts.At(p, 2))).ToList();
+
+    public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
+
+    public static DefaultRowShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } shape ? shape : null;
+
+    public static string? Problem(TableModel table, ProjectSettings project)
+    {
+        if (!IsListed(table.TableName, project))
+            return null;
+        Resolve(table, project, out string? problem);
+        return problem;
+    }
+
+    private static DefaultRowShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
+    {
+        problem = null;
+        var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
+        string prefix = $"DefaultRowTables: {table.TableName}";
+        string syntax = $"DefaultRowTables={table.TableName}:IsDefault:GroupColumn+GroupColumn";
+        if (RowShapeWords.NeverChanged(table, project) is { } never)
+        {
+            problem = $"{prefix} {never}, so it has no default to move.";
+            return null;
+        }
+        if (table.PrimaryKeyColumns is not [{ IsIntegerColumn: true } key])
+        {
+            problem = $"{prefix} needs a single whole-number key.";
+            return null;
+        }
+        if (TenantPlan.OwnedBy(table, project) is not null || OwnedTable.OwnerColumn(table, project) is not null)
+        {
+            problem = $"{prefix} is limited to a tenant or an owner, which a default row does not serve yet.";
+            return null;
+        }
+        if (entry.Flag is null && entry.Groups is null && TableShapeDetector.DefaultRowColumns(table) is { } found)
+            entry = (entry.Table, found.Flag, found.Groups);
+        if (entry.Flag is null || entry.Groups is null)
+        {
+            problem = $"{prefix} needs the yes/no column and the group columns ({syntax}).";
+            return null;
+        }
+        var flag = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.Flag));
+        if (flag is not { IsBooleanColumn: true, IsNullable: false })
+        {
+            problem = $"{prefix}: {entry.Flag} must be a yes/no column that cannot be NULL.";
+            return null;
+        }
+        var groups = new List<ColumnModel>();
+        foreach (string name in entry.Groups.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var column = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name));
+            if (column is null)
+            {
+                problem = $"{prefix}: {name} is not a column of the table.";
+                return null;
+            }
+            if (column.Name.EqualsIgnoreCase(flag.Name) || column.Name.EqualsIgnoreCase(key.Name))
+            {
+                problem = $"{prefix}: a group cannot be made of the key or of {flag.Name}.";
+                return null;
+            }
+            groups.Add(column);
+        }
+        if (groups.Count == 0)
+        {
+            problem = $"{prefix} needs at least one group column ({syntax}).";
+            return null;
+        }
+        return new DefaultRowShape(table, key, flag, groups);
+    }
+}
+
+/// <summary> Whether a table has any row shape (tree, content, soft delete, effective dating) and the reasons the project's lists cannot be served. </summary>
+public static class RowShapePlan
+{
+    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.ContentTables.Length > 0 || project.AssetTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0 || project.DefaultRowTables.Length > 0 || project.PartyTables.Length > 0 || project.RateTables.Length > 0 || project.RateDocuments.Length > 0 || project.TaxLines.Length > 0 || project.SnapshotColumns.Length > 0 || project.PolymorphicLinks.Length > 0;
+
+    public static bool Has(TableModel table, ProjectSettings project) =>
+        TreePlan.For(table, project) is not null || ContentPlan.For(table, project) is not null || AssetPlan.For(table, project) is not null || SoftDeletePlan.For(table, project) is not null || EffectiveDatePlan.For(table, project) is not null || DefaultRowPlan.For(table, project) is not null
+        || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project) || PartyPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project);
+
+    /// <summary> Every reason the three settings cannot be served by <paramref name="database"/>. </summary>
+    public static List<string> Problems(DatabaseModel database, ProjectSettings project)
+    {
+        var problems = new List<string>();
+        foreach (var table in database.Tables)
+        {
+            foreach (string? problem in new[] { TreePlan.Problem(table, project), ContentPlan.Problem(table, project), AssetPlan.Problem(table, project), SoftDeletePlan.Problem(table, project), EffectiveDatePlan.Problem(table, project), DefaultRowPlan.Problem(table, project) })
+                if (problem is not null)
+                    problems.Add(problem);
+        }
+        problems.AddRange(TreePlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"TreeTables: {e.Table} is not a table of the database."));
+        problems.AddRange(ContentPlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"ContentTables: {e.Table} is not a table of the database."));
+        problems.AddRange(AssetPlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"AssetTables: {e.Table} is not a table of the database."));
+        problems.AddRange(SoftDeletePlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"SoftDeleteTables: {e.Table} is not a table of the database."));
+        problems.AddRange(EffectiveDatePlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"EffectiveDatedTables: {e.Table} is not a table of the database."));
+        problems.AddRange(DefaultRowPlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"DefaultRowTables: {e.Table} is not a table of the database."));
+        foreach (var table in database.Tables)
+            if (SnapshotPlan.Problem(table, project, database) is { } snapshotProblem)
+                problems.Add(snapshotProblem);
+        problems.AddRange(SnapshotPlan.Entries(project).Where(e => !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table))).Select(e => $"SnapshotColumns: {e.Table} is not a table of the database."));
+        problems.AddRange(PolymorphicPlan.Problems(database, project));
+        problems.AddRange(PartyPlan.Problems(database, project));
+        problems.AddRange(RatePlan.Problems(database, project));
+        problems.AddRange(RateDocumentPlan.Problems(database, project));
+        problems.AddRange(TaxLinePlan.Problems(database, project));
+        if (Any(project) && project.AccessModeFor(database.Dialect) != AccessMode.Ef)
+            problems.Add("TreeTables, ContentTables, AssetTables, PolymorphicLinks, DefaultRowTables, PartyTables, RateTables, RateDocuments, TaxLines, SnapshotColumns, SoftDeleteTables and EffectiveDatedTables need AccessMode=Ef.");
+        return problems;
+    }
+}

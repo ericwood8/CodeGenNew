@@ -1,6 +1,7 @@
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Core.Content;
 
 namespace CodeGenNew.Generation;
 

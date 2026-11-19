@@ -1,5 +1,6 @@
 using System.Reflection;
 using CodeGenNew.Core;
+using CodeGenNew.Core.Content;
 
 namespace CodeGenNew.TemplateEngine;
 
@@ -280,7 +281,9 @@ public static class DefaultAssetSeeder
         "RS_TestQueue_v1.tt", "RS_TestQueue_v1.tt.config",
         "RS_TestParties_v1.tt", "RS_TestParties_v1.tt.config",
         "RS_TestRates_v1.tt", "RS_TestRates_v1.tt.config",
+        "RS_TestTax_v1.tt", "RS_TestTax_v1.tt.config",
         "PY_TestRates_v1.tt", "PY_TestRates_v1.tt.config",
+        "PY_TestTax_v1.tt", "PY_TestTax_v1.tt.config",
         "RS_TestTenants_v1.tt", "RS_TestTenants_v1.tt.config",
         "PY_TestTenants_v1.tt", "PY_TestTenants_v1.tt.config",
         "PY_TestQueue_v1.tt", "PY_TestQueue_v1.tt.config",

@@ -1,5 +1,8 @@
 using System.Data;
 using CodeGenNew.Core;
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Python;
+using CodeGenNew.Core.Rust;
 
 namespace CodeGenNew.Tests;
 

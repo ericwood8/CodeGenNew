@@ -1,3 +1,11 @@
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Tenant;
+using CodeGenNew.Core.Usage;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> One link of the Blazor menu: where it goes, the words on it and the roles that may see it (none: every signed-in person, or everyone without sign-in). </summary>

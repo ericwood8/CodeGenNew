@@ -1,5 +1,6 @@
 using System.Data;
 using CodeGenNew.Core;
+using CodeGenNew.Core.Rust;
 
 namespace CodeGenNew.Tests;
 

@@ -1,4 +1,7 @@
 using static CodeGenNew.Core.TemplateText;
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Desktop;
+using CodeGenNew.Core.Tenant;
 
 namespace CodeGenNew.Core;
 

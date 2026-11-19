@@ -1,3 +1,10 @@
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Usage;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> A shape a table looks like but the project does not name. <see cref="Item"/> is what would be added to <see cref="Setting"/> (empty setting: the shape needs none).

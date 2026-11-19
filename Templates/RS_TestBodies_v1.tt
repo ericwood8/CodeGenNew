@@ -49,6 +49,8 @@
             modules.Add("rate_routes");
         if (RustRateDocumentTests.Applies(Database, Project))
             modules.Add("rate_document_routes");
+        if (RustTaxTests.Applies(Database, Project))
+            modules.Add("tax_routes");
         if (RustAssetTests.Applies(Database, Project))
             modules.Add("asset_routes");
         if (RustInboundTests.Applies(Database, Project))

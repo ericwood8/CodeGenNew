@@ -125,6 +125,7 @@
         bool shapeScreen = softScreen || validOnScreen;
         bool partyBox = !logOnly && PartyScreens.HasBox(Model, Project);   // PartyTables: a Find by identifier box in the bar; the grid then lists the parties found
         bool listScreen = shapeScreen || partyBox;
+        var taxBox = !logOnly && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate in the bar
         var rateNames = !logOnly && RateScreens.HasBox(Model, Project) ? RateScreens.CsNames(Model, Project) : null;   // RateTables: a lookup of the rate in force in the bar; the grid stays the table's pages
         string shapeView = string.Join(" || ", new[] { partyBox ? PartyScreens.DesktopView : null, softScreen ? "ShowDeleted" : null, validOnScreen ? "ValidOnActive" : null }.Where(x => x is not null));
         string shapeRows = !shapeScreen ? "" : softScreen && validOnScreen ? "ShowDeleted ? await Client.GetDeletedAsync() : await Client.GetCurrentAsync((ValidOnDay ?? DateTimeOffset.Now).ToString(\"yyyy-MM-dd\"))" : softScreen ? "await Client.GetDeletedAsync()" : "await Client.GetCurrentAsync((ValidOnDay ?? DateTimeOffset.Now).ToString(\"yyyy-MM-dd\"))";
@@ -180,7 +181,7 @@
 <# } #>
                 <Button Content="Refresh" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnRefreshClick" />
                 <Button Content="Columns" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnColumnsClick" />
-<#= (partyBox ? PartyScreens.DesktopBox() : "") + (rateNames is not null ? RateScreens.DesktopBox() : "") #><# if (softScreen) { #>
+<#= (partyBox ? PartyScreens.DesktopBox() : "") + (rateNames is not null ? RateScreens.DesktopBox() : "") + (taxBox ? TaxDesktopScreens.Box() : "") #><# if (softScreen) { #>
                 <ToggleButton Content="Show deleted" IsChecked="{x:Bind ViewModel.ShowDeleted, Mode=TwoWay}" Click="OnShapeViewClick" />
 <# } #>
 <# if (validOnScreen) { #>
@@ -458,7 +459,7 @@ public sealed partial class <#= stemName #>ListPage : Page
 <# } #>
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();
 
-<#= (partyBox ? PartyScreens.DesktopHandlers().TrimEnd('\n') + "\n" : "") + (rateNames is not null ? RateScreens.DesktopHandlers() : "") #>
+<#= (partyBox ? PartyScreens.DesktopHandlers().TrimEnd('\n') + "\n" : "") + (rateNames is not null ? RateScreens.DesktopHandlers() : "") + (taxBox ? TaxDesktopScreens.Handlers() : "") #>
 <# if (!logOnly) { #>
     private async void OnEditClick(object sender, RoutedEventArgs e)
     {
@@ -781,7 +782,7 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     [ObservableProperty]
     private int _totalPages = 1;
 
-<#= rateNames is not null ? RateScreens.DesktopMembers(RateScreens.UnoRead(rateNames!.Value)) : "" #><# if (listScreen) { #>
+<#= (rateNames is not null ? RateScreens.DesktopMembers(RateScreens.UnoRead(rateNames!.Value)) : "") + (taxBox ? TaxDesktopScreens.Members(TaxDesktopScreens.UnoRead()) : "") #><# if (listScreen) { #>
 <# if (softScreen) { #>
     /// <summary> The grid lists the rows that were soft deleted (SoftDeleteTables) instead of the table's rows; each has Restore. </summary>
     [ObservableProperty]

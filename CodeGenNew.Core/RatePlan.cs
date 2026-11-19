@@ -1,3 +1,9 @@
+using CodeGenNew.Core.Api;
+using CodeGenNew.Core.Tenant;
+
+
+
+
 namespace CodeGenNew.Core;
 
 /// <summary> A rate table (<c>RateTables=ExchangeRate:FromCurrency:ToCurrency:Rate:RateDate</c>): <c>From</c> and <c>To</c> are the text columns of the two currencies, <c>Rate</c> what one unit of <c>From</c> is worth in
@@ -103,7 +109,7 @@ public static class RatePlan
     /// <summary> Keeps the database of a run for the templates that do not see the tables (the API's error answers). </summary>
     public static void Remember(DatabaseModel database, ProjectSettings project)
     {
-        if (project.RateTables.Length == 0)
+        if (project.RateTables.Length == 0 && project.TaxLines.Length == 0)
             return;
         Known.Remove(project);
         Known.Add(project, database);

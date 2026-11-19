@@ -1,3 +1,4 @@
+
 namespace CodeGenNew.Core;
 
 /// <summary> Which child tables a parent's form edits in place and saves in the same request as the parent (<c>EditableChildren=DepartmentTeam</c>). The API (the child list a create or update

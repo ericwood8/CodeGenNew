@@ -151,6 +151,14 @@
     var docNames = docPlan is null ? null : new PythonRateDocumentWriter.Names(t.Class, FieldOf(docPlan.Currency)!.Name, FieldOf(docPlan.Rate)!.Name, FieldOf(docPlan.Rate)!.Annotation, FieldOf(docPlan.Amount)!.Name,
         FieldOf(docPlan.Amount)!.Annotation, FieldOf(docPlan.BaseAmount)!.Name, FieldOf(docPlan.BaseAmount)!.Annotation, docDay?.Name, docDay?.Annotation, docRateTable!.FieldOf(docPlan.Rates.Day).Annotation,
         docRateTable.FieldOf(docPlan.Rates.Rate).Name, docPlan.BaseCurrency, docPlan.BaseAmount.Scale ?? RateDocumentPlan.DefaultScale);
+    // TaxLines: the line carries the rate of its category (copied on create and when the category changes), the tax is worked out, and GET tax-subtotals answers a document's tax by category
+    var taxPlan = log || tenantTable || scoped || tenanted ? null : TableShapes.For(Model, Project).TaxLine;
+    var taxCategoryTable = taxPlan is null ? null : PythonTable.Of(taxPlan.CategoryTable, Project);
+    var taxNames = taxPlan is null || taxCategoryTable is null ? null : new PythonTaxWriter.Names(t.Class, key, FieldOf(taxPlan.Category)!.Name, taxPlan.Category.IsNullable, FieldOf(taxPlan.Rate)!.Name, FieldOf(taxPlan.Rate)!.Annotation,
+        FieldOf(taxPlan.Taxable)!.Name, FieldOf(taxPlan.Taxable)!.Annotation, FieldOf(taxPlan.Tax)!.Name, FieldOf(taxPlan.Tax)!.Annotation, taxPlan.Tax.Scale ?? TaxWords.DefaultScale, taxCategoryTable.Class,
+        taxCategoryTable.FieldOf(taxPlan.CategoryKey).Name, taxCategoryTable.FieldOf(taxPlan.CategoryRate).Name, taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).Name,
+        taxPlan.ValidTo is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidTo).Name, taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).Annotation, FieldOf(taxPlan.Day)?.Name, FieldOf(taxPlan.Day)?.Annotation,
+        FieldOf(taxPlan.Document)?.Name, taxPlan.Label is null ? null : taxCategoryTable.FieldOf(taxPlan.Label).Name);
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -176,10 +184,14 @@
         foreach (string word in PythonRateDocumentWriter.DateWords(docNames))
             if (!clonedDates.Contains(word))
                 clonedDates.Add(word);
+    if (taxNames is not null)
+        foreach (string word in PythonTaxWriter.DateWords(taxNames))
+            if (!clonedDates.Contains(word))
+                clonedDates.Add(word);
     clonedDates.Sort(StringComparer.Ordinal);
     if (clonedDates.Count > 0)
         Line($"from datetime import {string.Join(", ", clonedDates)}");
-    if (docNames is not null)
+    if (docNames is not null || taxNames is not null)
         Line("from decimal import ROUND_HALF_UP, Decimal");
     if (tenantTable)
         Line("from typing import Any");
@@ -190,7 +202,7 @@
         Line("from uuid import UUID, uuid4");
     else if (uuidFilter)
         Line("from uuid import UUID");
-    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter || contentNames is not null || docNames is not null)
+    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter || contentNames is not null || docNames is not null || taxNames is not null)
         Line();
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbCastType is not null);
     var sqlalchemy = new List<string> { "select" };
@@ -208,7 +220,7 @@
         sqlalchemy.Add("cast");
         sqlalchemy.Add("String");
     }
-    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || effNames is not null || contentNames is not null || rateNames is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
@@ -251,6 +263,8 @@
         Line($"from app.models.{partyNames.IdentifierModule} import {partyNames.IdentifierClass}");
     if (docRateTable is not null)
         Line($"from app.routes.{docRateTable.Module} import find_rate");
+    if (taxCategoryTable is not null)
+        Line($"from app.models.{taxCategoryTable.Module} import {taxCategoryTable.Class}");
     if (ownerLink is not null)
         Line($"from app.models.{parentModule} import {parentClass}");
     Line($"from app.schemas.{t.Module} import {t.Schema}");
@@ -444,6 +458,15 @@
         Line();
         Line(PythonRateDocumentWriter.Helper(docNames).TrimEnd('\n'));
     }
+    if (taxNames is not null)
+    {
+        Line();
+        Line();
+        Line("TAX_OWNED = (" + string.Join(", ", PythonTaxWriter.Owned(taxNames).Select(Str)) + ",)");
+        Line();
+        Line();
+        Line(PythonTaxWriter.Helper(taxNames).TrimEnd('\n'));
+    }
     if (snapNames is not null)
     {
         Line();
@@ -490,6 +513,13 @@
     {
         Line();
         Line(PythonRateWriter.Route(rateNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
+        Line();
+    }
+
+    if (taxNames?.Document is not null)
+    {
+        Line();
+        Line(PythonTaxWriter.Route(taxNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
         Line();
     }
 
@@ -721,6 +751,8 @@
     }
     if (docNames is not null)
         Line("    convert_currency(session, row, None)");
+    if (taxNames is not null)
+        Line("    apply_tax(session, row, None)");
     if (snapNames is not null)
         Line("    fill_snapshot(session, row, True)");
     if (defNames is not null)
@@ -828,10 +860,17 @@
     }
     if (docNames is not null)
         Line("    stored = document_key(row)");
+    if (taxNames is not null)
+        Line("    tax_stored = tax_key(row)");
     Line(contentNames is not null ? "    for name, value in changes.items():" : "    for name, value in body.changes().items():");
     if (docNames is not null)
     {
         Line("        if name in RATE_DOCUMENT_OWNED:   # the rate and the converted amount belong to the server");
+        Line("            continue");
+    }
+    if (taxNames is not null)
+    {
+        Line("        if name in TAX_OWNED:   # the rate and the tax amount belong to the server");
         Line("            continue");
     }
     if (snapNames is not null)
@@ -852,6 +891,8 @@
     }
     if (docNames is not null)
         Line("    convert_currency(session, row, stored)");
+    if (taxNames is not null)
+        Line("    apply_tax(session, row, tax_stored)");
     if (snapNames is not null)
         Line("    fill_snapshot(session, row, False)");
     if (tenantField is not null)

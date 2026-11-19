@@ -181,7 +181,8 @@
         T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
         // the OData page reads a served child with $filter on the parent key and needs the REST client only for the other child calls
         bool servedChild(ChildGrid ch) => odata && ch.KeyJson is not null && ch.TypeJson is null && ODataPlan.ServesByName(ch.Table, Project);
-        bool usesRequest = !odata || editableChildren.Count > 0 || gridChildren.Any(ch => ch.KeyJson is not null || ch.Lookups.Count > 0 || !servedChild(ch));
+        bool taxChild(ChildGrid ch) => TaxScreens.IsChild(ch.Table, ch.Link.ReferencingColumns[0], Project);   // TaxLines: a line table of this document shows its tax by category and rate under the grid
+        bool usesRequest = !odata || editableChildren.Count > 0 || gridChildren.Any(ch => ch.KeyJson is not null || ch.Lookups.Count > 0 || !servedChild(ch) || taxChild(ch));
         if (gated || userScreen is not null) T($"import {{ useAuth }} from '../{apiFolder}/auth';");
         if (userScreen is not null) T($"import {{ changePassword }} from '../{apiFolder}/people';");
         if (form.FeatureFlags.Count > 0 || gridChildren.Any(ch => ch.FlaggedJson.Count > 0) || editableChildren.Any(ch => ch.EditFlags.Count > 0)) T($"import {{ useFeature }} from '../{apiFolder}/features';");   // FeatureFields: a field shows only while its flag is on
@@ -460,6 +461,8 @@
                 T($"  const [{child.Variable}Names, set{child.Name}Names] = useState<Record<string, Record<string, string>>>({{}});");
             if (child.Filters.Count > 0)
                 T($"  const [{child.Variable}Filter, set{child.Name}Filter] = useState<Record<string, string>>({{}}); // the names picked in the filter drop-downs, by column");
+            if (taxChild(child))
+                T(TaxScreens.ReactChildState(child.Variable, child.Name));
         }
         foreach (var child in editableChildren)
         {
@@ -879,6 +882,8 @@
             foreach (var lookup in child.Lookups.Where(l => !l.TypeAhead))
                 T($"      request<any[]>('{apiPrefix}/{lookup.WebRoute}').then((items) => set{child.Name}Names((names) => ({{ ...names, {lookup.ColumnJson}: Object.fromEntries(items.map((i) => [String(i['{lookup.WebKey}']), String(i['{lookup.WebDisplay}'] ?? '')])) }}))).catch(() => {{}});");
             T("    }).catch(() => {});");
+            if (taxChild(child))
+                foreach (string line in TaxScreens.ReactChildLoad(child.Name, apiPrefix, child.ApiRoute)) T(line);
             T("  };");
             // The child grid holds all its rows, so a click on a header sorts them here (no trip to the server); the sort is saved like the main grid's.
             T();
@@ -1472,6 +1477,8 @@
             T("                </tbody>");
             T("              </table>");
             T("              </GridMenu>");
+            if (taxChild(child))
+                T(TaxScreens.ReactChildText(child.Variable));
             T("            </div>");
             T("          ) : (");
             T($"            <p><em>Save this {title} first to see its {child.Title} rows.</em></p>");

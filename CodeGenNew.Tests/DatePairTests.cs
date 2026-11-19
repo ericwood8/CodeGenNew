@@ -3,6 +3,7 @@ using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
 using Microsoft.Data.Sqlite;
+using CodeGenNew.Core.Desktop;
 
 namespace CodeGenNew.Tests;
 

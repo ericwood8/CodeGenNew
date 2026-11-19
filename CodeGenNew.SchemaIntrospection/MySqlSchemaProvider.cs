@@ -2,6 +2,7 @@ using System.Data.Common;
 using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using MySqlConnector;
+using CodeGenNew.Core.Desktop;
 
 namespace CodeGenNew.SchemaIntrospection;
 
