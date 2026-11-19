@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace CodeGenNew.Core.Desktop;
 
 /// <summary> One search box of a desktop list page: the view-model field and property that hold what was typed, the name the API's search reads it by and the caption. </summary>

@@ -1242,17 +1242,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         }
 #>
 <#
-        Write(DesktopSubscriptionCode.CheckLines(Project, Model, "_context"));
-        Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
-        Write(DesktopFormCode.ContentCheckLines(Project, Model, "_context"));
-        Write(DefaultRowScreens.CheckLines(Project, Model, "_context"));
-        Write(PartyScreens.CheckLines(Project, Model, "_context"));
-        foreach (var child in editChildren)
-            Write(PartyScreens.EditRowsCheckLines(Project, Model, child.Table, child.Var + "Edit", "_context"));
-        Write(DesktopFormCode.SnapshotCheckLines(Project, Model, "_context"));
-        Write(RateScreens.WinUI3DocumentCheck(Model, Project, "_context"));
-        Write(TaxScreens.WinUI3Check(Model, Project, "_context"));
-        Write(AssetDesktopCode.CheckLines(Project, Model, "_context"));
+        Write(DesktopSaveChecks.Lines(Project, Model, "_context", editChildren.Select(child => (child.Table, child.Var + "Edit"))));
         if (isNameActive)
         {
             // NameActiveRepo refuses a name that another active row has: AddAsync answers false and UpdateAsync null

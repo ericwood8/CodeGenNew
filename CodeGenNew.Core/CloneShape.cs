@@ -8,7 +8,6 @@ namespace CodeGenNew.Core;
 /// primary key, audit columns and unique values are handled deliberately), seen from the code that calls it. </summary>
 public static class CloneShape
 {
-
     // A column the clone sets by rule (a create date, the active flag, the deleted flag ...), not by copying or overriding the source's value.
     public static bool IsRuleColumn(TableModel m, ColumnModel c)
     {
