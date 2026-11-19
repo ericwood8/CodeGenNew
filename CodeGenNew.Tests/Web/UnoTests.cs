@@ -7,7 +7,7 @@ using Microsoft.Data.Sqlite;
 using CodeGenNew.Core.Desktop;
 using CodeGenNew.Core.Settings;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> The Uno stack: its settings, which tables get a client, the text of every template and the files of a project generated from a SQLite file. Building the generated app needs the
 /// Uno packages from NuGet, so that check was made by hand against the SQL Server sample (Docs/TemplateNotes/UNO_Screens_v1.md), not in this suite. </summary>

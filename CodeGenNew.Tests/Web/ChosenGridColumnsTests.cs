@@ -4,7 +4,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Settings;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> Item 118: the Columns list of every grid (Angular, React and Blazor; REST and OData). One Core rule says which columns a grid offers, starts with, sorts and filters by and how a saved choice is read;
 /// the three stacks write the same lists from it, so they cannot drift apart. </summary>

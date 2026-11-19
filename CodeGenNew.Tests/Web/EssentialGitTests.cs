@@ -1,7 +1,7 @@
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> What the Angular app's .gitignore keeps out of version control. </summary>
 [TestClass]

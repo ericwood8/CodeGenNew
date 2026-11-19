@@ -2,7 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> A parent with too many rows for a drop-down is found by typing: the setting that decides it, the lookup endpoint that narrows its list, and the Angular, React and Blazor screens that use both. </summary>
 [TestClass]

@@ -2,7 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> The React sign-in (Auth=true): the Auth group, the token on every call, the shell, the guarded routes with ReadRoles, and the pages that hide their write buttons (WriteRoles). </summary>
 [TestClass]

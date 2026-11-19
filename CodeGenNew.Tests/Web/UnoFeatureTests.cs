@@ -4,7 +4,7 @@ using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
 using Microsoft.Data.Sqlite;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> What the Uno stack adds to its plain screens: the master-detail dialog, the sign-in with its role rules, the guarded columns, the dashboard, the junction editor and the OData pages.
 /// Each is checked on the text of the generated app (a SQLite file); the app was built and driven by hand (Docs/TemplateNotes/UNO_Screens_v1.md), not in this suite. </summary>

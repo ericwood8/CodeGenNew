@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.RegularExpressions;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
+using CodeGenNew.Tests.Web;
 
 namespace CodeGenNew.Tests.Templates;
 

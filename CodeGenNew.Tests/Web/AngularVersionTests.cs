@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Web;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> The project setting AngularVersion: what the Angular templates write for the version the project runs (standalone flag, the eager strategy's name, built-in control flow,
 /// the animation providers in a spec). Without the setting the output is what every version from 18 accepts. </summary>

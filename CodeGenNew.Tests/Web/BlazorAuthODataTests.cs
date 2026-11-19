@@ -2,7 +2,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Api;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> The Blazor sign-in (Auth=true), the role rules on its pages and menu, and its OData clients and pages (OData=true): the groups, the shell files, the guarded pages, the OData form of a page and
 /// the REST output that must not change. </summary>

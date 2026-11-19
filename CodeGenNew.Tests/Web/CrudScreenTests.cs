@@ -2,7 +2,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Generation;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> The Angular bases (TS_EssentialCrud: CrudService, NamedCrudService, CrudScreen, PagedCrudScreen) and the short classes the generated services and screens are on them. </summary>
 [TestClass]

@@ -2,7 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> The Blazor form limits its number, money and date boxes the way the React and Angular forms do (Core's <c>NumberBox</c>, <c>MoneyBox</c> and <c>NotFutureDateColumns</c>), without ApiAnnotations, and
 /// leaves a stored value that is already outside the limits alone. </summary>

@@ -2,7 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> EditableChildren on the React master-detail page: the child rows are inputs inside the form, added and removed there and sent with the row. Run live in a scratch React app over SQLite and its API
 /// (edit a row: change one task, remove one, add one, one Submit; a new row with a task; a blank required field refused by the browser) and its generated vitest file. </summary>

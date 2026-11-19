@@ -2,7 +2,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Web;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> The one table of package ranges, builders and test runner per Angular major version (AngularVersions), and the build files TS_EssentialBuild and the config TS_EssentialConfig write from it. </summary>
 [TestClass]

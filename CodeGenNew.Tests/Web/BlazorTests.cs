@@ -7,7 +7,7 @@ using Microsoft.Data.Sqlite;
 using CodeGenNew.Core.Settings;
 using CodeGenNew.Core.Web;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Web;
 
 /// <summary> The Blazor stack: its settings, which tables get a client, the text of every template and the files of a project generated from a SQLite file. Building the generated app
 /// needs the Blazor packages from NuGet, so that check was made by hand against the PostgreSQL sample (Docs/TemplateNotes/BLZ_Screens_v1.md), not in this suite. </summary>
