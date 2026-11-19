@@ -96,7 +96,16 @@ Every one of these needs a single whole-number key unless the row says otherwise
 
 With a project chosen the right-click menu reads the whole database once (kept until the project's file changes or the tables are refreshed) and offers the table's shapes and the shapes of the next section that point at it; with no project it reads only the table's own model. A shape that fits is an item "Use as ... and generate" that adds the item to the chosen project's file (every other line of the file stays as it is; nothing is added twice) and then regenerates the project's `Stacks` with the shape on. The run is for that table and the templates that cover the whole database (where a shape's routes and checks are written), not every other table's own files; regenerate the project to refresh those. A file that did not change is not touched and a file a person edited is kept. A project with no `Stacks` setting only gets the line; a shape that only looks like is a label that cannot be clicked. With no project chosen, every suggestion is a label. A whole-database run lists each suggestion in the run report.
 
-A whole-database run (`DatabaseShapeDetector`) also looks at more than one table and lists these, of which the menu offers those that name a table (the polymorphic link, snapshot and archive rows below), and the run report lists them all:
+The detector finds four more from the table alone:
+
+| Shape | Setting item suggested | Signal |
+|---|---|---|
+| Log table | `LogTables` | An integer key, a date-and-time column, no modified stamp or user, and a log word in the name or a level beside a message. A claim stamp or a received stamp makes it a queue or an inbound table instead. It fits only with `AccessMode=Ef` and the Columns list protocol |
+| Single-row table | `SingleRowTables` | One row at the moment, a key and four or more ordinary columns, not an enum table |
+| System-versioned table | `TemporalTables` | SQL Server reports the table as versioned by the database itself (`temporal_type` 2) |
+| Owned by a person | `OwnedTables` | `ApiAuth` is on and the table has a NOT NULL whole-number column named like the project's `OwnerColumn` (`EmployeeId` by default); a child of an owned table is scoped through its parent and is not suggested |
+
+A whole-database run (`DatabaseShapeDetector`) also looks at more than one table and lists these, of which the menu offers those that name a table (every row below is offered on one table), and the run report lists them all. A choice for the whole project (the tenant table, the user table, roles and permissions, feature flags, the subscription table) is offered on the table that holds it, the tenant table, the user table, the role table, the flag table or the subscription table, and the run report names that table:
 
 | Shape | Setting | Signal |
 |---|---|---|
@@ -109,8 +118,22 @@ A whole-database run (`DatabaseShapeDetector`) also looks at more than one table
 | User table | `UserTable` | Exactly one table with a login name and a password hash by the names the user table already reads |
 | Roles and permissions | `PermissionTables` | `Role`, `Permission`, a junction of the two and a junction of `Role` and another table |
 | Feature flags | `FeatureTables` | A flag table with an integer key, a `Name` and a required yes/no default, and a table with one foreign key to it and a required `IsEnabled` |
+| Subscription table | `SubscriptionTable` | The one table with `Subscription` in its name, a NOT NULL `PlanId`, a NOT NULL status and a NOT NULL tenant column; it fits only when the project already names `PlanTable` |
+| Tax lines | `TaxLines` | A line table with a NOT NULL tax rate, taxable amount and tax amount and a foreign key to a table with Tax, Vat or Levy in its name that has a rate column |
+| Row approvals | `RowApprovals` | A `<Table>Approval` side table with the status, requester, decider and revision columns of a request cycle and a key back to the table; it fits with `ApiAuth` and a `UserTable` that has a role flag |
+| Exchange rate on a document | `RateDocuments` | A currency text column, a rate (`ExchangeRate`, `FxRate`), an amount (`Total`, `Amount`) and a converted amount (`BaseTotal`, `BaseAmount`) that cannot be NULL; it fits when `RateTables` names a rate table and `BaseCurrency` is set |
 
-The log and single-row notes stay as described above. Shapes not in these tables are named only by a setting.
+The log and single-row notes stay as described above, and the run report no longer repeats them as a second suggestion.
+
+## Shapes with no detection
+
+Some shapes are a choice the table cannot show, so only the setting names them (`TableShapes` still gives the shape once the project lists the table, and every shape of it is asked from `TableShapes.For`):
+
+- Partition script (`PartitionTables`): any large table with a date could be split; the months to keep are the person's choice.
+- Archive days (`ArchiveTables`): a table with an archive twin is suggested, but the days to keep are the person's choice, so the suggestion only looks like.
+- Key sequence (`KeySequenceTables`): the table's key looks like any other whole-number key.
+- Party table and the tables of a party (`PartyTables` children `names`, `contacts`, `taxes`, `roles`): the identifier table is suggested and the children follow from it.
+- Plan limits and the usage roll-up: they follow from the subscription and usage tables.
 
 ## How a setting-named shape reaches the files
 

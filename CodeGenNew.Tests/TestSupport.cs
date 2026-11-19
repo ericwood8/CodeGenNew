@@ -193,8 +193,9 @@ internal static class Sample
 
     public static TableModel Table(string name, List<ColumnModel> columns, List<ForeignKeyModel>? foreignKeys = null,
         List<object?[]>? rows = null, List<ChildForeignKeyModel>? childForeignKeys = null, List<IndexModel>? indexes = null, SqlDialect dialect = SqlDialect.SqlServer, string? startDate = null, string? endDate = null,
-        List<PartialIndexModel>? partialIndexes = null, List<CheckConstraintModel>? checks = null, List<TriggerModel>? triggers = null, long rowCount = 0) => new()
+        List<PartialIndexModel>? partialIndexes = null, List<CheckConstraintModel>? checks = null, List<TriggerModel>? triggers = null, long rowCount = 0, bool systemVersioned = false) => new()
     {
+        IsSystemVersioned = systemVersioned,
         HasStartEndDatePair = startDate is not null && endDate is not null,
         StartDateColumn = startDate is null ? null : columns.Single(c => c.Name == startDate),
         EndDateColumn = endDate is null ? null : columns.Single(c => c.Name == endDate),

@@ -39,13 +39,50 @@ public static class TableShapeDetector
         var found = new List<ShapeSuggestion>();
         if (Extension(table, project) is { } extension)
             found.Add(extension);
+        if (Temporal(table, project) is { } temporal)
+            found.Add(temporal);
         if (table.PrimaryKeyColumns is not [{ IsIntegerColumn: true } key])
             return found;
         foreach (var suggestion in new[] { Tree(table, project, key), SoftDelete(table, project), DefaultRow(table, project, key), Effective(table, project), Queue(table, project),
-            Content(table, project), Asset(table, project), Inbound(table, project), Token(table, project), Usage(table, project) })
+            Content(table, project), Asset(table, project), Inbound(table, project), Token(table, project), Usage(table, project), Owned(table, project), SingleRow(table, project) })
             if (suggestion is not null)
                 found.Add(suggestion);
+        if (Log(table, project, found) is { } log)
+            found.Add(log);
         return found;
+    }
+
+    private static ShapeSuggestion? Temporal(TableModel table, ProjectSettings project) =>
+        table.IsSystemVersioned && table.Dialect == SqlDialect.SqlServer && !project.TemporalTables.Contains(table.TableName, StringComparer.OrdinalIgnoreCase)
+            ? Judge("System-versioned table", "TemporalTables", table.TableName, "the database versions it itself (SYSTEM_VERSIONING)", table, project, project.TemporalTables, (_, _) => null)
+            : null;
+
+    /// <summary> A table that looks like a log (a date and time column, nothing that edits it) and is not a queue or an inbound table, which have a claim or a received stamp of their own. </summary>
+    private static ShapeSuggestion? Log(TableModel table, ProjectSettings project, List<ShapeSuggestion> found)
+    {
+        if (LogTablePlan.IsListed(table, project) || !LogTablePlan.Looks(table) || found.Any(s => s.Shape is "Work queue" or "Inbound event table"))
+            return null;
+        return Judge("Log table", "LogTables", table.TableName, "has a date and time column and nothing that edits a row, so the application only reads it", table, project, project.LogTables, LogTablePlan.Problem);
+    }
+
+    /// <summary> A table with the project's owner column (<c>EmployeeId</c> by default) that cannot be NULL: the rows of one person. </summary>
+    private static ShapeSuggestion? Owned(TableModel table, ProjectSettings project)
+    {
+        if (!project.ApiAuth || OwnedTable.IsListed(table, project) || OwnedTable.Through(table, project) is not null || UserTable.PlanOf(table, project) is not null)
+            return null;
+        var owner = table.Columns.FirstOrDefault(c => !c.IsPrimaryKey && c.IsInt32Column && !c.IsNullable && c.Name.EqualsIgnoreCase(project.OwnerColumn));
+        if (owner is null)
+            return null;
+        return Judge("Owned by a person", "OwnedTables", table.TableName, $"{owner.Name} holds the person a row belongs to", table, project, project.OwnedTables,
+            (t, listed) => OwnedTable.OwnerColumn(t, listed) is null ? $"{owner.Name} is not found as the owner column" : null);
+    }
+
+    /// <summary> A table with one row at the moment, a key and four or more ordinary columns, such as a company's settings. </summary>
+    private static ShapeSuggestion? SingleRow(TableModel table, ProjectSettings project)
+    {
+        if (project.IsSingleRow(table.TableName) || table.LookupShape.RowCount != 1 || project.IsEnumTable(table) == true || table.Columns.Count(c => !c.IsPrimaryKey && !c.IsAuditColumn) < 4)
+            return null;
+        return Judge("Single-row table", "SingleRowTables", table.TableName, "holds one row; if the application keeps only one, a form shows it instead of a list", table, project, project.SingleRowTables, (_, _) => null);
     }
 
     private static ShapeSuggestion? Extension(TableModel table, ProjectSettings project) =>

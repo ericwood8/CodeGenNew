@@ -385,6 +385,19 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         WHERE ep.class = 1 AND ep.name = N'MS_Description' AND ep.minor_id = 0 AND ep.major_id = OBJECT_ID(@fullTableName)
         """;
 
+    // temporal_type 2 is a table the database versions itself; a server before 2016 has no such column, so it has no such table
+    private const string SystemVersionedQuery = """
+        IF COL_LENGTH('sys.tables', 'temporal_type') IS NULL SELECT 0
+        ELSE EXEC sp_executesql N'SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID(@fullTableName) AND temporal_type = 2', N'@fullTableName nvarchar(776)', @fullTableName = @fullTableName
+        """;
+
+    protected override async Task<bool> ReadIsSystemVersionedAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(SystemVersionedQuery, (SqlConnection)connection);
+        command.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken)) > 0;
+    }
+
     protected override async Task<string?> ReadTableDescriptionAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         await using var command = new SqlCommand(TableDescriptionQuery, (SqlConnection)connection);

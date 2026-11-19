@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Content;
+using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Tenant;
 using CodeGenNew.Core.Usage;
@@ -61,6 +63,62 @@ public sealed class TableShapes
     public LogShape? Log => Shape<LogShape>();
     public NameActiveShape? NameActive => Shape<NameActiveShape>();
 
+    /// <summary> The table as a table of exchange rates (<c>RateTables</c>); null when it is not. </summary>
+    public RateShape? Rate => Shape<RateShape>();
+
+    /// <summary> The table as one the project keeps a single row of (<c>SingleRowTables</c>), shown as a form. </summary>
+    public SingleRowShape? SingleRow => Shape<SingleRowShape>();
+
+    /// <summary> The table as one the database versions itself (<c>TemporalTables</c>). </summary>
+    public TemporalShape? Temporal => Shape<TemporalShape>();
+
+    /// <summary> The table as one whose key comes from the key-sequence table (<c>KeySequenceTables</c>). </summary>
+    public KeySequenceShape? KeySequence => Shape<KeySequenceShape>();
+
+    // the shapes below read other tables, so they need the database
+
+    /// <summary> The table as a child that copies columns of its parents when a row is saved (<c>SnapshotColumns</c>). </summary>
+    public SnapshotShape? Snapshot => Shape<SnapshotShape>();
+
+    /// <summary> The table as a document that keeps the exchange rate it was written with (<c>RateDocuments</c>). </summary>
+    public RateDocumentShape? RateDocument => Shape<RateDocumentShape>();
+
+    /// <summary> The table as a party table, the one that has identifiers (<c>PartyTables</c>). </summary>
+    public PartyRootShape? PartyRoot => Shape<PartyRootShape>();
+
+    /// <summary> The table as the identifier table of a party table (<c>PartyTables</c>). </summary>
+    public PartyIdentifierShape? PartyIdentifiers => Shape<PartyIdentifierShape>();
+
+    /// <summary> The table as a polymorphic link table: a type and an id that name a row of any of several tables (<c>PolymorphicLinks</c>). </summary>
+    public LinkShape? Link => Shape<LinkShape>();
+
+    /// <summary> The table as one a polymorphic link table may name. </summary>
+    public LinkedShape? Linked => Shape<LinkedShape>();
+
+    /// <summary> The table as one a script keeps small by moving or deleting old rows (<c>ArchiveTables</c>). </summary>
+    public ArchiveJob? Archive => Shape<ArchiveJob>();
+
+    /// <summary> The table as one a script splits into a partition for each month (<c>PartitionTables</c>). </summary>
+    public PartitionJob? Partition => Shape<PartitionJob>();
+
+    /// <summary> The table as the category table of a tax line table (<c>TaxLines</c>). </summary>
+    public TaxCategoryShape? TaxCategory => Shape<TaxCategoryShape>();
+
+    /// <summary> The table as one of the four tables of roles and permissions (<c>PermissionTables</c>). </summary>
+    public PermissionTableShape? Permission => Shape<PermissionTableShape>();
+
+    /// <summary> The table as the flag table or the override table of feature flags (<c>FeatureTables</c>). </summary>
+    public FeatureTableShape? Feature => Shape<FeatureTableShape>();
+
+    /// <summary> The table as the subscription table of a tenant (<c>SubscriptionTable</c>). </summary>
+    public SubscriptionModel? Subscription => Shape<SubscriptionModel>();
+
+    /// <summary> The table as the plan table of the subscriptions (<c>PlanTable</c>). </summary>
+    public SubscriptionPlanShape? SubscriptionPlan => Shape<SubscriptionPlanShape>();
+
+    /// <summary> The table as the table of what each plan allows (<c>PlanLimitTable</c>). </summary>
+    public PlanLimitModel? PlanLimit => Shape<PlanLimitModel>();
+
     /// <summary> The plan of the table when it is the user table and the settings fit it. </summary>
     public UserTableShape? User => Shape<UserTableShape>();
 
@@ -76,8 +134,11 @@ public sealed class TableShapes
         return (T?)ShapeOf(typeof(T));
     }
 
-    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(InboundShape), typeof(TokenShape), typeof(UsageShape), typeof(LogShape), typeof(TreeShape), typeof(ContentShape), typeof(AssetShape), typeof(EffectiveShape), typeof(DefaultRowShape), typeof(ExtensionShape), typeof(TaxLineShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape)];
-    private static readonly Type[] NeedDatabase = [typeof(TenantMembershipShape), typeof(ApprovalTableShape), typeof(ApprovalSide)];
+    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(InboundShape), typeof(TokenShape), typeof(UsageShape), typeof(LogShape), typeof(TreeShape), typeof(ContentShape), typeof(AssetShape), typeof(EffectiveShape), typeof(DefaultRowShape), typeof(ExtensionShape), typeof(TaxLineShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape),
+        typeof(RateShape), typeof(SingleRowShape), typeof(TemporalShape), typeof(KeySequenceShape)];
+    private static readonly Type[] NeedDatabase = [typeof(TenantMembershipShape), typeof(ApprovalTableShape), typeof(ApprovalSide), typeof(SnapshotShape), typeof(RateDocumentShape), typeof(PartyRootShape), typeof(PartyIdentifierShape),
+        typeof(LinkShape), typeof(LinkedShape), typeof(ArchiveJob), typeof(PartitionJob), typeof(TaxCategoryShape), typeof(PermissionTableShape), typeof(FeatureTableShape), typeof(SubscriptionModel), typeof(SubscriptionPlanShape),
+        typeof(PlanLimitModel)];
 
     /// <summary> Every shape the table has, in a fixed order; a table with none gives an empty list. </summary>
     public IReadOnlyList<object> All => (_database is null ? Known : [.. Known, .. NeedDatabase]).Select(t => ShapeOf(t)).OfType<object>().ToList();
@@ -117,17 +178,88 @@ public sealed class TableShapes
         if (shape == typeof(OwnerColumnShape)) return OwnedTable.OwnerColumn(_table, _project) is { } owner ? new OwnerColumnShape(owner) : null;
         if (shape == typeof(OwnerLinkShape)) return OwnedTable.Through(_table, _project);
         if (shape == typeof(TenantTableShape)) return TenantPlan.IsTenantTable(_table, _project) ? new TenantTableShape(_table) : null;
+        if (shape == typeof(RateShape)) return RatePlan.For(_table, _project);
+        if (shape == typeof(SingleRowShape)) return _project.IsSingleRow(_table.TableName) ? new SingleRowShape(_table) : null;
+        if (shape == typeof(TemporalShape)) return _project.TemporalTables.Contains(_table.TableName, StringComparer.OrdinalIgnoreCase) ? new TemporalShape(_table) : null;
+        if (shape == typeof(KeySequenceShape)) return _project.UsesKeySequence(_table.TableName) ? new KeySequenceShape(_table) : null;
         if (NeedDatabase.Contains(shape))
         {
             var database = _database ?? throw new InvalidOperationException($"{shape.Name} needs the database: make the shapes with TableShapes.For(table, project, database).");
-            if (shape == typeof(TenantMembershipShape)) return TenantPlan.MembershipOf(database, _project) is { } membership && membership.Table.TableName.EqualsIgnoreCase(_table.TableName) ? membership : null;
-            var approvals = ApprovalPlan.Resolve(database, _project).Tables;
-            if (shape == typeof(ApprovalTableShape)) return approvals.FirstOrDefault(a => a.Table.TableName.EqualsIgnoreCase(_table.TableName));
-            return approvals.FirstOrDefault(a => a.Side.TableName.EqualsIgnoreCase(_table.TableName)) is { } approval ? new ApprovalSide(approval) : null;
+            return WorkWithDatabase(shape, database);
         }
         throw new ArgumentException($"{shape.Name} is not a shape of a table.");
     }
+
+    private bool IsThis(TableModel other) => IsThis(other.TableName);
+
+    private bool IsThis(string name) => name.EqualsIgnoreCase(_table.TableName);
+
+    // each shape asks its own planner, and only when the project's setting names this table, so a table the project does not list costs nothing
+    private object? WorkWithDatabase(Type shape, DatabaseModel database)
+    {
+        if (shape == typeof(TenantMembershipShape)) return TenantPlan.MembershipOf(database, _project) is { } membership && IsThis(membership.Table) ? membership : null;
+        if (shape == typeof(ApprovalTableShape)) return _project.RowApprovals.Length == 0 ? null : ApprovalPlan.Resolve(database, _project).Tables.FirstOrDefault(a => IsThis(a.Table));
+        if (shape == typeof(ApprovalSide)) return _project.RowApprovals.Length > 0 && ApprovalPlan.Resolve(database, _project).Tables.FirstOrDefault(a => IsThis(a.Side)) is { } approval ? new ApprovalSide(approval) : null;
+        if (shape == typeof(SnapshotShape)) return SnapshotPlan.For(_table, _project, database);
+        if (shape == typeof(RateDocumentShape)) return RateDocumentPlan.For(_table, _project, database);
+        if (shape == typeof(PartyRootShape)) return PartyPlan.PartyOf(_table, _project, database) is { } party ? new PartyRootShape(party) : null;
+        if (shape == typeof(PartyIdentifierShape)) return PartyPlan.IdentifiersOf(_table, _project, database) is { } identifiers ? new PartyIdentifierShape(identifiers) : null;
+        if (shape == typeof(LinkShape)) return PolymorphicPlan.LinkOf(_table, _project, database);
+        if (shape == typeof(LinkedShape)) return PolymorphicPlan.TargetOf(_table, _project, database);
+        if (shape == typeof(ArchiveJob)) return ArchivePlan.Entries(_project).Any(e => IsThis(e.Table)) ? ArchivePlan.Resolve(database, _project).Jobs.FirstOrDefault(j => IsThis(j.Table)) : null;
+        if (shape == typeof(PartitionJob)) return PartitionPlan.Entries(_project).Any(e => IsThis(e.Table)) ? PartitionPlan.Resolve(database, _project).Jobs.FirstOrDefault(j => IsThis(j.Table)) : null;
+        if (shape == typeof(TaxCategoryShape))
+            return TaxLinePlan.Entries(_project).Where(e => e.CategoryTable is not null && IsThis(e.CategoryTable))
+                .Select(e => database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(e.Table))).OfType<TableModel>()
+                .Select(line => TaxLinePlan.For(line, _project, database)).OfType<TaxLineShape>().FirstOrDefault() is { } taxLine ? new TaxCategoryShape(taxLine) : null;
+        if (shape == typeof(PermissionTableShape))
+        {
+            if (!PermissionTables.IsConfigured(_project) || PermissionTables.Resolve(database, _project).Plan is not { } plan)
+                return null;
+            string? role = IsThis(plan.Role) ? "Role" : IsThis(plan.Permission) ? "Permission" : IsThis(plan.RolePermission) ? "RolePermission" : IsThis(plan.UserRole) ? "UserRole" : null;
+            return role is null ? null : new PermissionTableShape(plan, role);
+        }
+        if (shape == typeof(FeatureTableShape))
+        {
+            if (!FeatureFlagTables.IsConfigured(_project) || FeatureFlagTables.Resolve(database, _project).Plan is not { } plan)
+                return null;
+            string? role = IsThis(plan.Flag) ? "Flag" : IsThis(plan.Override) ? "Override" : plan.PlanLink is { } link && IsThis(link.Table) ? "PlanLink" : null;
+            return role is null ? null : new FeatureTableShape(plan, role);
+        }
+        if (_project.SubscriptionTable is null)
+            return null;
+        if (shape == typeof(SubscriptionModel)) return SubscriptionFeature.SubscriptionOf(database, _project) is { } model && IsThis(model.Table) ? model : null;
+        if (shape == typeof(SubscriptionPlanShape)) return SubscriptionFeature.SubscriptionOf(database, _project) is { } owner && IsThis(owner.PlanTable) ? new SubscriptionPlanShape(owner) : null;
+        return SubscriptionFeature.LimitTableOf(database, _project) is { } limits && IsThis(limits.Table) ? limits : null;
+    }
 }
+
+/// <summary> The table is one the project keeps a single row of (<c>SingleRowTables</c>). </summary>
+public sealed record SingleRowShape(TableModel Table);
+
+/// <summary> The table is one the database versions itself (<c>TemporalTables</c>). </summary>
+public sealed record TemporalShape(TableModel Table);
+
+/// <summary> The table takes its key from the key-sequence table (<c>KeySequenceTables</c>). </summary>
+public sealed record KeySequenceShape(TableModel Table);
+
+/// <summary> The table is the party table of <see cref="Party"/>, the one that has identifiers. </summary>
+public sealed record PartyRootShape(PartyShape Party);
+
+/// <summary> The table is the identifier table of <see cref="Party"/>. </summary>
+public sealed record PartyIdentifierShape(PartyShape Party);
+
+/// <summary> The table is the category table of the tax lines in <see cref="Line"/>. </summary>
+public sealed record TaxCategoryShape(TaxLineShape Line);
+
+/// <summary> The table is one of the four tables of roles and permissions; <see cref="Role"/> says which (Role, Permission, RolePermission or UserRole). </summary>
+public sealed record PermissionTableShape(PermissionTablesPlan Plan, string Role);
+
+/// <summary> The table is one of the tables of feature flags; <see cref="Role"/> says which (Flag, Override or PlanLink). </summary>
+public sealed record FeatureTableShape(FeatureFlagPlan Plan, string Role);
+
+/// <summary> The table is the plan table of <see cref="Subscription"/>. </summary>
+public sealed record SubscriptionPlanShape(SubscriptionModel Subscription);
 
 /// <summary> The table is the project's tenant table (<c>TenantTable</c>). </summary>
 public sealed record TenantTableShape(TableModel Table);

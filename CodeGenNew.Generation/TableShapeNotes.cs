@@ -25,9 +25,10 @@ public static class TableShapeNotes
         foreach (var table in database.Tables.Where(t => LooksSingleRow(t, project)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
             notes.Add($"{table.TableName}: holds one row; if the application keeps only one, list it in SingleRowTables to get a form instead of a list.");
         var detections = DatabaseShapeDetector.Of(database, project);
-        foreach (var found in detections.Where(d => d.Table.Length == 0 || database.Tables.Any(t => t.TableName == d.Table && t.HasCrudApi(project))))
-            notes.Add(found.Table.Length == 0
-                ? $"{found.Suggestion.Text}{(found.Suggestion.CanBeApplied ? "; set it in the project's settings to use it." : ".")}"
+        // the log and the single-row table have a note of their own, above and below
+        foreach (var found in detections.Where(d => d.Suggestion.Shape is not ("Log table" or "Single-row table") && (d.ProjectWide || database.Tables.Any(t => t.TableName == d.Table && t.HasCrudApi(project)))))
+            notes.Add(found.ProjectWide
+                ? $"{found.Table}: {found.Suggestion.Text}{(found.Suggestion.CanBeApplied ? "; set it in the project's settings to use it." : ".")}"
                 : $"{found.Table}: looks like this shape, nothing was changed: {found.Suggestion.Text}{(found.Suggestion.CanBeApplied ? "; add it to the project's settings to use it." : ".")}");
         foreach (var table in database.Tables.Where(t => t.HasCrudApi(project) && !LogTablePlan.IsListed(t, project) && LogTablePlan.Looks(t)
             && !detections.Any(d => d.Table == t.TableName && d.Suggestion.Shape is "Work queue" or "Inbound event table")).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))

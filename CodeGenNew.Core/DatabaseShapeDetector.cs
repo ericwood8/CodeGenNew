@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Tenant;
 
 namespace CodeGenNew.Core;
 
@@ -23,13 +24,81 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), TaxLine(table, database, project) })
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), TaxLine(table, database, project),
+                Approval(table, database, project), RateDocument(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
         }
-        foreach (var s in new[] { Tenant(database, project), User(database, project), Permissions(database, project), Features(database, project) })
-            if (s is not null)
-                yield return new("", s);
+        foreach (var d in new[] { Tenant(database, project), User(database, project), Permissions(database, project), Features(database, project), Subscription(database, project) })
+            if (d is not null)
+                yield return d;
+    }
+
+    // a project-wide choice is still about one table, the one that holds it, so the right-click menu of that table offers it
+    private static DatabaseShapeDetection ProjectWide(DatabaseModel database, string table, ShapeSuggestion suggestion) =>
+        new(database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(table))?.TableName ?? table, suggestion, true);
+
+    private static readonly string[] DocCurrencyNames = ["CurrencyCode", "Currency"];
+    private static readonly string[] DocRateNames = ["ExchangeRate", "FxRate", "ConversionRate"];
+    private static readonly string[] DocAmountNames = ["Total", "TotalAmount", "Amount", "GrandTotal"];
+    private static readonly string[] DocBaseNames = ["BaseTotal", "BaseAmount", "TotalBase", "ConvertedTotal", "ConvertedAmount"];
+    private static readonly string[] DocDayNames = ["InvoiceDate", "DocumentDate", "OrderDate", "IssueDate", "TaxPoint"];
+    private static readonly string[] ApprovalSideColumns = ["ApprovalStatusId", "RequestedBy", "RequestedOn", "DecidedBy", "Revision"];
+
+    /// <summary> A table with a <c>&lt;Table&gt;Approval</c> side table that has the columns of a request cycle (the table SP_ApprovalTable writes). </summary>
+    private static ShapeSuggestion? Approval(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (project.RowApprovals.Contains(table.TableName, StringComparer.OrdinalIgnoreCase) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        var side = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(ApprovalPlan.SideName(table.TableName)));
+        if (side is null || !ApprovalSideColumns.Append(table.TableName + "Id").All(n => side.Columns.Any(c => c.Name.EqualsIgnoreCase(n))))
+            return null;
+        var listed = project.WithOverrides([new("RowApprovals", string.Join(",", project.RowApprovals.Append(table.TableName)))]);
+        string? problem = ApprovalPlan.Resolve(database, listed).Problems.FirstOrDefault(p => p.StartsWith($"RowApprovals: {table.TableName}", StringComparison.OrdinalIgnoreCase) || p.StartsWith("RowApprovals needs", StringComparison.Ordinal));
+        string why = $"{side.TableName} holds one row for each request to approve a row of {table.TableName}";
+        return new ShapeSuggestion("Row approvals", "RowApprovals", table.TableName, problem is null, problem is null ? why : $"{why}, but {problem}");
+    }
+
+    /// <summary> A document with a currency, the rate it was written with, an amount and the amount in the base currency. </summary>
+    private static ShapeSuggestion? RateDocument(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (RateDocumentPlan.IsListed(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        ColumnModel? Find(string[] names, Func<ColumnModel, bool> kind) => table.Columns.FirstOrDefault(c => !c.IsPrimaryKey && kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
+        bool Number(ColumnModel c) => !c.IsNullable && c.CSharpBase() is "decimal" or "double" or "float";
+        var currency = Find(DocCurrencyNames, c => c.IsStringColumn && !c.IsNullable);
+        var rate = Find(DocRateNames, Number);
+        var amount = Find(DocAmountNames, Number);
+        var baseAmount = Find(DocBaseNames, Number);
+        if (currency is null || rate is null || amount is null || baseAmount is null)
+            return null;
+        var day = Find(DocDayNames, c => c.IsDateColumn);
+        string item = $"{table.TableName}:{currency.Name}:{rate.Name}:{amount.Name}:{baseAmount.Name}" + (day is null ? "" : ":" + day.Name);
+        var listed = project.WithOverrides([new("RateDocuments", string.Join(",", project.RateDocuments.Append(item)))]);
+        string? problem = RateDocumentPlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"RateDocuments: {table.TableName}", StringComparison.OrdinalIgnoreCase));
+        string why = $"{currency.Name} and {rate.Name} turn {amount.Name} into {baseAmount.Name}, the way a document keeps its exchange rate";
+        return new ShapeSuggestion("Exchange rate on a document", "RateDocuments", item, problem is null, problem is null ? why : $"{why}, but {problem}");
+    }
+
+    private static readonly string[] SubscriptionStatusNames = ["Status", "StatusId", "SubscriptionStatusId"];
+
+    /// <summary> The one table with Subscription in its name, a plan and a status and a tenant column. It also needs <c>PlanTable</c>, so it fits only when the project names that. </summary>
+    private static DatabaseShapeDetection? Subscription(DatabaseModel database, ProjectSettings project)
+    {
+        if (project.SubscriptionTable is not null)
+            return null;
+        var found = database.Tables.Where(t => t.TableName.ContainsIgnoreCase("Subscription") && t.Columns.Any(c => c.Name.EqualsIgnoreCase("PlanId") && c.IsInt32Column && !c.IsNullable)
+            && t.Columns.Any(c => !c.IsNullable && SubscriptionStatusNames.Any(n => c.Name.EqualsIgnoreCase(n))) && t.Columns.Any(c => !c.IsNullable && c.IsInt32Column && TenantNames.Any(n => c.Name.EqualsIgnoreCase(n)))).ToList();
+        if (found is not [var table])
+            return null;
+        var plan = table.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0].EqualsIgnoreCase("PlanId"))?.ReferencedTable;
+        var overrides = new List<KeyValuePair<string, string>> { new("SubscriptionTable", table.TableName) };
+        if (project.PlanTable is null && plan is not null)
+            overrides.Add(new("PlanTable", plan));
+        var listed = project.WithOverrides(overrides);
+        string? problem = project.PlanTable is null ? $"PlanTable={plan ?? "the plan table"} also has to be set" : SubscriptionFeature.Problems(database, listed).FirstOrDefault(p => p.StartsWith("SubscriptionTable:", StringComparison.Ordinal));
+        string why = "has a plan, a status and a tenant column";
+        return ProjectWide(database, table.TableName, new ShapeSuggestion("Subscription table", "SubscriptionTable", table.TableName, problem is null, problem is null ? why : $"{why}, but {problem}"));
     }
 
     private static ShapeSuggestion? Polymorphic(TableModel table, DatabaseModel database, ProjectSettings project)
@@ -185,7 +254,7 @@ public static class DatabaseShapeDetector
                 $"{archive.TableName} has every column of {table.TableName}; ArchiveTables={table.TableName}:DAYS keeps that many days of rows and moves older ones there (choose the days; the plan expects the name {ArchivePlan.ArchiveName(table.TableName)})");
     }
 
-    private static ShapeSuggestion? Tenant(DatabaseModel database, ProjectSettings project)
+    private static DatabaseShapeDetection? Tenant(DatabaseModel database, ProjectSettings project)
     {
         if (project.TenantTable is not null)
             return null;
@@ -194,22 +263,22 @@ public static class DatabaseShapeDetector
             .GroupBy(n => n, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()).FirstOrDefault();
         if (owners is null || owners.Count() < 2 || owners.Count() * 2 < database.Tables.Count - 1)
             return null;
-        return new ShapeSuggestion("Tenant table", "TenantTable", owners.Key, project.ApiAuth,
-            $"{owners.Count()} tables have a required tenant column that points at {owners.Key}{(project.ApiAuth ? "" : "; TenantTable also needs ApiAuth")}");
+        return ProjectWide(database, owners.Key, new ShapeSuggestion("Tenant table", "TenantTable", owners.Key, project.ApiAuth,
+            $"{owners.Count()} tables have a required tenant column that points at {owners.Key}{(project.ApiAuth ? "" : "; TenantTable also needs ApiAuth")}"));
     }
 
-    private static ShapeSuggestion? User(DatabaseModel database, ProjectSettings project)
+    private static DatabaseShapeDetection? User(DatabaseModel database, ProjectSettings project)
     {
         if (project.UserTable is not null)
             return null;
         var users = database.Tables.Where(t => t.Columns.Any(c => c.IsStringColumn && UserTable.UserNameNames.Any(n => c.Name.EqualsIgnoreCase(n)))
             && t.Columns.Any(c => c.IsStringColumn && UserTable.PasswordHashNames.Any(n => c.Name.EqualsIgnoreCase(n)))).ToList();
         return users is [var only]
-            ? new ShapeSuggestion("User table", "UserTable", only.TableName, project.ApiAuth, $"has a login name and a password hash{(project.ApiAuth ? "" : "; UserTable also needs ApiAuth")}")
+            ? ProjectWide(database, only.TableName, new ShapeSuggestion("User table", "UserTable", only.TableName, project.ApiAuth, $"has a login name and a password hash{(project.ApiAuth ? "" : "; UserTable also needs ApiAuth")}"))
             : null;
     }
 
-    private static ShapeSuggestion? Permissions(DatabaseModel database, ProjectSettings project)
+    private static DatabaseShapeDetection? Permissions(DatabaseModel database, ProjectSettings project)
     {
         if (project.PermissionTables.Length > 0)
             return null;
@@ -222,11 +291,11 @@ public static class DatabaseShapeDetector
         var rolePermission = database.Tables.FirstOrDefault(t => t.IsJunctionTable && Points(t, role) && Points(t, permission));
         var userRole = database.Tables.FirstOrDefault(t => t.IsJunctionTable && Points(t, role) && !Points(t, permission));
         return rolePermission is null || userRole is null ? null
-            : new ShapeSuggestion("Roles and permissions", "PermissionTables", $"{role.TableName},{permission.TableName},{rolePermission.TableName},{userRole.TableName}", project.ApiAuth && project.UserTable is not null,
-                $"{role.TableName}, {permission.TableName} and their two junctions are the four tables{(project.ApiAuth && project.UserTable is not null ? "" : "; PermissionTables also needs ApiAuth and UserTable")}");
+            : ProjectWide(database, role.TableName, new ShapeSuggestion("Roles and permissions", "PermissionTables", $"{role.TableName},{permission.TableName},{rolePermission.TableName},{userRole.TableName}", project.ApiAuth && project.UserTable is not null,
+                $"{role.TableName}, {permission.TableName} and their two junctions are the four tables{(project.ApiAuth && project.UserTable is not null ? "" : "; PermissionTables also needs ApiAuth and UserTable")}"));
     }
 
-    private static ShapeSuggestion? Features(DatabaseModel database, ProjectSettings project)
+    private static DatabaseShapeDetection? Features(DatabaseModel database, ProjectSettings project)
     {
         if (project.FeatureTables.Length > 0)
             return null;
@@ -235,11 +304,12 @@ public static class DatabaseShapeDetector
         {
             var overrides = database.Tables.FirstOrDefault(t => t.ForeignKeys.Count(f => f.ReferencedTable.EqualsIgnoreCase(flag.TableName)) == 1 && t.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name.EqualsIgnoreCase("IsEnabled")));
             if (overrides is not null)
-                return new ShapeSuggestion("Feature flags", "FeatureTables", $"{flag.TableName},{overrides.TableName}", project.ApiAuth, $"{flag.TableName} has a name and a default, and {overrides.TableName} refers to it with a yes/no column{(project.ApiAuth ? "" : "; FeatureTables also needs ApiAuth")}");
+                return ProjectWide(database, flag.TableName, new ShapeSuggestion("Feature flags", "FeatureTables", $"{flag.TableName},{overrides.TableName}", project.ApiAuth, $"{flag.TableName} has a name and a default, and {overrides.TableName} refers to it with a yes/no column{(project.ApiAuth ? "" : "; FeatureTables also needs ApiAuth")}"));
         }
         return null;
     }
 }
 
-/// <summary> One suggestion of <see cref="DatabaseShapeDetector.Of"/>: the table it is about (empty for the whole database) and the suggestion. </summary>
-public sealed record DatabaseShapeDetection(string Table, ShapeSuggestion Suggestion);
+/// <summary> One suggestion of <see cref="DatabaseShapeDetector.Of"/>: the table it is about and the suggestion. <see cref="ProjectWide"/> is true when the setting is a choice for the whole project (the tenant table,
+/// the user table, roles and permissions, feature flags, subscriptions); the table is the one that holds it, so the menu of that table offers it, and a run reports it without needing the table to have an API. </summary>
+public sealed record DatabaseShapeDetection(string Table, ShapeSuggestion Suggestion, bool ProjectWide = false);
