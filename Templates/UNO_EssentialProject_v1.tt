@@ -8,8 +8,8 @@
     // Generates: <ProjectName>.Uno.csproj, global.json, Directory.Build.props, GlobalUsings.cs, app.manifest, Package.appxmanifest, Platforms/Desktop/Program.cs,
     // Platforms/WebAssembly/Program.cs, Platforms/WebAssembly/WasmScripts/AppManifest.js, Platforms/WebAssembly/LinkerConfig.xml and Properties/launchSettings.json
     // (no table, no database: an essentials group; the output folder is the Uno app's own folder)
-    // A single-project Uno Platform app (the Uno.Sdk) with the heads that build on a Windows machine without a phone SDK: net10.0-desktop (Skia: Windows, macOS and Linux),
-    // net10.0-browserwasm (WebAssembly, which needs the wasm-tools workload) and net10.0-windows (WinAppSDK). Add net10.0-android and net10.0-ios to TargetFrameworks to build the
+    // A single-project Uno Platform app (the Uno.Sdk) with the heads that build on a Windows machine without a phone SDK: net11.0-desktop (Skia: Windows, macOS and Linux),
+    // net11.0-browserwasm (WebAssembly, which needs the wasm-tools workload) and net11.0-windows (WinAppSDK). Add net11.0-android and net11.0-ios to TargetFrameworks to build the
     // phone heads (their workloads and, for iOS, a Mac are needed). The app calls the generated API: the address is API_BASE_URL (else http://localhost:<ApiPort>, see MainPage.xaml.cs);
     // the browser head is served on DevPort (default 5195), which API_EssentialProgram allows. Settings: ProjectName, ProjectTitle, AppNamespace, ApiPort, DevPort.
     // ==========================================================================================
@@ -23,10 +23,12 @@
 @@@FILE <#= projectName #>.Uno.csproj@@@
 <Project Sdk="Uno.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net10.0-desktop;net10.0-browserwasm;net10.0-windows10.0.26100</TargetFrameworks>
+    <TargetFrameworks>net11.0-desktop;net11.0-browserwasm;net11.0-windows10.0.26100</TargetFrameworks>
 
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
+    <!-- Package.appxmanifest makes the Windows head an MSIX by default, which needs the Windows App Runtime installed and registered; None runs the exe as it is, with the runtime bundled. -->
+    <WindowsPackageType>None</WindowsPackageType>
     <RootNamespace><#= appNamespace #></RootNamespace>
 
     <ApplicationTitle><#= title #></ApplicationTitle>
@@ -42,15 +44,21 @@
       SkiaRenderer;
     </UnoFeatures>
   </PropertyGroup>
+<# if (Project.WinUi3TableViewGrid) { #>
+
+  <ItemGroup>
+    <PackageReference Include="WinUI.TableView" Version="<#= ProjectSettings.WinUi3TableViewVersion #>" />
+  </ItemGroup>
+<# } #>
 
 </Project>
 @@@FILE global.json@@@
 {
   "msbuild-sdks": {
-    "Uno.Sdk": "6.7.30"
+    "Uno.Sdk": "7.0.22"
   },
   "sdk": {
-    "version": "10.0.100",
+    "version": "11.0.100",
     "rollForward": "latestFeature",
     "allowPrerelease": false
   }

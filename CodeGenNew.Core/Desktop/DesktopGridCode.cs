@@ -26,6 +26,15 @@ public static class DesktopGridCode
 
     /// <summary> The element of the view model's <c>cells</c> list that shows the column (sixteen spaces in, a comma at the end): the parent's name for a foreign key, yes / no, a date, an amount of money
     /// in the project's currency, a decimal with two places, text or the value; <paramref name="cut"/> shows a long text cut to <see cref="ChosenGridColumns.CutLength"/> characters. </summary>
+    /// <summary> True when the grid shows the column as a number (money, a decimal or a whole number, not a key shown as the parent's name): the table right-aligns it, as a spreadsheet does. </summary>
+    public static bool IsRightAligned(FormModel form, ColumnModel column)
+    {
+        var formColumn = form.Field(column);
+        if (formColumn.IsLookupCell || formColumn.IsBooleanCell || formColumn.IsDateCell || formColumn.IsDateTimeCell)
+            return false;
+        return formColumn.IsMoneyCell || formColumn.IsDecimalCell || (!TemplateHelpers.IsText(column) && (column.IsNumericColumn || column.IsIntegerColumn));
+    }
+
     public static string CellLines(FormModel form, ProjectSettings project, ColumnModel column, bool cut = false)
     {
         var formColumn = form.Field(column);

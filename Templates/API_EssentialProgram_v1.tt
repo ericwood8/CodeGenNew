@@ -20,13 +20,9 @@
     string contextNamespace = Project.ContextNamespace ?? projectName + ".Api.Data";
     var dialect = Project.DatabaseDialect;
     string providerName = EfProviderInfo.For(dialect).UseMethod;
-    string providerPackage = dialect switch
-    {
-        SqlDialect.PostgreSql => "Npgsql.EntityFrameworkCore.PostgreSQL\" Version=\"10.0.0",
-        SqlDialect.MySql => "Microting.EntityFrameworkCore.MySql\" Version=\"10.0.14",
-        SqlDialect.Sqlite => "Microsoft.EntityFrameworkCore.Sqlite\" Version=\"10.0.12",
-        _ => "Microsoft.EntityFrameworkCore.SqlServer\" Version=\"10.0.12"
-    };
+    var (packageName, providerVersion) = EfProviderInfo.PackageVersion(dialect);
+    string providerPackage = packageName +"\" Version=\"" + providerVersion;
+    string framework = DotNetTarget.Framework(dialect);
     string user = Project.DatabaseUser ?? "";
     string connection = dialect switch
     {
@@ -111,7 +107,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework><#= framework #></TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace><#= projectName #>.Api</RootNamespace>
@@ -121,7 +117,9 @@
 
   <ItemGroup>
     <PackageReference Include="<#= providerPackage #>" />
+<# if (!DotNetTarget.IsEleven(dialect)) { #>
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+<# } #>
 <#
     if (Project.OData)
     {
@@ -132,7 +130,7 @@
     if (Project.ApiAuth)
     {
 #>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="<#= DotNetTarget.Package(dialect, "10.0.0") #>" />
 <#
     }
     if (Project.ApiValidation)
@@ -795,14 +793,14 @@ public class DatabaseHealthCheck(<#= contextName #> context) : IHealthCheck
             : HealthCheckResult.Unhealthy("The database cannot be reached.");
 }
 @@@FILE Dockerfile@@@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:<#= DotNetTarget.ImageTag(dialect) #> AS build
 WORKDIR /src
 COPY <#= projectName #>.Api.csproj .
 RUN dotnet restore
 COPY . .
 RUN dotnet publish -c Release -o /app
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:<#= DotNetTarget.ImageTag(dialect) #>
 WORKDIR /app
 COPY <#= fromBuild #> /app .
 ENV Urls=http://+:8080 \

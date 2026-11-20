@@ -15,7 +15,7 @@ param(
     [Parameter(Mandatory)][string]$Route,
     [Parameter(Mandatory)][string]$Body,
     [string]$IdProperty = 'id',
-    [string]$Codegen = (Join-Path $PSScriptRoot '..\..\CodeGenNew.Cli\bin\Debug\net10.0\codegen.exe'),
+    [string]$Codegen = (Join-Path $PSScriptRoot '..\..\CodeGenNew.Cli\bin\Debug\net11.0\codegen.exe'),
     [int]$Port = 5194
 )
 Import-Module (Join-Path $PSScriptRoot 'UiAutomation.psm1') -Force -WarningAction Ignore   # only for Assert-That

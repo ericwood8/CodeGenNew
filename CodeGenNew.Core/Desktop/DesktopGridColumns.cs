@@ -106,6 +106,87 @@ public static class GridColumnStore
 }
 """;
 
+    /// <summary> <c>ViewModels/GridWidthStore.cs</c> (WinUI3Grid=TableView): the widths a person gave a grid's columns by dragging a column border, kept in GridWidths.json in the local application data folder:
+    /// a grid's name maps to its columns' names and widths. A file that cannot be read or written just means the widths are not remembered. </summary>
+    public static string WidthStoreFile(string viewModelNamespace) => $$"""
+using System.IO;
+using System.Text.Json;
+
+namespace {{viewModelNamespace}};
+
+/// <summary> Remembers the widths of the columns of each table between runs in GridWidths.json in the local application data folder. </summary>
+public static class GridWidthStore
+{
+    private static readonly object Gate = new();
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+
+    private static string FilePath { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? "App",
+        "GridWidths.json");
+
+    /// <summary> The widths kept for a grid: a column name and its width in pixels. </summary>
+    public static Dictionary<string, int> Load(string gridKey)
+    {
+        lock (Gate)
+            return ReadAll().GetValueOrDefault(gridKey) ?? [];
+    }
+
+    public static void Save(string gridKey, Dictionary<string, int> widths)
+    {
+        lock (Gate)
+        {
+            var all = ReadAll();
+            all[gridKey] = widths;
+            Write(all);
+        }
+    }
+
+    /// <summary> Drops the widths of a grid (Reset columns). </summary>
+    public static void Forget(string gridKey)
+    {
+        lock (Gate)
+        {
+            var all = ReadAll();
+            if (all.Remove(gridKey))
+                Write(all);
+        }
+    }
+
+    private static void Write(Dictionary<string, Dictionary<string, int>> all)
+    {
+        try
+        {
+            if (all.Count == 0)
+            {
+                File.Delete(FilePath);
+                return;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(all, Json));
+        }
+        catch (Exception)
+        {
+            // the widths just are not remembered
+        }
+    }
+
+    private static Dictionary<string, Dictionary<string, int>> ReadAll()
+    {
+        try
+        {
+            if (File.Exists(FilePath))
+                return JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, int>>>(File.ReadAllText(FilePath)) ?? [];
+        }
+        catch (Exception)
+        {
+            // an unreadable file is the same as none
+        }
+        return [];
+    }
+}
+""";
+
     /// <summary> <c>Views/GridCells.cs</c>: the cells of one grid row, an equal-width column per text, so the rows line up with the header the page builds for the shown columns. </summary>
     public static string CellsFile(string viewNamespace) => $$"""
 using Microsoft.UI.Xaml;
@@ -211,7 +292,9 @@ public sealed class GridCells : Grid
 
     /// <summary> The members a list page gains: the header built for the shown columns (a button that sorts, or text, then the Actions column that the page's XAML holds) and the Columns menu. The page has
     /// <c>HeaderCells</c>, a <c>Grid</c> in the first column of its header, and the handler <c>OnSortHeaderClick</c>. </summary>
-    public static string PageMembers(string viewModelType) => $$"""
+    public static string PageMembers(string viewModelType) => HeaderMembers + "\n\n" + ColumnsMenuMembers(viewModelType, "BuildHeader", "ViewModel.ResetColumns");
+
+    private static string HeaderMembers => """
     // The header: one cell for each shown column (a button that sorts, or text), rebuilt when the sort or the shown columns change.
     private void BuildHeader()
     {
@@ -245,7 +328,9 @@ public sealed class GridCells : Grid
             HeaderCells.Children.Add(header);
         }
     }
+""";
 
+    private static string ColumnsMenuMembers(string viewModelType, string rebuild, string reset) => $$"""
     // The Columns menu: a check mark for each offered column (the last shown one cannot be cleared) and Reset.
     private void OnColumnsClick(object sender, RoutedEventArgs e)
     {
@@ -258,7 +343,7 @@ public sealed class GridCells : Grid
         }
         flyout.Items.Add(new MenuFlyoutSeparator());
         var reset = new MenuFlyoutItem { Text = "Reset columns" };
-        reset.Click += async (_, _) => await ChangeColumnsAsync(ViewModel.ResetColumns);
+        reset.Click += async (_, _) => await ChangeColumnsAsync({{reset}});
         flyout.Items.Add(reset);
         flyout.ShowAt((FrameworkElement)sender);
     }
@@ -267,7 +352,89 @@ public sealed class GridCells : Grid
     {
         change();
         await ViewModel.LoadAsync();
-        BuildHeader();
+        {{rebuild}}();
     }
+""";
+
+    /// <summary> The members a WinUI3 list page gains when <c>WinUI3Grid=TableView</c>, in place of <see cref="PageMembers"/>: the columns built for the shown columns (the page has <c>Table</c>, a
+    /// <c>WinUI.TableView.TableView</c>, and a <c>RowActions</c> data template for the Actions column), the sort arrows, the handlers that give the sort back to the database, and the Columns menu.
+    /// The database sorts, so the table's own sort never runs: <c>Sorting</c> is handled here and the arrows are set from the view model's sort. </summary>
+    public static string TableViewPageMembers(string viewModelType, string actionWidth, string gridKey) => $$"""
+    // The columns: one for each shown column (its text is item N of the row's VisibleCells), then Actions. The database sorts: a header click comes back through OnTableSorting.
+    private void BuildColumns()
+    {
+        Table.Columns.Clear();
+        var columns = ViewModel.ShownColumns;
+        var widths = GridWidthStore.Load("{{gridKey}}");
+        for (int i = 0; i < columns.Count; i++)
+        {
+            Table.Columns.Add(new TableViewTextColumn
+            {
+                Header = columns[i].Caption,
+                Binding = new Microsoft.UI.Xaml.Data.Binding { Path = new PropertyPath($"VisibleCells[{i}]") },
+                Tag = columns[i].Name,
+                Width = widths.TryGetValue(columns[i].Name, out int width) ? new GridLength(width) : new GridLength(1, GridUnitType.Star),
+                MinWidth = 80,
+                CanSort = columns[i].Sortable,
+                CanFilter = false,
+                ElementStyle = {{viewModelType}}.RightAlignedColumns.Contains(columns[i].Name) ? (Style)Resources["RightAlignedText"] : null
+            });
+            if ({{viewModelType}}.RightAlignedColumns.Contains(columns[i].Name) && Table.Columns[^1].HeaderControl is { } header)
+                header.HorizontalContentAlignment = HorizontalAlignment.Right;
+        }
+        Table.Columns.Add(new TableViewTemplateColumn
+        {
+            Header = "Actions",
+            CellTemplate = (DataTemplate)Resources["RowActions"],
+            Width = new GridLength({{actionWidth}}),
+            CanSort = false,
+            CanFilter = false,
+            CanResize = false
+        });
+        ShowSortMarks();
+    }
+
+    // The sorted column shows the table's own arrow.
+    private void ShowSortMarks()
+    {
+        foreach (var column in Table.Columns)
+        {
+            bool? descending = column.Tag is string name ? ViewModel.SortedDescending(name) : null;
+            column.SortDirection = descending is null ? null : descending.Value ? WinUI.TableView.SortDirection.Descending : WinUI.TableView.SortDirection.Ascending;
+        }
+    }
+
+    private async void OnTableSorting(object? sender, TableViewSortingEventArgs e)
+    {
+        e.Handled = true;
+        if (e.Column.Tag is not string name)
+            return;
+        ViewModel.SortBy(name);
+        await ViewModel.LoadAsync();
+        ShowSortMarks();
+    }
+
+    private async void OnTableClearSorting(object? sender, TableViewClearSortingEventArgs e)
+    {
+        ViewModel.ClearSort();
+        await ViewModel.LoadAsync();
+        ShowSortMarks();
+    }
+
+    // The widths the person gave the columns by dragging a column border are kept (GridWidthStore): a column that is no longer star sized has been resized.
+    private void SaveWidths()
+    {
+        var saved = GridWidthStore.Load("{{gridKey}}");
+        var now = new Dictionary<string, int>(saved);
+        foreach (var column in Table.Columns)
+        {
+            if (column.Tag is string name && column.Width.GridUnitType != GridUnitType.Star)
+                now[name] = (int)Math.Round(column.ActualWidth);
+        }
+        if (!now.OrderBy(p => p.Key).SequenceEqual(saved.OrderBy(p => p.Key)))
+            GridWidthStore.Save("{{gridKey}}", now);
+    }
+
+{{ColumnsMenuMembers(viewModelType, "BuildColumns", "() => { ViewModel.ResetColumns(); GridWidthStore.Forget(\"" + gridKey + "\"); }")}}
 """;
 }

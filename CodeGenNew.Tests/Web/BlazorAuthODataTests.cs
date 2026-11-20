@@ -67,7 +67,7 @@ public class BlazorAuthODataTests
     public async Task The_project_files_wire_the_sign_in_only_with_Auth()
     {
         string with = await Run("BLZ_EssentialProject_v1.tt", new object(), Auth, OData);
-        Expect.Contains(with, "<PackageReference Include=\"Microsoft.AspNetCore.Components.Authorization\" Version=\"10.0.*\" />");
+        Expect.Contains(with, "<PackageReference Include=\"Microsoft.AspNetCore.Components.Authorization\" Version=\"11.0.*\" />");
         Expect.Contains(with, "builder.Services.AddScoped<AuthenticationStateProvider, SessionAuthenticationStateProvider>();");
         Expect.Contains(with, "builder.Services.AddScoped(sp => new HttpClient(sp.GetRequiredService<AuthHandler>()) { BaseAddress = new Uri(apiBase) });");
         Expect.Contains(with, "<AuthorizeRouteView RouteData=\"routeData\" DefaultLayout=\"typeof(Layout.MainLayout)\">");
@@ -89,7 +89,7 @@ public class BlazorAuthODataTests
     {
         string with = await Run("BLZ_EssentialLayout_v1.tt", new object(), Auth);
         Expect.Contains(with, "<span class=\"who\">@Session.User!.Name</span>");
-        Expect.Contains(with, "<button type=\"button\" @onclick=\"SignOutAsync\">Sign out</button>");
+        Expect.Contains(with, "<button type=\"button\" class=\"signout\" @onclick=\"SignOutAsync\">Sign out</button>");
         Expect.Contains(with, ".login { max-width: 360px; }");
 
         string plain = await Run("BLZ_EssentialLayout_v1.tt", new object());

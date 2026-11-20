@@ -89,6 +89,59 @@ function Wait-Name {
     throw "Timed out waiting for '$Name'."
 }
 
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class UiaMouse
+{
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern void mouse_event(int flags, int dx, int dy, int data, int extra);
+    public static void Click(int x, int y) { SetCursorPos(x, y); mouse_event(2, 0, 0, 0, 0); mouse_event(4, 0, 0, 0, 0); }
+    public static void RightClick(int x, int y) { SetCursorPos(x, y); mouse_event(8, 0, 0, 0, 0); mouse_event(16, 0, 0, 0, 0); }
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+    // a move the input system sees as hardware input (SetCursorPos alone moves the cursor but raises no pointer event for the app)
+    public static void Move(int x, int y)
+    {
+        int w = GetSystemMetrics(0), h = GetSystemMetrics(1);
+        mouse_event(0x8001, x * 65535 / (w - 1), y * 65535 / (h - 1), 0, 0);
+    }
+    public static void Down() { mouse_event(2, 0, 0, 0, 0); }
+    public static void Up() { mouse_event(4, 0, 0, 0, 0); }
+}
+'@ -ErrorAction SilentlyContinue
+
+function Click-Point {
+    <# A real mouse click at a screen point (the window must be in front). -Right for a right click. #>
+    param([Parameter(Mandatory)][int]$X, [Parameter(Mandatory)][int]$Y, [switch]$Right)
+    if ($Right) { [UiaMouse]::RightClick($X, $Y) } else { [UiaMouse]::Click($X, $Y) }
+}
+
+function Drag-Point {
+    <# Presses the left button at one screen point, moves in steps to another and releases (the right edge of a header dragged to resize a column of a table). #>
+    param([Parameter(Mandatory)][int]$FromX, [Parameter(Mandatory)][int]$FromY, [Parameter(Mandatory)][int]$ToX, [Parameter(Mandatory)][int]$ToY, [int]$Steps = 15)
+    [UiaMouse]::Move($FromX, $FromY); Start-Sleep -Milliseconds 400
+    [UiaMouse]::Move($FromX, $FromY); Start-Sleep -Milliseconds 200
+    [UiaMouse]::Down(); Start-Sleep -Milliseconds 200
+    for ($i = 1; $i -le $Steps; $i++) {
+        [UiaMouse]::Move([int]($FromX + ($ToX - $FromX) * $i / $Steps), [int]($FromY + ($ToY - $FromY) * $i / $Steps)); Start-Sleep -Milliseconds 40
+    }
+    [UiaMouse]::Up(); Start-Sleep -Milliseconds 300
+}
+
+function Click-GridHeader {
+    <# Clicks the header of a column of a generated WinUI3 table (WinUI3Grid=TableView). The table's column headers are not in the UI Automation tree, but its cells are named
+       '<column>, Row N, <value>' and sit under their header, so the click goes at the first cell's centre across and the table's top edge down (the header row). -Right for a right click. #>
+    param([Parameter(Mandatory)][string]$Column, [string]$GridName, [switch]$Right)
+    $grid = if ($GridName) { Find-Name $GridName } else { Find-Type 'DataGrid' | Select-Object -First 1 }
+    if (-not $grid) { throw 'No table on the page.' }
+    $cell = Find-Like "$Column, Row 1, *" | Select-Object -First 1
+    if (-not $cell) { $cell = Find-Like "$Column, Row 1" | Select-Object -First 1 }
+    if (-not $cell) { throw "No cell of column '$Column' in the first row." }
+    $cellRect = $cell.Current.BoundingRectangle
+    $gridRect = $grid.Current.BoundingRectangle
+    Click-Point -X ([int]($cellRect.X + $cellRect.Width / 2)) -Y ([int]($gridRect.Y + 25)) -Right:$Right
+}
+
 function Stop-App { if ($script:Process -and -not $script:Process.HasExited) { $script:Process.Kill() } }
 
 function Assert-That {

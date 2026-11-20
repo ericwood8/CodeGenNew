@@ -1,6 +1,6 @@
 """Reads every table of a generated app through its generated DbContext, to find a model EF Core cannot build or a column it cannot read.
 
-  python ef_read_all.py --app C:/Github/CodeGenNew/Output/AvatarDev.App [--scratch DIR] [--ef-version 10.0.12]
+  python ef_read_all.py --app C:/Github/CodeGenNew/Output/AvatarDev.App [--scratch DIR] [--ef-version 11.0.0]
 
 Compiles the app's Entities, Data and Repositories folders (not the screens) into a throwaway console project, uses the app's appsettings.json connection string, and calls ToListAsync
 on each DbSet of the context. Prints `FAIL <DbSet>: <first line>` for a table that fails and ends with `tables ok=N fail=M`. It finds what a build cannot: a relationship that targets
@@ -41,7 +41,7 @@ Console.WriteLine($"tables ok={{ok}} fail={{fail}}");
 """
 
 PROJECT = """<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net11.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="{app}/Entities/**/*.cs" />
@@ -60,7 +60,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--app", required=True)
     parser.add_argument("--scratch")
-    parser.add_argument("--ef-version", default="10.0.12")
+    parser.add_argument("--ef-version", default="11.0.0")
     args = parser.parse_args()
     app = Path(fix_path(args.app))
     contexts = [(f, m) for f in (app / "Data").glob("*.cs") if (m := re.search(r"class\s+(\w+)\s*:\s*DbContext", f.read_text(encoding="utf-8-sig")))]

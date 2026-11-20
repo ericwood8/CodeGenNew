@@ -132,7 +132,7 @@ public class ApiAuthTests
     public async Task Program_adds_the_package_the_setup_the_middleware_and_the_login_route_only_with_ApiAuth()
     {
         string with = await RenderProject("API_EssentialProgram_v1.tt", On, ("ApiProduction", "true"), ("ApiDocs", "true"));
-        Expect.Contains(with, "<PackageReference Include=\"Microsoft.AspNetCore.Authentication.JwtBearer\" Version=\"10.0.0\" />");
+        Expect.Contains(with, "<PackageReference Include=\"Microsoft.AspNetCore.Authentication.JwtBearer\" Version=\"11.0.0\" />");
         Expect.Contains(with, "builder.AddGeneratedAuth();");
         Expect.Contains(with, "app.UseAuthentication();");
         Expect.Contains(with, "app.UseAuthorization();");

@@ -3,7 +3,8 @@ namespace CodeGenNew.Core;
 /// <summary> The caption a grid column gets from its already-spaced words ("Item Number" -> "Item #", "Discount Percentage" -> "Discount %"):
 /// "Number" and "Num" are written as #, "Percent", "Percentage" and "Pct" as %, so a grid with many columns stays narrow. Only whole words
 /// are replaced; forms keep the full words. Also: a trailing "Name", "Description" or "Short Descr" is dropped ("Item Description" -> "Item",
-/// "Customer Name" -> "Customer"), "XXXXX Status" becomes "Status", and "Alternate" is abbreviated "Alt." ("Alt. Name" keeps its Name). </summary>
+/// "Customer Name" -> "Customer"), "XXXXX Status" becomes "Status", and "Alternate" is abbreviated "Alt." ("Alt. Name" keeps its Name).
+/// Also Min., Max., Bal., Amt., Mthly., Avg., Admin. and Whse. for the whole words, and "Per" between two words is "/" ("Price Per Month" -> "Price/Month"). </summary>
 public static class GridCaption
 {
     /// <summary> The caption for a column's grid header: <see cref="From"/>, plus the rules that depend on the column's type. A date column drops the word "Date"
@@ -29,6 +30,14 @@ public static class GridCaption
         return caption;
     }
 
+    /// <summary> The whole words a grid caption shortens, singular and plural. </summary>
+    private static readonly Dictionary<string, string> Short = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Minimum"] = "Min.", ["Maximum"] = "Max.", ["Balance"] = "Bal.", ["Balances"] = "Bals.", ["Amount"] = "Amt.", ["Amounts"] = "Amts.",
+        ["Monthly"] = "Mthly.", ["Average"] = "Avg.", ["Admin"] = "Admin.", ["Administrator"] = "Admin.", ["Administrators"] = "Admins.",
+        ["Warehouse"] = "Whse.", ["Warehouses"] = "Whses."
+    };
+
     public static string From(string spacedWords)
     {
         var words = spacedWords.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -40,6 +49,10 @@ public static class GridCaption
                 words[i] = "Alt.";
                 abbreviated = true;
             }
+            else if (Short.TryGetValue(words[i], out string? shortWord))
+                words[i] = shortWord;
+            else if (words[i].EqualsIgnoreCase("Per") && i > 0 && i < words.Length - 1)
+                words[i] = "/";
             else
             if (words[i].EqualsIgnoreCase("Number") || words[i].EqualsIgnoreCase("Num"))
                 words[i] = "#";
@@ -65,6 +78,7 @@ public static class GridCaption
                 list = ["Status"];
             }
         }
-        return string.Join(' ', list);
+        // "Price / Month" is written "Price/Month": the slash takes no spaces.
+        return string.Join(' ', list).Replace(" / ", "/");
     }
 }

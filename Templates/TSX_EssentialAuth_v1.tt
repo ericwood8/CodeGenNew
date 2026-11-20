@@ -573,8 +573,8 @@ describe('RequireAuth', () => {
 .login-container .error { color: #b00020; margin: 0 0 12px; }
 .topbar { display: flex; align-items: center; gap: 12px; }
 .topbar .spacer { flex: 1; }
-.topbar .signout { padding: 4px 10px; background: none; border: 1px solid #8886; border-radius: 4px; color: inherit; cursor: pointer; }
-.topbar .signout:hover { background: #8883; }
+.topbar .signout { padding: 4px 10px; background: #8883; border: 1px solid #8886; border-radius: 4px; color: inherit; cursor: pointer; }
+.topbar .signout:hover { background: #8885; }
 <# if (tenants) { #>
 .topbar .tenant { padding: 4px 8px; font-weight: 600; background: none; border: 1px solid #8886; border-radius: 4px; color: inherit; }
 <# } #>

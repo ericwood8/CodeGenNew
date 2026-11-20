@@ -33,6 +33,37 @@ public class DirectoryListingTests
     }
 
     [TestMethod]
+    public async Task WinUI3Grid_TableView_draws_the_files_in_a_table_the_view_model_sorts()
+    {
+        var files = await Files(Project(("WinUI3Grid", "TableView")));
+        string xaml = files["Views/DocumentListPage.xaml"], code = files["Views/DocumentListPage.xaml.cs"], model = files["ViewModels/DocumentListViewModel.cs"];
+
+        Expect.Contains(xaml, "<tv:TableView x:Name=\"Table\" ItemsSource=\"{x:Bind ViewModel.Rows}\"");
+        Expect.Contains(xaml, "<DataTemplate x:Key=\"RowActions\" x:DataType=\"vm:DocumentFileRow\">");
+        Expect.Contains(xaml, "Click=\"OnOpenClick\" />");
+        Expect.Contains(xaml, "Click=\"OnDeleteClick\" LostFocus=\"OnDeleteLostFocus\" />");
+        Expect.DoesNotContain(xaml, "<ListView");
+        Expect.Contains(code, "e.Handled = true;");
+        Expect.Contains(code, "ViewModel.ResetSort();");
+        Expect.Contains(model, "public bool? SortedDescending(string column)");
+        Expect.DoesNotContain(code, "OnSortHeaderClick");
+    }
+
+    [TestMethod]
+    public async Task A_blank_grid_and_ListView_write_the_same_listing_and_an_unknown_grid_is_refused()
+    {
+        var blank = await Files(Project());
+        var named = await Files(Project(("WinUI3Grid", "ListView")));
+        foreach (var (path, text) in blank)
+            Assert.AreEqual(text, named[path], path);
+        Expect.Contains(blank["Views/DocumentListPage.xaml"], "<ListView Grid.Row=\"1\" Padding=\"0\" ItemsSource=\"{x:Bind ViewModel.Rows}\"");
+
+        var refused = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DirectoryListing_v1.tt"), Project(("WinUI3Grid", "DataGrid")));
+        Assert.IsFalse(refused.Success);
+        Expect.Contains(string.Join(" | ", refused.Errors), "WinUI3Grid=DataGrid is neither");
+    }
+
+    [TestMethod]
     public async Task The_project_names_the_listing_its_folder_pattern_and_namespaces()
     {
         var files = await Files(Project(("ListingName", "InvoiceAttachment"), ("ListingFolder", @"D:\Share\Attachments"), ("ListingPattern", "*.pdf"),

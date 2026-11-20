@@ -12,7 +12,7 @@ param(
     [Parameter(Mandatory)][ValidateRange(18, 99)][int]$Version,
     [Parameter(Mandatory)][string]$Project,
     [Parameter(Mandatory)][string[]]$ConnectionArgs,
-    [string]$Codegen = (Join-Path $PSScriptRoot '..\..\CodeGenNew.Cli\bin\Debug\net10.0\codegen.exe'),
+    [string]$Codegen = (Join-Path $PSScriptRoot '..\..\CodeGenNew.Cli\bin\Debug\net11.0\codegen.exe'),
     [switch]$Keep
 )
 Import-Module (Join-Path $PSScriptRoot 'UiAutomation.psm1') -Force -WarningAction Ignore   # only for Assert-That

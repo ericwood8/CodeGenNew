@@ -33,7 +33,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework><#= DotNetTarget.Framework(dialect, "-windows10.0.19041.0") #></TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace><#= appNamespace #></RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -55,9 +55,14 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+<# if (Project.WinUi3TableViewGrid) { #>
+    <PackageReference Include="WinUI.TableView" Version="<#= ProjectSettings.WinUi3TableViewVersion #>" />
+<# } #>
     <PackageReference Include="<#= providerPackage #>" />
+<# if (!DotNetTarget.IsEleven(dialect)) { #>
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+<# } #>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="<#= DotNetTarget.Package(dialect, "10.0.12") #>" />
   </ItemGroup>
 
   <ItemGroup>

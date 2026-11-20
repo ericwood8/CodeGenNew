@@ -881,7 +881,7 @@ def main():
     if build.returncode != 0:
         sys.exit("API build failed:\n" + "\n".join(l for l in build.stdout.splitlines() if " error " in l))
     if args.stack in ("blazor", "uno"):
-        build = subprocess.run(["dotnet", "build", str(front), "-v", "q", *(["-f", "net10.0-browserwasm"] if args.stack == "uno" else [])], capture_output=True, text=True)
+        build = subprocess.run(["dotnet", "build", str(front), "-v", "q", *(["-f", "net11.0-browserwasm"] if args.stack == "uno" else [])], capture_output=True, text=True)
         if build.returncode != 0:
             sys.exit("front end build failed:\n" + "\n".join(l for l in build.stdout.splitlines() if " error " in l))
     elif not (front / "node_modules").exists():
@@ -899,7 +899,7 @@ def main():
         wait_for(f"{API}/api/{'expenses' if args.schema == 'owner_scoped' else 'regions'}", 60, "the API")
         command = {"react": [npm, "run", "dev", "--", "--strictPort"], "angular": [npm, "start", "--", "--port", "4200"],
                    "blazor": ["dotnet", "run", "--no-build", "--launch-profile", "http"],
-                   "uno": ["dotnet", "run", "-f", "net10.0-browserwasm", "--no-build", "--launch-profile", uno_profile(front) if args.stack == "uno" else ""]}[args.stack]
+                   "uno": ["dotnet", "run", "-f", "net11.0-browserwasm", "--no-build", "--launch-profile", uno_profile(front) if args.stack == "uno" else ""]}[args.stack]
         dev = subprocess.Popen(command, cwd=front, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(os.environ, NG_CLI_ANALYTICS="false"), start_new_session=os.name != "nt")
         wait_for(DEV, 240, "the dev server")
         with sync_playwright() as p:

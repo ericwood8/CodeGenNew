@@ -6,7 +6,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 CLI_PROJECT = REPO / "CodeGenNew.Cli"
-DEFAULT_CLI_DIR = CLI_PROJECT / "bin" / "Debug" / "net10.0"
+DEFAULT_CLI_DIR = CLI_PROJECT / "bin" / "Debug" / "net11.0"
 
 
 def cli_dir(override=None):

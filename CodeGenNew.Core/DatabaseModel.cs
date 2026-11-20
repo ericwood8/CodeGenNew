@@ -146,10 +146,21 @@ public sealed record EfProviderInfo(string UseMethod, string Package, string? Pa
     };
 
     /// <summary> The NuGet package of the provider and the version the generated desktop apps and their test projects use. </summary>
-    public static (string Package, string Version) PackageVersion(SqlDialect dialect) => (For(dialect).Package, dialect switch
-    {
-        SqlDialect.PostgreSql => "10.0.0",
-        SqlDialect.MySql => "10.0.14",
-        _ => "10.0.12"
-    });
+    public static (string Package, string Version) PackageVersion(SqlDialect dialect) => (For(dialect).Package, DotNetTarget.IsEleven(dialect) ? "11.0.0" : "10.0.0");   // only PostgreSQL is on 10 (see DotNetTarget)
+}
+
+/// <summary> The .NET a generated project that uses Entity Framework Core targets (the API, the WinUI3 app and their test projects). Every database is on .NET 11 except PostgreSQL, whose provider
+/// (Npgsql.EntityFrameworkCore.PostgreSQL) has no release for Entity Framework Core 11 yet, so that output stays on .NET 10 with the Entity Framework Core 10 packages. </summary>
+public static class DotNetTarget
+{
+    public static bool IsEleven(SqlDialect dialect) => dialect != SqlDialect.PostgreSql;
+
+    /// <summary> The target framework moniker, with the Windows part for a desktop project (<c>-windows10.0.19041.0</c>). </summary>
+    public static string Framework(SqlDialect dialect, string suffix = "") => (IsEleven(dialect) ? "net11.0" : "net10.0") + suffix;
+
+    /// <summary> The tag of the Microsoft container images (<c>sdk</c> and <c>aspnet</c>) that match the target framework. </summary>
+    public static string ImageTag(SqlDialect dialect) => IsEleven(dialect) ? "11.0" : "10.0";
+
+    /// <summary> The version of a Microsoft package that ships with the framework (the ASP.NET Core and extensions packages): 11.0.0, or <paramref name="ten"/> for the .NET 10 output. </summary>
+    public static string Package(SqlDialect dialect, string ten) => IsEleven(dialect) ? "11.0.0" : ten;
 }

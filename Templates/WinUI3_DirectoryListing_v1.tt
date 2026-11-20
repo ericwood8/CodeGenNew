@@ -33,17 +33,40 @@
     // Add File... (a file picker copies the file in), Open (the file's own program), Rename, Delete (the button arms, a second click deletes), Open Folder.
     // The folder, the pattern and the class stem come from the project settings ListingFolder, ListingPattern and ListingName; the page is created with
     // new <Name>ListPage() and shown in the main window's content area like the table screens. Needs the CommunityToolkit.Mvvm package.
+    // WinUI3Grid=TableView draws the files in a WinUI.TableView (the app project then needs the WinUI.TableView package, see WinUI3_EssentialProject); the view model still sorts.
     // ==========================================================================================
 
     string title = Regex.Replace(listingName, "(?<=[a-z0-9])(?=[A-Z])", " ").Pluralize();
     string singular = Regex.Replace(listingName, "(?<=[a-z0-9])(?=[A-Z])", " ");
+
+    bool tableGrid = Project.WinUi3TableViewGrid;   // WinUI3Grid=TableView: the files are drawn by a WinUI.TableView instead of a header of buttons over a ListView
+    if (Project.WinUi3GridProblem is { } gridProblem)
+        Error("WinUI3_DirectoryListing draws its grid with ListView or TableView; " + gridProblem);
+
+    // The Open, Rename and Delete buttons of a row, written once for the ListView row and for the table's Actions column.
+    string buttons =
+        "                                        <Button Content=\"Open\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Tag=\"{x:Bind}\" Click=\"OnOpenClick\" />\n"
+      + "                                        <Button Content=\"Rename\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Tag=\"{x:Bind}\" Click=\"OnRenameClick\" />\n"
+      + "                                        <Button Content=\"{x:Bind DeleteText, Mode=OneWay}\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Tag=\"{x:Bind}\" Click=\"OnDeleteClick\" LostFocus=\"OnDeleteLostFocus\" />";
+    string tableButtons = string.Join("\n", buttons.Split('\n').Select(l => l.Substring(24)));   // in the table's resource they sit 12 columns in
 #>
 @@@FILE <#= viewsFolder #>/<#= listingName #>ListPage.xaml@@@
 <Page
     x:Class="<#= viewNamespace #>.<#= listingName #>ListPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:vm="using:<#= viewModelNamespace #>">
+    xmlns:vm="using:<#= viewModelNamespace #>"<#= tableGrid ? "\n    xmlns:tv=\"using:WinUI.TableView\"" : "" #>>
+<# if (tableGrid) { #>
+
+    <Page.Resources>
+        <!-- The Actions column of the table: the row's buttons -->
+        <DataTemplate x:Key="RowActions" x:DataType="vm:<#= listingName #>FileRow">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+<#= tableButtons #>
+            </StackPanel>
+        </DataTemplate>
+    </Page.Resources>
+<# } #>
 
     <Grid Padding="16" RowSpacing="8">
         <Grid.RowDefinitions>
@@ -68,6 +91,22 @@
 
         <TextBlock Grid.Row="2" Opacity="0.75" TextWrapping="Wrap" Text="{x:Bind ViewModel.FolderPath, Mode=OneWay}" />
 
+<# if (tableGrid) { #>
+        <Border Grid.Row="3" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4">
+            <!-- The files in a table. The view model sorts (SortBy): a header click comes back through Sorting, which is handled here so the table never sorts the rows it holds. -->
+            <tv:TableView x:Name="Table" ItemsSource="{x:Bind ViewModel.Rows}" AutomationProperties.Name="<#= title #>"
+                          IsReadOnly="True" SelectionMode="None" AutoGenerateColumns="False" ShowExportOptions="False"
+                          CanFilterColumns="False" CanGroupColumns="False" CanReorderColumns="False"
+                          Sorting="OnTableSorting" ClearSorting="OnTableClearSorting">
+                <tv:TableView.Columns>
+                    <tv:TableViewTextColumn Header="Name" Tag="Name" Binding="{Binding Name}" Width="*" MinWidth="120" CanFilter="False" />
+                    <tv:TableViewTextColumn Header="Size" Tag="Size" Binding="{Binding SizeText}" Width="110" CanFilter="False" />
+                    <tv:TableViewTextColumn Header="Modified" Tag="Modified" Binding="{Binding ModifiedText}" Width="170" CanFilter="False" />
+                    <tv:TableViewTemplateColumn Header="Actions" CellTemplate="{StaticResource RowActions}" Width="300" CanSort="False" CanFilter="False" CanResize="False" />
+                </tv:TableView.Columns>
+            </tv:TableView>
+        </Border>
+<# } else { #>
         <Border Grid.Row="3" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4">
             <Grid>
                 <Grid.RowDefinitions>
@@ -111,9 +150,7 @@
                                     <TextBlock Grid.Column="1" Text="{x:Bind SizeText}" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="2" Text="{x:Bind ModifiedText}" VerticalAlignment="Center" />
                                     <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4">
-                                        <Button Content="Open" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind}" Click="OnOpenClick" />
-                                        <Button Content="Rename" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind}" Click="OnRenameClick" />
-                                        <Button Content="{x:Bind DeleteText, Mode=OneWay}" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind}" Click="OnDeleteClick" LostFocus="OnDeleteLostFocus" />
+<#= buttons #>
                                     </StackPanel>
                                 </Grid>
                             </Border>
@@ -122,6 +159,7 @@
                 </ListView>
             </Grid>
         </Border>
+<# } #>
 
         <InfoBar Grid.Row="4" IsOpen="{x:Bind ViewModel.HasMessage, Mode=OneWay}" IsClosable="False" Severity="Error" Message="{x:Bind ViewModel.Message, Mode=OneWay}" />
     </Grid>
@@ -132,6 +170,9 @@ using <#= viewModelNamespace #>;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
+<# if (tableGrid) { #>
+using WinUI.TableView;
+<# } #>
 
 namespace <#= viewNamespace #>;
 
@@ -142,18 +183,52 @@ public sealed partial class <#= listingName #>ListPage : Page
     public <#= listingName #>ListPage()
     {
         InitializeComponent();
+<# if (tableGrid) { #>
+        Loaded += (_, _) =>
+        {
+            ViewModel.Load();
+            ShowSortMarks();
+        };
+<# } else { #>
         Loaded += (_, _) => ViewModel.Load();
+<# } #>
     }
 
     private void OnRefreshClick(object sender, RoutedEventArgs e) => ViewModel.Load();
 
     private void OnOpenFolderClick(object sender, RoutedEventArgs e) => ViewModel.OpenFolder();
 
+<# if (tableGrid) { #>
+    // The view model sorts; the table's own sort never runs (Handled), and its arrow is set from the view model's sort.
+    private void OnTableSorting(object? sender, TableViewSortingEventArgs e)
+    {
+        e.Handled = true;
+        if (e.Column.Tag is string column)
+            ViewModel.SortBy(column);
+        ShowSortMarks();
+    }
+
+    private void OnTableClearSorting(object? sender, TableViewClearSortingEventArgs e)
+    {
+        ViewModel.ResetSort();
+        ShowSortMarks();
+    }
+
+    private void ShowSortMarks()
+    {
+        foreach (var column in Table.Columns)
+        {
+            bool? descending = column.Tag is string name ? ViewModel.SortedDescending(name) : null;
+            column.SortDirection = descending is null ? null : descending.Value ? WinUI.TableView.SortDirection.Descending : WinUI.TableView.SortDirection.Ascending;
+        }
+    }
+<# } else { #>
     private void OnSortHeaderClick(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string column })
             ViewModel.SortBy(column);
     }
+<# } #>
 
     private void OnOpenClick(object sender, RoutedEventArgs e)
     {
@@ -317,6 +392,19 @@ public partial class <#= listingName #>ListViewModel : ObservableObject
         ModifiedHeader = "Modified" + Mark("Modified");
     }
 
+<# if (tableGrid) { #>
+    /// <summary> Null when the files are not sorted by the column, else whether they are sorted descending (the table shows its own arrow). </summary>
+    public bool? SortedDescending(string column) => _sortColumn == column ? _sortDescending : null;
+
+    /// <summary> Back to the first order, by name ascending. </summary>
+    public void ResetSort()
+    {
+        _sortColumn = "Name";
+        _sortDescending = false;
+        Load();
+    }
+
+<# } #>
     private string Mark(string column) => _sortColumn != column ? "" : _sortDescending ? " ▼" : " ▲";
 
     /// <summary> A click on a header sorts by it; a second click on the same header flips the direction. </summary>

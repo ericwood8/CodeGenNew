@@ -21,7 +21,7 @@ param(
     [string]$Server = 'localhost',
     [string]$SeedFile,
     [string]$ConfigFile,
-    [string]$Cli = (Join-Path $PSScriptRoot '..\..\..\CodeGenNew.Cli\bin\Debug\net10.0'),
+    [string]$Cli = (Join-Path $PSScriptRoot '..\..\..\CodeGenNew.Cli\bin\Debug\net11.0'),
     [switch]$SeedOnly
 )
 $ErrorActionPreference = 'Stop'

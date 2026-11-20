@@ -953,6 +953,20 @@ public class ProjectSettingsTests
     [DataRow("Description", "Description")]
     [DataRow("Status", "Status")]
     [DataRow("Status Description", "Status")]
+    [DataRow("Minimum Order", "Min. Order")]
+    [DataRow("Maximum Order", "Max. Order")]
+    [DataRow("Account Balance", "Account Bal.")]
+    [DataRow("Total Amount", "Total Amt.")]
+    [DataRow("Monthly Total", "Mthly. Total")]
+    [DataRow("Average Price", "Avg. Price")]
+    [DataRow("Admin Fee", "Admin. Fee")]
+    [DataRow("Warehouse", "Whse.")]
+    [DataRow("Warehouse Name", "Whse.")]
+    [DataRow("Price Per Month", "Price/Month")]
+    [DataRow("Per Diem", "Per Diem")]
+    [DataRow("Rate Per", "Rate Per")]
+    [DataRow("Percent Of Amount", "% Of Amt.")]
+    [DataRow("Amounted", "Amounted")]
     public void A_grid_caption_writes_number_as_a_hash_and_percent_as_a_percent_sign(string words, string expected) =>
         Assert.AreEqual(expected, GridCaption.From(words));
 

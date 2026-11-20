@@ -1,6 +1,6 @@
 # BLZ_Screens_v1
 
-The Blazor stack: a standalone **Blazor WebAssembly** app (.NET 10) that calls the generated API with an `HttpClient`, the way the React and Angular apps do. `BLZ_Screens` is the whole-database template. It writes:
+The Blazor stack: a standalone **Blazor WebAssembly** app (.NET 11) that calls the generated API with an `HttpClient`, the way the React and Angular apps do. `BLZ_Screens` is the whole-database template. It writes:
 
 - `Layout/NavMenu.razor`: one link per screen, in the order of the project's `Screens` setting (the same list `TSX_Screens` uses);
 - `Pages/Home.razor`: the address `/` goes to the first screen;

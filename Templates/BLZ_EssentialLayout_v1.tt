@@ -32,7 +32,7 @@
                 <TenantSwitcher />
 <# } #>
                 <span class="who">@Session.User!.Name</span>
-                <button type="button" @onclick="SignOutAsync">Sign out</button>
+                <button type="button" class="signout" @onclick="SignOutAsync">Sign out</button>
             }
         </div>
         @Body
@@ -132,6 +132,8 @@ button:not(.hamburger, .sort, .sort-header, [role='tab'], [role='menuitem'], th 
 /* The top bar of a signed-in person (the user name and Sign out) and the sign-in page. */
 .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .topbar .who { font-weight: 600; }
+.topbar .signout { padding: 4px 10px; background: #8883; border: 1px solid #8886; border-radius: 4px; cursor: pointer; }
+.topbar .signout:hover { background: #8885; }
 <# if (tenants) { #>
 .topbar .tenant { padding: 4px 8px; font-weight: 600; }
 <# } #>

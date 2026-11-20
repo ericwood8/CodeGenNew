@@ -51,7 +51,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework><#= DotNetTarget.Framework(Project.DatabaseDialect) #></TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -60,7 +60,7 @@
 
   <ItemGroup>
     <PackageReference Include="MSTest" Version="4.0.2" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="<#= DotNetTarget.Package(Project.DatabaseDialect, "10.0.0") #>" />
 <#
         if (containers)
         {

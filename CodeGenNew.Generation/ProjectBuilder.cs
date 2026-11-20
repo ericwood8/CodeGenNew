@@ -24,7 +24,7 @@ public static partial class ProjectBuilder
         ("angular", "build") => "npm run build",
         ("angular", "test") => "npm test -- --watch=false",
         ("blazor", "build") => "dotnet build -v q",
-        ("uno", "build") => "dotnet build -v q -f net10.0-desktop",
+        ("uno", "build") => "dotnet build -v q -f net11.0-desktop",
         ("python", "build") => "python -m compileall -q app",
         ("rust", "build") => "cargo check",
         ("rust", "test") => "cargo test",

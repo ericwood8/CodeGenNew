@@ -4,13 +4,13 @@
 
 New here? **[GettingStarted.md](GettingStarted.md)** walks one small database from an empty folder to a running API. To install the command-line tool: `dotnet tool install -g CodeGenNew.Cli` (it keeps its templates, projects and output in `%APPDATA%\CodeGenNew`, or the folder in `CODEGENNEW_HOME`). Contributing: [CONTRIBUTING.md](../CONTRIBUTING.md); checking a generated app in a running copy: [Verification](Verification).
 
-**Prerequisites:** [.NET 10 SDK](https://dotnet.microsoft.com/) (templates are compiled at run time, so a real SDK must be installed — not just runtime) and a reachable SQL Server, PostgreSQL or MySQL DB. The desktop app also needs Windows 10/11.
+**Prerequisites:** [.NET 11 SDK](https://dotnet.microsoft.com/) (templates are compiled at run time, so a real SDK must be installed — not just runtime) and a reachable SQL Server, PostgreSQL or MySQL DB. The desktop app also needs Windows 10/11.
 
 ```
 dotnet build CodeGenNew.slnx
 ```
 
-**Command line** (built exe is `CodeGenNew.Cli\bin\Debug\net10.0\codegen.exe`):
+**Command line** (built exe is `CodeGenNew.Cli\bin\Debug\net11.0\codegen.exe`):
 
 ```
 codegen -S MYSERVER -d MyDatabase -s dbo -t Holiday -T API_Crud.tt -E -o C:\Work\MyApp\Api\Apis

@@ -1,6 +1,6 @@
 # UNO_Screens_v1
 
-The Uno stack: a single-project **Uno Platform** app (the `Uno.Sdk`, .NET 10) that calls the generated API with an `HttpClient`, the way the Blazor, React and Angular apps do. Its screens are the WinUI 3 screens' XAML (Uno implements the WinUI 3 API, so the dialogs, `NumberBox`, `CalendarDatePicker`, `TabView` and `x:Bind` view models run unchanged) with a data layer that reads and writes through API clients instead of an EF context. `UNO_Screens` is the whole-database template. It writes:
+The Uno stack: a single-project **Uno Platform** app (the `Uno.Sdk`, .NET 11) that calls the generated API with an `HttpClient`, the way the Blazor, React and Angular apps do. Its screens are the WinUI 3 screens' XAML (Uno implements the WinUI 3 API, so the dialogs, `NumberBox`, `CalendarDatePicker`, `TabView` and `x:Bind` view models run unchanged) with a data layer that reads and writes through API clients instead of an EF context. `UNO_Screens` is the whole-database template. It writes:
 
 - `MainPage.Screens.cs`: the other half of the partial `MainPage`: the menu entries, `FirstScreen` and the switch that shows a screen, in the order of the project's `Screens` setting (the dashboard first with `Dashboard=true`, an "(OData)" entry after the REST ones with `OData=true`; with `Auth=true` a list of screens with the roles that may read each, and `AddScreens()` fills the menu for the signed-in role);
 - `Services/ApiClients.cs`: one client per table that has one (the tables with an API of their own, a single int, long, guid or text key, not a name / active table), made when first asked for, over one `HttpClient`; also the dashboard client, the OData clients, the junction clients and, with `Auth=true`, the session.
@@ -23,7 +23,7 @@ The essentials groups (`codegen essentials --stack uno`, or Essentials > Uno ess
 
 ## Settings
 
-- `Stacks` includes `Uno`; `OutputUno` is the folder (default `<ProjectName>.Uno`); `BuildUno` / `TestUno` override the build command (default `dotnet build -v q -f net10.0-desktop`, no tests).
+- `Stacks` includes `Uno`; `OutputUno` is the folder (default `<ProjectName>.Uno`); `BuildUno` / `TestUno` override the build command (default `dotnet build -v q -f net11.0-desktop`, no tests).
 - The namespaces are the WinUI 3 stack's: `AppNamespace` (default `<ProjectName>.App`), `ViewNamespace`, `ViewModelNamespace`, `ViewsFolder`, `ViewModelsFolder`; the models are in `<AppNamespace>.Models` and the clients in `<AppNamespace>.Services`.
 - `ApiPort` (default 5080) is the API's address in `MainPage.xaml.cs`; the `API_BASE_URL` environment variable overrides it (an Android emulator reaches the machine it runs on as `10.0.2.2`, a phone needs the machine's address). `DevPort` (default 5195 for Uno) is the browser head's port; the API allows `http://localhost:<DevPort>` when `Uno` is in `Stacks`. The desktop head has no origin, so it needs no CORS entry.
 
@@ -34,7 +34,7 @@ The same as the WinUI 3 screens: a list page with search boxes, headers that sor
 ## Limits
 
 - With `EditableChildren` a child's rows are boxes in the master dialog, saved with the row (`UNO_DetailMasterScreen`). With `DashboardStrip=true` a table that has cards shows them above its list page (`UNO_Dashboard` writes `Views/DashboardStrip.cs`). The junction editor is not opened from a page by the generator (like the WinUI 3 editor). The OData page has no filter row and sorts by one column. It reads only the list from OData: Add, Edit and Clone open the table's REST dialog, so a master keeps its child grids on the OData page, also with `ODataScreens=Replace` (the REST list page is then just not shown; its dialog and API client stay). The session is kept in memory only.
-- The project written by `Project` has the heads `net10.0-desktop` (Skia: Windows, macOS, Linux), `net10.0-browserwasm` (needs `dotnet workload install wasm-tools`) and `net10.0-windows10.0.26100` (WinAppSDK). Add `net10.0-android` or `net10.0-ios` to `TargetFrameworks` for the phone heads (their workloads are needed, and a Mac for iOS); the pages are the desktop layout, not a phone layout.
+- The project written by `Project` has the heads `net11.0-desktop` (Skia: Windows, macOS, Linux), `net11.0-browserwasm` (needs `dotnet workload install wasm-tools`) and `net11.0-windows10.0.26100` (WinAppSDK, unpackaged: `WindowsPackageType=None`, so the exe starts with the Windows App Runtime bundled; the `Package.appxmanifest` would otherwise make it an MSIX that needs the runtime installed). Add `net11.0-android` or `net11.0-ios` to `TargetFrameworks` for the phone heads (their workloads are needed, and a Mac for iOS); the pages are the desktop layout, not a phone layout.
 - A grid with many columns is as cramped as the WinUI 3 grid at a narrow window width.
 - No tests are generated for the Uno app.
 
@@ -42,9 +42,11 @@ The same as the WinUI 3 screens: a list page with search boxes, headers that sor
 
 ```
 cd <ProjectName>.Api   && dotnet run --urls http://localhost:5080
-cd <ProjectName>.Uno   && dotnet run -f net10.0-desktop
+cd <ProjectName>.Uno   && dotnet run -f net11.0-desktop
 ```
 
 **Checked** (2026-10-18): generated for the SQL Server InvoiceSystem sample (six screens) with the API, built for the desktop, browser and Windows heads with 0 errors; the desktop app run against the generated API over `InvoiceSystem_test` (a login that is not an owner): the customer list (71 rows, 4 pages), the search by account number, the edit dialog with its tabs, required marks, lookup and currency, a changed customer name saved and read back from the database, and the delete of a customer that has invoices refused with "This row cannot be deleted because it is in use.".
 
 The second round (sign-in, guarded columns, master-detail dialog, dashboard, junction editor, OData page) was checked the same way, each in its own note: the sign-in page with a wrong and a right password, the screens without write buttons for a non-administrator, the guard note for a non-manager, an Item dialog with its two child grids and the child's own dialog from Edit, the dashboard's cards and bar lists, a junction editor moving a tag in and out of a SQLite table, and an OData list page with a search.
+
+**Grid control.** `WinUI3Grid=TableView` also applies to the Uno list page (`UNO_MasterScreen`): the same `WinUI.TableView` table as the WinUI3 page (columns built in code, a template Actions column, the API sorts, numbers right-aligned, widths kept in `GridWidths.json`), with `WinUI.TableView` added to the Uno project by `UNO_EssentialProject` (regenerate it with replace) and the width store written by `UNO_GridColumns`. The Uno build of the control has no `CanGroupColumns`, so the page does not set it. Checked on the desktop head (UI Automation) and the browser head (a screenshot) over a scratch SQLite API: rows, a descending sort with the arrow, a column resize kept, the Edit dialog.

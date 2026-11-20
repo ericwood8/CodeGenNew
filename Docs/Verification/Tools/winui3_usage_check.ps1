@@ -1,7 +1,7 @@
 param([string]$Exe)
 # Clicks through the usage page of a generated WinUI3 or Uno (Windows target) app over a scratch SQLite copy of Schemas/usage_decimal.sql (the Uno app needs the API running).
 # Settings: Auth, ApiAuth, TenantTable, TenantMembership, UserTable, SubscriptionTable, UsageTables=UsageEvent, UsageRollup=UsageMonthly:UsageMonth:Quantity.
-# Seed the sign-ins and the events first (the hash of usage_check.py; five events and one monthly row). Build the app with: dotnet build -p:Platform=x64 (WinUI3) or -f net10.0-desktop (Uno).
+# Seed the sign-ins and the events first (the hash of usage_check.py; five events and one monthly row). Build the app with: dotnet build -p:Platform=x64 (WinUI3) or -f net11.0-desktop (Uno).
 Import-Module C:\Github\CodeGenNew\Docs\Verification\UiAutomation.psm1 -Force -WarningAction Ignore
 $ErrorActionPreference = 'Stop'
 

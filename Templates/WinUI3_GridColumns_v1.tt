@@ -19,4 +19,6 @@
 
     Write("@@@FILE " + viewModelsFolder + "/GridColumnStore.cs@@@\n" + DesktopGridColumns.StoreFile(viewModelNamespace) + "\n");
     Write("@@@FILE " + viewsFolder + "/GridCells.cs@@@\n" + DesktopGridColumns.CellsFile(viewNamespace) + "\n");
+    if (Project.WinUi3TableViewGrid)
+        Write("@@@FILE " + viewModelsFolder + "/GridWidthStore.cs@@@\n" + DesktopGridColumns.WidthStoreFile(viewModelNamespace) + "\n");
 #>

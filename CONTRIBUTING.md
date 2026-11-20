@@ -7,7 +7,7 @@ Start with [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md) for the layout of the co
 ## Build and test
 
 ```
-dotnet build CodeGenNew.slnx          # the desktop app needs Windows; the rest builds anywhere .NET 10 does
+dotnet build CodeGenNew.slnx          # the desktop app needs Windows; the rest builds anywhere .NET 11 does
 dotnet test CodeGenNew.Tests          # about a minute without a database
 ```
 

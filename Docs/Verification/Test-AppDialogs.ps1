@@ -6,7 +6,7 @@
 .EXAMPLE
   .\Test-AppDialogs.ps1
 #>
-param([string]$Exe = (Join-Path $PSScriptRoot '..\..\CodeGenNew.App\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\CodeGenNew.exe'))
+param([string]$Exe = (Join-Path $PSScriptRoot '..\..\CodeGenNew.App\bin\x64\Debug\net11.0-windows10.0.19041.0\win-x64\CodeGenNew.exe'))
 Import-Module (Join-Path $PSScriptRoot 'UiAutomation.psm1') -Force
 $script:Failed = $false
 $Exe = (Resolve-Path $Exe).Path

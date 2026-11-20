@@ -63,6 +63,7 @@ public static class ProjectSettingChoices
             ["ODataScreens"] = (SettingKind.Radio, [NotSet("Add"), new("Add", "Add"), new("Replace", "Replace")]),
             ["ListProtocol"] = (SettingKind.Radio, [NotSet("Columns"), new("Columns", "Columns"), new("Search", "Search")]),
             ["PageBase"] = (SettingKind.Radio, [NotSet("0 for Search"), new("0", "0, a page index"), new("1", "1, a page number")]),
+            ["WinUI3Grid"] = (SettingKind.Radio, [NotSet("ListView"), new("ListView", "ListView"), new("TableView", "TableView")]),
             ["Toasts"] = (SettingKind.Radio, [NotSet("browser dialogs"), new("ngx-toastr", "ngx-toastr")]),
         };
 }

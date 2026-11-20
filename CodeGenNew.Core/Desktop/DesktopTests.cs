@@ -123,7 +123,7 @@ public sealed class DesktopTestPlan
     }
 }
 
-/// <summary> The text of the view-model test projects of the WinUI3 and Uno apps. The project is a plain <c>net10.0</c> one that compiles the app's own view models, models (or entities, repositories and context)
+/// <summary> The text of the view-model test projects of the WinUI3 and Uno apps. The project is a plain .NET one that compiles the app's own view models, models (or entities, repositories and context)
 /// and API clients as linked files, so it runs without Windows, WinUI or a device. The two platform types a view model touches (<c>Visibility</c> and the WinRT currency formatter) are small stand-ins. </summary>
 public static class DesktopTestCode
 {
@@ -190,7 +190,7 @@ public static class TestJson
         L("<Project Sdk=\"Microsoft.NET.Sdk\">");
         L();
         L("  <PropertyGroup>");
-        L("    <TargetFramework>net10.0</TargetFramework>");
+        L($"    <TargetFramework>{(stack == DesktopTestStack.WinUI3 ? DotNetTarget.Framework(project.DatabaseDialect) : "net11.0")}</TargetFramework>");
         L("    <Nullable>enable</Nullable>");
         L("    <ImplicitUsings>enable</ImplicitUsings>");
         L("    <IsPackable>false</IsPackable>");
@@ -219,7 +219,8 @@ public static class TestJson
                 var (sqlite, sqliteVersion) = EfProviderInfo.PackageVersion(SqlDialect.Sqlite);
                 L($"    <PackageReference Include=\"{sqlite}\" Version=\"{sqliteVersion}\" />");
             }
-            L("    <PackageReference Include=\"Microsoft.Extensions.Configuration.Json\" Version=\"10.0.12\" />");
+            string configurationJson = DotNetTarget.Package(project.DatabaseDialect, "10.0.12");
+            L($"    <PackageReference Include=\"Microsoft.Extensions.Configuration.Json\" Version=\"{configurationJson}\" />");
         }
         L("  </ItemGroup>");
         L();

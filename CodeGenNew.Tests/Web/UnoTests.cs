@@ -22,7 +22,7 @@ public class UnoTests
     {
         CollectionAssert.Contains(ProjectPlan.KnownStacks.ToArray(), "Uno");
         CollectionAssert.Contains(ProjectSettingChoices.Stacks, "Uno");
-        Assert.AreEqual("dotnet build -v q -f net10.0-desktop", ProjectBuilder.DefaultCommand("Uno", "build"));
+        Assert.AreEqual("dotnet build -v q -f net11.0-desktop", ProjectBuilder.DefaultCommand("Uno", "build"));
         Assert.IsNull(ProjectBuilder.DefaultCommand("Uno", "test"));
         Assert.AreEqual("Acme.Uno", Project().OutputFolderOf("Uno"));
         Assert.AreEqual("mobile", Project(("OutputUno", "mobile")).OutputFolderOf("Uno"));
@@ -166,7 +166,8 @@ public class UnoTests
 
             string projectFile = Read("Shop.Uno/Shop.Uno.csproj");
             Expect.Contains(projectFile, "<Project Sdk=\"Uno.Sdk\">");
-            Expect.Contains(projectFile, "net10.0-desktop;net10.0-browserwasm;net10.0-windows10.0.26100");
+            Expect.Contains(projectFile, "net11.0-desktop;net11.0-browserwasm;net11.0-windows10.0.26100");
+            Expect.Contains(projectFile, "<WindowsPackageType>None</WindowsPackageType>");
             Expect.Contains(projectFile, "<RootNamespace>Shop.App</RootNamespace>");
             Expect.Contains(Read("Shop.Uno/MainPage.xaml.cs"), "?? \"http://localhost:6001\"");
             Expect.Contains(Read("Shop.Uno/Properties/launchSettings.json"), "http://localhost:5195");

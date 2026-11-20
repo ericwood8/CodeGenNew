@@ -11,10 +11,10 @@
   Build the sample for x64 first:  dotnet build <App>.csproj -p:Platform=x64   (the exe under bin\x64 is the one that is driven).
 .EXAMPLE
   .\Test-WinUI3Paging.ps1
-  .\Test-WinUI3Paging.ps1 -Exe C:\MySample\My.App\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\My.exe -Source MyDb -Menu Customer -Table Customer
+  .\Test-WinUI3Paging.ps1 -Exe C:\MySample\My.App\bin\x64\Debug\net11.0-windows10.0.19041.0\win-x64\My.exe -Source MyDb -Menu Customer -Table Customer
 #>
 param(
-    [string]$Exe = 'C:\InvoiceSystem\InvoiceSystem.App\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\InvoiceSystem.exe',
+    [string]$Exe = 'C:\InvoiceSystem\InvoiceSystem.App\bin\x64\Debug\net11.0-windows10.0.19041.0\win-x64\InvoiceSystem.exe',
     [string]$Server = 'localhost',
     [string]$Source = 'InvoiceSystem',
     [string]$Menu = 'Customer',        # the navigation item that opens the page

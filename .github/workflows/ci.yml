@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       # No database is available here: the live schema tests report themselves as inconclusive when
       # their CODEGENNEW_* environment variables are not set.
       - name: Test
@@ -29,7 +29,7 @@ jobs:
           name: test-results
           path: "**/tests.trx"
 
-  # The generator and the command-line tool are plain net10.0; this job shows they build and pass their tests on Linux and macOS
+  # The generator and the command-line tool are plain net11.0; this job shows they build and pass their tests on Linux and macOS
   # (case-sensitive paths on Linux, / separators, LF line endings, /bin/sh instead of cmd.exe, Apple silicon on macOS).
   # The WinUI3 desktop app is Windows only.
   unix-build-and-test:
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - name: Test
         run: dotnet test CodeGenNew.Tests -c Release --logger "trx;LogFileName=tests.trx"
       - name: Run the command-line tool
@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - name: Build the WinUI3 app
         run: dotnet build CodeGenNew.App -c Release -p:Platform=x64
 
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - uses: actions/setup-node@v7
         with:
           node-version: 24.x
@@ -100,16 +100,16 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      # The runner's newest SDK may be a later major version than the net10.0 head being built, and a workload is installed per SDK, so install it
-      # under the same 10.0 pin the generated Uno project's global.json carries.
-      - name: Install the wasm-tools workload for the 10.0 SDK
+      # The runner's newest SDK may be a later major version than the net11.0 head being built, and a workload is installed per SDK, so install it
+      # under the same 11.0 pin the generated Uno project's global.json carries.
+      - name: Install the wasm-tools workload for the 11.0 SDK
         run: |
           mkdir /tmp/sdk10 && cd /tmp/sdk10
-          echo '{ "sdk": { "version": "10.0.100", "rollForward": "latestFeature" } }' > global.json
+          echo '{ "sdk": { "version": "11.0.100", "rollForward": "latestFeature" } }' > global.json
           dotnet workload install wasm-tools
       - name: Show which SDK and workloads the walk will build with
         working-directory: /tmp/sdk10
@@ -169,7 +169,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
       # SQL Server takes the longest to accept a login
       - name: Wait for SQL Server
         run: |

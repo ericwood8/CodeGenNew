@@ -15,7 +15,7 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CLI = os.environ.get('CODEGEN_EXE', os.path.join(HERE, '..', '..', 'CodeGenNew.Cli', 'bin', 'Debug', 'net10.0', 'codegen.exe'))
+CLI = os.environ.get('CODEGEN_EXE', os.path.join(HERE, '..', '..', 'CodeGenNew.Cli', 'bin', 'Debug', 'net11.0', 'codegen.exe'))
 PSQL = os.environ.get('PSQL_EXE', 'C:/Program Files/PostgreSQL/18/bin/psql.exe')
 MYSQL = os.environ.get('MYSQL_EXE', 'C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe')
 

@@ -145,6 +145,6 @@ export class App {
 .topbar { display: flex; align-items: center; gap: 12px; padding: 0 24px 0 0; }
 .topbar .hamburger { margin: 8px 24px 0; }
 .topbar .spacer { flex: 1; }
-.topbar .signout { padding: 4px 10px; background: none; border: 1px solid #8886; border-radius: 4px; color: inherit; cursor: pointer; }
-.topbar .signout:hover { background: #8883; }
+.topbar .signout { padding: 4px 10px; background: #8883; border: 1px solid #8886; border-radius: 4px; color: inherit; cursor: pointer; }
+.topbar .signout:hover { background: #8885; }
 <# } #>

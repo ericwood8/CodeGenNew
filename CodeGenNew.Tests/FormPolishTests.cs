@@ -186,6 +186,16 @@ public class FormPolishTests
         Expect.Contains((await RunEssentials("WinUI3_EssentialApp_v1.tt")).Single(f => f.Key.EndsWith("App.xaml")).Value, "<Setter Property=\"FontWeight\" Value=\"Bold\" />");
     }
 
+    [TestMethod]
+    [DataRow("WinUI3_EssentialApp_v1.tt")]
+    [DataRow("UNO_EssentialApp_v1.tt")]
+    public async Task The_desktop_button_style_shades_every_button(string template)
+    {
+        string xaml = (await RunEssentials(template)).Single(f => f.Key.EndsWith("App.xaml")).Value;
+
+        Expect.Contains(xaml, "<Setter Property=\"Background\" Value=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" />");
+    }
+
     private static async Task<Dictionary<string, string>> RunEssentials(string template)
     {
         var result = await Repo.Cache.RunAsync(Repo.Template(template), Project());

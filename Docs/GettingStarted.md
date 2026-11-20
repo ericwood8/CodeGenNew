@@ -4,7 +4,7 @@ From an empty folder to a running web API generated from a database, in about te
 
 ## What you need
 
-- The [.NET 10 SDK](https://dotnet.microsoft.com/download) (the templates are compiled when they run, so the runtime alone is not enough).
+- The [.NET 11 SDK](https://dotnet.microsoft.com/download) (the templates are compiled when they run, so the runtime alone is not enough).
 - A SQL Server, PostgreSQL or MySQL server you can create a database on (or no server at all for SQLite, which is a file). CodeGenNew only ever *reads* the database.
 
 ## 1. Install the tool
@@ -14,7 +14,7 @@ dotnet tool install -g CodeGenNew.Cli
 codegen --help
 ```
 
-(Or build it from a checkout: `dotnet build CodeGenNew.Cli`; the program is `CodeGenNew.Cli/bin/Debug/net10.0/codegen.exe`.)
+(Or build it from a checkout: `dotnet build CodeGenNew.Cli`; the program is `CodeGenNew.Cli/bin/Debug/net11.0/codegen.exe`.)
 
 An installed tool keeps its templates, project files and output in `%APPDATA%\CodeGenNew`; set `CODEGENNEW_HOME` to use another folder. A build or a plain copy keeps them beside the program instead. The first run copies the default templates into `Templates` there; they are yours to edit, and are never overwritten (delete the `Templates` folder to get the new defaults after an update).
 

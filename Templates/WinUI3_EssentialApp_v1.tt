@@ -20,9 +20,10 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
-            <!-- every button's caption is bold -->
+            <!-- every button's caption is bold and the button is shaded, also on the pane and bars whose own fill would hide the default one -->
             <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="Background" Value="{ThemeResource SystemControlBackgroundBaseLowBrush}" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>
