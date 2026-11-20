@@ -129,7 +129,7 @@ public class BlazorTests
             Expect.Contains(page, "@page \"/customer\"");
             Expect.Contains(page, "@inject CustomerClient Client");
             Expect.Contains(page, "@inject RegionClient lookupRegionClient");
-            Expect.Contains(page, "Search by Account #");
+            Expect.Contains(page, "Search by Acct. #");
             Expect.Contains(page, "<InputSelect id=\"customerRegionId\" @bind-Value=\"row.RegionId\">");
             Expect.Contains(page, "<InputText id=\"customerAccountNumber\" @bind-Value=\"row.AccountNumber\" maxlength=\"20\" required />");
             Expect.Contains(page, "<InputCheckbox id=\"customerIsTaxable\" @bind-Value=\"row.IsTaxable\" />");

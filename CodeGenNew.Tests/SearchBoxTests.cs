@@ -171,7 +171,7 @@ public class SearchBoxTests
 
         foreach (string page in new[] { react, angular })
         {
-            Expect.Contains(page, "placeholder=\"Search by Account #\"");
+            Expect.Contains(page, "placeholder=\"Search by Acct. #\"");
             Expect.Contains(page, "placeholder=\"Search by Customer\"");
             Expect.DoesNotContain(page, "Search by Account Number");
             Expect.Contains(page, ">Add New</button>");

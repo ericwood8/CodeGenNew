@@ -727,6 +727,8 @@ public class <#= stemName #>ListRow
     public List<string> Cells { get; init; } = [];
     /// <summary> The texts of the columns that are shown (what the grid draws). </summary>
     public List<string> VisibleCells { get; init; } = [];
+    /// <summary> What a screen reader and the browser head's accessibility page read for the row: its shown cells (the default would be the class name). </summary>
+    public override string ToString() => string.Join(", ", VisibleCells);
 <#
         if (queue is not null)
         {

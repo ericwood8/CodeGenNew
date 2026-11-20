@@ -596,6 +596,8 @@ public class <#= table #>ChildGridRow
     public List<object?> Values { get; init; } = [];
     /// <summary> The child entity this row shows, so clicking the row can open its own dialog. </summary>
     public object? Entity { get; init; }
+    /// <summary> What a screen reader and the browser head's accessibility page read for the row: its cells (the default would be the class name). </summary>
+    public override string ToString() => string.Join(", ", Cells);
 }
 
 /// <summary> The header of one column of a child grid: its caption (with an arrow when the grid is sorted by it) and the property it sorts by. </summary>

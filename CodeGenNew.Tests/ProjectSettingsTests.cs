@@ -955,7 +955,7 @@ public class ProjectSettingsTests
     [DataRow("Status Description", "Status")]
     [DataRow("Minimum Order", "Min. Order")]
     [DataRow("Maximum Order", "Max. Order")]
-    [DataRow("Account Balance", "Account Bal.")]
+    [DataRow("Account Balance", "Acct. Bal.")]
     [DataRow("Total Amount", "Total Amt.")]
     [DataRow("Monthly Total", "Mthly. Total")]
     [DataRow("Average Price", "Avg. Price")]
@@ -967,6 +967,16 @@ public class ProjectSettingsTests
     [DataRow("Rate Per", "Rate Per")]
     [DataRow("Percent Of Amount", "% Of Amt.")]
     [DataRow("Amounted", "Amounted")]
+    [DataRow("Quantity Backordered", "Qty. Backordered")]
+    [DataRow("Reorder Qty", "Reorder Qty.")]
+    [DataRow("Total Amt", "Total Amt.")]
+    [DataRow("Billing Address1", "Billing Addr1")]
+    [DataRow("Account Number", "Acct. #")]
+    [DataRow("Description Code", "Desc. Code")]
+    [DataRow("Payment Reference", "Pmt. Ref.")]
+    [DataRow("Previous Balance", "Prev. Bal.")]
+    [DataRow("Effective", "Eff.")]
+    [DataRow("Addresses", "Addrs.")]
     public void A_grid_caption_writes_number_as_a_hash_and_percent_as_a_percent_sign(string words, string expected) =>
         Assert.AreEqual(expected, GridCaption.From(words));
 
@@ -1040,12 +1050,12 @@ public class ProjectSettingsTests
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
-        Assert.IsTrue(HasHeader(text, "Quantity R"), "the 18th column is in the grid");
+        Assert.IsTrue(HasHeader(text, "Qty. R"), "the 18th column is in the grid");
         if (template.StartsWith("WinUI3"))
         {
             Expect.Contains(StartingColumns(template, text), "\"QuantityR\"");
             Expect.DoesNotContain(StartingColumns(template, text), "\"QuantityS\"");
-            Expect.Contains(text, "new(\"QuantityS\", \"Quantity S\", true)");
+            Expect.Contains(text, "new(\"QuantityS\", \"Qty. S\", true)");
         }
         else
         {

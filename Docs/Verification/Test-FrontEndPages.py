@@ -286,9 +286,22 @@ def drive_more(page, prove_failure):
         clean()
 
 
+def uno_row_action(page, contains, nth, presses=1):
+    """A row button on the Uno head. The accessibility page lists a grid row as one element labelled with its cells and no buttons inside it (Uno 7), so the row
+    is focused and Tab moves to its nth button (Edit 1, Clone 2, Delete 3), which Enter presses; a second press confirms a Delete."""
+    page.locator(f'[role="option"][aria-label*="{contains}"]').last.focus()
+    page.wait_for_timeout(300)
+    for _ in range(nth):
+        page.keyboard.press("Tab")
+        page.wait_for_timeout(150)
+    for _ in range(presses):
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(1200)
+
+
 def drive_uno(page, prove_failure):
     """The Uno browser head draws on a canvas: its screens are reached through the semantic DOM that "Enable accessibility" adds. The semantic
-    elements sit at the wrong coordinates, so a click lands on nothing; focusing an element and pressing a key works."""
+    elements sit at the wrong coordinates, so a click lands on nothing; focusing an element and pressing a key works. The tabs of a dialog are exposed with the role "option" and a size of 0 x 0 (Uno 7), so they are waited for as attached, not visible."""
     if prove_failure:
         page.route("**/api/regions", lambda route: route.abort() if route.request.method == "POST" else route.continue_())
 
@@ -312,6 +325,10 @@ def drive_uno(page, prove_failure):
     def name_box():
         return page.locator('input[aria-label="Name"]').last
 
+    def in_grid(text):
+        # a grid row is one accessible element labelled with its shown cells (the cell texts are not exposed on their own)
+        return page.locator(f'[role="option"][aria-label*="{text}"]').count()
+
     for leftover in [r for r in regions() if r["name"].startswith("Harness") or r["name"] == "Other Region"]:
         urllib.request.urlopen(urllib.request.Request(f"{API}/api/regions/{leftover['regionId']}", method="DELETE"), timeout=10).close()
     post(f"{API}/api/regions", {"regionId": 0, "name": "Other Region", "code": "OR", "population": 5})
@@ -328,9 +345,9 @@ def drive_uno(page, prove_failure):
     check("the Region screen opens", True)
 
     press(button("Add New"))
-    page.get_by_role("tab", name="Main").wait_for()
+    page.get_by_role("option", name="Main").wait_for(state="attached")
     press(button("Save"))
-    check("an empty form is refused and nothing is saved", page.get_by_role("tab", name="Main").count() == 1 and not any(r["name"] == "" for r in regions()))
+    check("an empty form is refused and nothing is saved", page.get_by_role("option", name="Main").count() == 1 and not any(r["name"] == "" for r in regions()))
 
     before = len(regions())
     type_into(name_box(), "Harness North")
@@ -339,33 +356,34 @@ def drive_uno(page, prove_failure):
     press(button("Save"))
     page.wait_for_timeout(1000)
     saved = [r for r in regions() if r["name"] == "Harness North"]
-    check("Save closes the form", page.get_by_role("tab", name="Main").count() == 0)
+    check("Save closes the form", page.get_by_role("option", name="Main").count() == 0)
     check("the new row is in the database with what was typed", len(regions()) == before + 1 and len(saved) == 1 and saved[0]["code"] == "HN" and saved[0]["population"] == 1234)
-    check("the new row is in the grid", page.get_by_text("Harness North", exact=True).count() >= 1)
+    check("the new row is in the grid", in_grid("Harness North") >= 1)
 
     type_into(page.locator('input[aria-label="Name"]').first, "Harness")
     press(button("Search"))
     page.wait_for_timeout(800)
-    check("the search finds the row and leaves the other out", page.get_by_text("Harness North", exact=True).count() >= 1 and page.get_by_text("Other Region", exact=True).count() == 0)
+    check("the search finds the row and leaves the other out", in_grid("Harness North") >= 1 and in_grid("Other Region") == 0)
 
-    press(button("Edit").last)
+    uno_row_action(page, "Harness North", 1)
     check("Edit opens the form with the saved name", name_box().input_value() == "Harness North")
     type_into(name_box(), "Harness South", replace=True)
     press(button("Save"))
     page.wait_for_timeout(1000)
     check("the edit reaches the database", any(r["name"] == "Harness South" for r in regions()) and not any(r["name"] == "Harness North" for r in regions()))
 
-    press(button("Clone").last)
-    page.get_by_role("tab", name="Main").wait_for()
+    uno_row_action(page, "Harness South", 2)
+    page.get_by_role("option", name="Main").wait_for(state="attached")
     check("Clone saves a copy and opens it", sum(r["name"].startswith("Harness South") for r in regions()) == 2, str([r["name"] for r in regions()]))
     press(button("Cancel"))
 
     for _ in range(2):
-        press(button("Delete").last)
-        press(button("Delete").last)
+        uno_row_action(page, "Harness South", 3, presses=2)
         page.wait_for_timeout(800)
     check("Delete removes the rows from the database", not any(r["name"].startswith("Harness") for r in regions()) and any(r["name"] == "Other Region" for r in regions()))
-    check("the grid shows no such row", page.get_by_text("Harness South", exact=False).count() == 0)
+    press(button("Refresh"))   # the accessibility page keeps a deleted row's element, so the paging bar's text says the grid is empty
+    page.wait_for_timeout(1500)
+    check("the grid shows no such row", "Nothing found" in (page.locator('[role="main"]').first.text_content() or ""))
     for leftover in [r for r in regions() if r["name"] == "Other Region"]:
         urllib.request.urlopen(urllib.request.Request(f"{API}/api/regions/{leftover['regionId']}", method="DELETE"), timeout=10).close()
 
@@ -411,7 +429,7 @@ def drive_uno_dropdown(page, prove_failure):
         add = page.get_by_role("button", name="Add New", exact=True)
         add.wait_for(timeout=30000)
         press(add)
-        page.get_by_role("tab", name="Main").wait_for()
+        page.get_by_role("option", name="Main").wait_for(state="attached")
         combo = page.get_by_role("combobox", name="Customer", exact=True).last
         combo.wait_for()
         press(combo)
@@ -487,8 +505,8 @@ def drive_uno_grids(page, prove_failure):
         page.keyboard.type("Harness Region")
         press(page.get_by_role("button", name="Search", exact=True))
         page.wait_for_timeout(800)
-        press(page.get_by_role("button", name="Edit", exact=True).last)
-        page.get_by_role("tab", name="Main").wait_for()
+        uno_row_action(page, "Harness Region", 1)
+        page.get_by_role("option", name="Main").wait_for(state="attached")
         page.wait_for_timeout(1500)
         children = lambda: re.findall(r"Harness (?:Alpha|Beta)", page.evaluate(texts))
         check("the child grid lists the customers of the region", sorted(set(children())) == ["Harness Alpha", "Harness Beta"], ascii_(page.evaluate(texts))[-500:])
@@ -782,7 +800,8 @@ def drive_owner_uno(page, prove_failure):
         page.wait_for_timeout(1000)
 
     def shown(text):
-        return page.get_by_text(text, exact=True).count() >= 1
+        # a grid row is one accessible element labelled with its shown cells
+        return page.locator(f'[role="option"][aria-label*="{text}"]').count() >= 1
 
     clean()
     try:
@@ -805,7 +824,7 @@ def drive_owner_uno(page, prove_failure):
         check("the grid lists the two rows of the person who signed in", shown("Harness Ann Taxi") and shown("Harness Ann Lunch"))
         check("it does not list another person's row", not shown("Harness Bob Hotel"))
 
-        press(button("Edit").last)
+        uno_row_action(page, "Harness Ann", 1)
         description = page.locator('input[aria-label="Description"]').last
         check("Edit opens the form with the saved description", description.input_value() in ("Harness Ann Taxi", "Harness Ann Lunch"), description.input_value())
         opened = description.input_value()
@@ -815,8 +834,7 @@ def drive_owner_uno(page, prove_failure):
         check("the edit reaches the database for the person's own row", any(r["description"] == opened + " Home" and r["employeeId"] == employee_ids["ann"] for r in expenses()))
 
         for _ in range(2):
-            press(button("Delete").last)
-            press(button("Delete").last)
+            uno_row_action(page, "Harness Ann", 3, presses=2)
             page.wait_for_timeout(800)
         check("Delete removes the person's own rows and no one else's", [r["description"] for r in expenses() if r["description"].startswith("Harness")] == ["Harness Bob Hotel"], str([r["description"] for r in expenses()]))
         make("ann", "Harness Ann Taxi", 12.5)

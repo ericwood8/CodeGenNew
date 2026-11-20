@@ -4,7 +4,7 @@ namespace CodeGenNew.Core;
 /// "Number" and "Num" are written as #, "Percent", "Percentage" and "Pct" as %, so a grid with many columns stays narrow. Only whole words
 /// are replaced; forms keep the full words. Also: a trailing "Name", "Description" or "Short Descr" is dropped ("Item Description" -> "Item",
 /// "Customer Name" -> "Customer"), "XXXXX Status" becomes "Status", and "Alternate" is abbreviated "Alt." ("Alt. Name" keeps its Name).
-/// Also Min., Max., Bal., Amt., Mthly., Avg., Admin. and Whse. for the whole words, and "Per" between two words is "/" ("Price Per Month" -> "Price/Month"). </summary>
+/// Also Min., Max., Bal., Amt., Mthly., Avg., Admin., Whse., Qty., Acct., Addr., Desc., Pmt., Ref., Dept., Mgr., Tel., Doc., Info., Prev., Orig., Est., Eff., Exp., Alloc., Adj. and Beg. for the whole words, and "Per" between two words is "/" ("Price Per Month" -> "Price/Month"). </summary>
 public static class GridCaption
 {
     /// <summary> The caption for a column's grid header: <see cref="From"/>, plus the rules that depend on the column's type. A date column drops the word "Date"
@@ -35,8 +35,25 @@ public static class GridCaption
     {
         ["Minimum"] = "Min.", ["Maximum"] = "Max.", ["Balance"] = "Bal.", ["Balances"] = "Bals.", ["Amount"] = "Amt.", ["Amounts"] = "Amts.",
         ["Monthly"] = "Mthly.", ["Average"] = "Avg.", ["Admin"] = "Admin.", ["Administrator"] = "Admin.", ["Administrators"] = "Admins.",
-        ["Warehouse"] = "Whse.", ["Warehouses"] = "Whses."
+        ["Warehouse"] = "Whse.", ["Warehouses"] = "Whses.",
+        ["Quantity"] = "Qty.", ["Quantities"] = "Qtys.", ["Account"] = "Acct.", ["Accounts"] = "Accts.", ["Address"] = "Addr.", ["Addresses"] = "Addrs.",
+        ["Payment"] = "Pmt.", ["Payments"] = "Pmts.", ["Reference"] = "Ref.", ["Department"] = "Dept.", ["Departments"] = "Depts.",
+        ["Manager"] = "Mgr.", ["Managers"] = "Mgrs.", ["Telephone"] = "Tel.", ["Document"] = "Doc.", ["Documents"] = "Docs.", ["Information"] = "Info.",
+        ["Previous"] = "Prev.", ["Original"] = "Orig.", ["Estimated"] = "Est.", ["Effective"] = "Eff.", ["Expiration"] = "Exp.", ["Allocation"] = "Alloc.",
+        ["Adjustment"] = "Adj.", ["Beginning"] = "Beg.",
+        // the short forms a column name already carries get the same period, so "Total Amt" and "Total Amount" read alike
+        ["Amt"] = "Amt.", ["Qty"] = "Qty.", ["Bal"] = "Bal.", ["Avg"] = "Avg.", ["Min"] = "Min.", ["Max"] = "Max.", ["Whse"] = "Whse.", ["Addr"] = "Addr.",
+        ["Acct"] = "Acct.", ["Dept"] = "Dept.", ["Mgr"] = "Mgr.", ["Pmt"] = "Pmt.", ["Ref"] = "Ref.", ["Doc"] = "Doc.", ["Tel"] = "Tel."
     };
+
+    /// <summary> The short form of a word that ends in digits ("Address1" -> "Addr1"; the period would sit in the middle), else null. </summary>
+    private static string? ShortWithDigits(string word)
+    {
+        int i = word.Length;
+        while (i > 1 && char.IsDigit(word[i - 1]))
+            i--;
+        return i < word.Length && Short.TryGetValue(word[..i], out string? s) ? s.TrimEnd('.') + word[i..] : null;
+    }
 
     public static string From(string spacedWords)
     {
@@ -49,8 +66,12 @@ public static class GridCaption
                 words[i] = "Alt.";
                 abbreviated = true;
             }
+            else if (words[i].EqualsIgnoreCase("Description") && i < words.Length - 1)
+                words[i] = "Desc.";   // a last "Description" is dropped below instead
             else if (Short.TryGetValue(words[i], out string? shortWord))
                 words[i] = shortWord;
+            else if (ShortWithDigits(words[i]) is { } withDigits)
+                words[i] = withDigits;
             else if (words[i].EqualsIgnoreCase("Per") && i > 0 && i < words.Length - 1)
                 words[i] = "/";
             else
