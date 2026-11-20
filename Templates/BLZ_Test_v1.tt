@@ -102,11 +102,11 @@
         var headers = page.FindAll("button.sort");
         string Last() => Uri.UnescapeDataString(Api.Requests.Last(r => r.Path.Contains("$orderby=")).Path);
         Api.Requests.Clear();
-        headers.First(h => h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption}}.")).Click();
+        headers.First(h => h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption.TrimEnd('.')}}.")).Click();
         page.WaitForAssertion(() => StringAssert.Contains(Last(), "$orderby={{path}},"));   // ascending is written without a word
-        page.FindAll("button.sort").First(h => h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption}}.")).Click();
+        page.FindAll("button.sort").First(h => h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption.TrimEnd('.')}}.")).Click();
         page.WaitForAssertion(() => StringAssert.Contains(Last(), "{{path}} desc"));
-        var other = page.FindAll("button.sort").FirstOrDefault(h => !h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption}}."));
+        var other = page.FindAll("button.sort").FirstOrDefault(h => !h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption.TrimEnd('.')}}."));
         if (other is not null)
         {
             other.Click(new Microsoft.AspNetCore.Components.Web.MouseEventArgs { ShiftKey = true });

@@ -1121,6 +1121,7 @@ public class ProjectSettingsTests
         Assert.AreEqual("Closed?", GridCaption.For(Col("IsClosed", System.Data.SqlDbType.Bit), "Is Closed?"), "no second question mark");
         Assert.AreEqual("Added", GridCaption.For(Col("DateAdded", System.Data.SqlDbType.DateTime), "Date Added"));
         Assert.AreEqual("Invoice", GridCaption.For(Col("InvoiceDate", System.Data.SqlDbType.DateTime), "Invoice Date"));
+        Assert.AreEqual("Admin?", GridCaption.For(Col("IsAdmin", System.Data.SqlDbType.Bit), "Is Admin"), "no period before the question mark");
         Assert.AreEqual("Date", GridCaption.For(Col("Date", System.Data.SqlDbType.Date), "Date"), "nothing would be left");
         Assert.AreEqual("Date Added", GridCaption.For(Col("DateAdded", System.Data.SqlDbType.VarChar), "Date Added"), "only a real date column");
     }

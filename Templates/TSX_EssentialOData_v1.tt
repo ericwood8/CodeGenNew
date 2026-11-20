@@ -577,7 +577,7 @@ export function ODataSortHeader({ label, column, sorts, onSort }: {
       <button
         type="button"
         className="sort-header"
-        title={`Click to sort by ${label}. Shift-click to add it to the sort.`}
+        title={`Click to sort by ${label.replace(/\.$/, '')}. Shift-click to add it to the sort.`}
         onClick={(event) => onSort(column, event.shiftKey)}
       >
         {label}{sorted ? (sorted.descending ? ' ▼' : ' ▲') : ''}

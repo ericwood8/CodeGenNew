@@ -464,6 +464,9 @@ public class PluralizerYTests
 {
     [TestMethod]
     [DataRow("Summary", "Summaries")]
+    [DataRow("Whse.", "Whses.")]
+    [DataRow("Whses.", "Whses.")]
+    [DataRow("Amt.", "Amts.")]
     [DataRow("customermonthlysummary", "customermonthlysummaries")]
     [DataRow("Category", "Categories")]
     [DataRow("Holiday", "Holidays")]

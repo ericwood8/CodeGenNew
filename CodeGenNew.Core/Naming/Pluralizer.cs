@@ -20,6 +20,9 @@ public static class Pluralizer
 {
     public static string Pluralize(this string word)
     {
+        // An abbreviation keeps its period last (Whse. -> Whses.), but one already plural (Whses., Amts.) stays.
+        if (word.Length > 2 && word[^1] == '.')
+            return char.ToLowerInvariant(word[^2]) == 's' ? word : word[..^1] + "s.";
         string lower = word.ToLowerInvariant();
         // A consonant + "y" becomes "ies" (Summary -> Summaries, Category -> Categories); a vowel + "y" just adds "s" (Holiday -> Holidays).
         if (lower.Length > 1 && lower[^1] == 'y' && "aeiou".IndexOf(lower[^2]) < 0)

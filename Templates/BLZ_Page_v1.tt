@@ -373,7 +373,7 @@
             var c = column.Column;
             string caption = column.Caption;
             if (sortable.Contains(c) && odata)
-                L("            " + Shown(c, $"<th aria-sort=\"@AriaSort(\"{c.Name}\")\"><button type=\"button\" class=\"sort\" title=\"Click to sort by {caption}. Shift-click to add it to the sort.\" @onclick='(e) => SortAsync(\"{c.Name}\", e.ShiftKey)'>{caption} @Arrow(\"{c.Name}\")<span class=\"sort-order\" hidden=\"@(Place(\"{c.Name}\") is null)\">@Place(\"{c.Name}\")</span></button></th>"));
+                L("            " + Shown(c, $"<th aria-sort=\"@AriaSort(\"{c.Name}\")\"><button type=\"button\" class=\"sort\" title=\"Click to sort by {caption.TrimEnd('.')}. Shift-click to add it to the sort.\" @onclick='(e) => SortAsync(\"{c.Name}\", e.ShiftKey)'>{caption} @Arrow(\"{c.Name}\")<span class=\"sort-order\" hidden=\"@(Place(\"{c.Name}\") is null)\">@Place(\"{c.Name}\")</span></button></th>"));
             else if (sortable.Contains(c))
                 L("            " + Shown(c, $"<th><button type=\"button\" class=\"sort\" @onclick='() => SortAsync(\"{c.Name}\")'>{caption} @Arrow(\"{c.Name}\")</button></th>"));
             else

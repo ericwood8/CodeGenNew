@@ -25,7 +25,7 @@ public static class GridCaption
             if (caption.StartsWithIgnoreCase("Is ") && caption.Length > 3)
                 caption = caption[3..];
             if (!caption.EndsWith('?'))
-                caption += "?";
+                caption = caption.TrimEnd('.') + "?";   // "Admin." -> "Admin?": the question mark ends the abbreviation
         }
         return caption;
     }
