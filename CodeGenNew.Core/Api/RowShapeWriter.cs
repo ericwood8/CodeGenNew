@@ -201,14 +201,19 @@ public static class RowShapeWriter
         {
             string flag = defaults.Flag.CSharpName();
             var groupLines = new StringBuilder();
+            var oldLines = new StringBuilder();
+            var differs = new List<string>();
             int g = 0;
             foreach (var group in defaults.Groups)
             {
                 string name = group.CSharpName();
                 groupLines.Append($"        var group{g} = row.{name};\n        others = others.Where(x => x.{name} == group{g});\n");
+                oldLines.Append($"            var was{g} = stored.{name};\n            before = before.Where(x => x.{name} == was{g});\n");
+                differs.Add($"stored.{name} != row.{name}");
                 g++;
             }
-            o.Append(Fill(DefaultRow, Pairs("§FLAG", flag, "§GROUPLINES", groupLines.ToString())));
+            o.Append(Fill(DefaultRow, Pairs("§FLAG", flag, "§GROUPLINES", groupLines.ToString(), "§OLDLINES", oldLines.ToString(), "§GROUPDIFF", string.Join(" || ", differs),
+                "§MOVED_TYPE", DefaultRowScreens.MovedType, "§MOVED_TITLE", DefaultRowScreens.MovedTitle, "§LEAVES_TEXT", DefaultRowScreens.LeavesGroupText, "§TAKEN_TEXT", DefaultRowScreens.GroupTakenText)));
             save.Append("        if (await CheckDefaultAsync(context, row) is { } defaultProblem)\n            return defaultProblem;\n");
             delete.Insert(0, "        if (await CheckDefaultDeleteAsync(context, id) is { } defaultDeleteProblem)\n            return defaultDeleteProblem;\n");
             maps.Append(Fill("        app.MapPost(\"§R/{id}/make-default\", (§CTX context, §KT id) => MakeDefaultAsync(context, id))§AUTH;\n"));
@@ -835,7 +840,17 @@ public static class AssetProblems
     public static async Task<IResult?> CheckDefaultAsync(§CTX context, §T row)
     {
         var others = context.Set<§T>().Where(x => x.§K != row.§K);
-§GROUPLINES        if (!row.§FLAG)
+§GROUPLINES        var stored = await context.Set<§T>().AsNoTracking().FirstOrDefaultAsync(x => x.§K == row.§K);
+        if (stored is not null && stored.§FLAG && (§GROUPDIFF))
+        {
+            // the default row of a group moves: its own group would be left without a default, or the new group would have two
+            var before = context.Set<§T>().AsNoTracking().Where(x => x.§K != row.§K);
+§OLDLINES            if (await before.AnyAsync())
+                return RowShapeProblems.Problem(409, "§MOVED_TYPE", "§MOVED_TITLE", "§LEAVES_TEXT");
+            if (await others.AnyAsync(x => x.§FLAG))
+                return RowShapeProblems.Problem(409, "§MOVED_TYPE", "§MOVED_TITLE", "§TAKEN_TEXT");
+        }
+        if (!row.§FLAG)
         {
             if (!await others.AnyAsync(x => x.§FLAG))
                 row.§FLAG = true;

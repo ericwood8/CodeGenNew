@@ -23,8 +23,10 @@ public static class RustDefaultWriter
             groups.Append(g.IsOption
                 ? $"    match &row.{g.Field} {{\n        Some(value) => {{\n            builder.push({RustTable.Raw($" AND {g.Column} = ")}).push_bind(value.clone());\n        }}\n        None => {{\n            builder.push({RustTable.Raw($" AND {g.Column} IS NULL")});\n        }}\n    }}\n"
                 : $"    builder.push({RustTable.Raw($" AND {g.Column} = ")}).push_bind(row.{g.Field}.clone());\n");
+        string differs = string.Join(" || ", n.Groups.Select(g => $"stored.{g.Field} != row.{g.Field}"));
         return TemplateText.FillAll(Text, ("§STRUCT", n.Struct), ("§KEYFIELD", n.KeyField), ("§KEYCOLUMN", n.KeyColumn), ("§KT", n.KeyType), ("§FLAGFIELD", n.FlagField), ("§FLAGCOLUMN", n.FlagColumn),
-            ("§TABLE", n.Table), ("§GROUPS", groups.ToString()));
+            ("§TABLE", n.Table), ("§GROUPS", groups.ToString()), ("§DIFFERS", differs), ("§MOVED_TYPE", DefaultRowScreens.MovedType), ("§MOVED_TITLE", DefaultRowScreens.MovedTitle),
+            ("§LEAVES_TEXT", DefaultRowScreens.LeavesGroupText), ("§TAKEN_TEXT", DefaultRowScreens.GroupTakenText));
     }
 
     private const string Text = """"
@@ -42,6 +44,22 @@ async fn settle_default(pool: &Pool, row_id: Option<§KT>, row: &mut §STRUCT) -
     }
     push_group(&mut builder, row);
     let has_default = builder.build_query_scalar::<i64>().fetch_one(pool).await? > 0;
+    if let Some(id) = row_id {
+        // the default row of a group moves: its own group would be left without a default, or the new group would have two
+        if let Some(stored) = repo::get_by_id(pool, id.clone()).await? {
+            if stored.§FLAGFIELD && (§DIFFERS) {
+                let mut before = sqlx::QueryBuilder::<Db>::new(r#"SELECT COUNT(*) FROM §TABLE WHERE §KEYCOLUMN <> "#);
+                before.push_bind(id.clone());
+                push_group(&mut before, &stored);
+                if before.build_query_scalar::<i64>().fetch_one(pool).await? > 0 {
+                    return Err(ApiError::Rejected(409, "§MOVED_TYPE", "§MOVED_TITLE", "§LEAVES_TEXT".into()));
+                }
+                if has_default {
+                    return Err(ApiError::Rejected(409, "§MOVED_TYPE", "§MOVED_TITLE", "§TAKEN_TEXT".into()));
+                }
+            }
+        }
+    }
     if !row.§FLAGFIELD {
         row.§FLAGFIELD = !has_default;
         return Ok(false);

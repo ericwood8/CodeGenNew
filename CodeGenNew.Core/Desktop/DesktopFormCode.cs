@@ -17,6 +17,7 @@ public static class DesktopFormCode
     {
         var formColumn = form.Field(column);
         return formColumn.IsLookupValue ? form.ParentOf(column)!.KeyCs + "?"
+            : formColumn.IsToggleSwitchValue ? "bool"
             : formColumn.IsBooleanValue ? "bool?"
             : (formColumn.IsMoneyValue || formColumn.IsDecimalValue || formColumn.IsWholeNumberValue) ? "double"
             : TemplateHelpers.IsDate(column) ? "DateTimeOffset?"
@@ -103,7 +104,7 @@ public static class DesktopFormCode
             }
             else if (formColumn.IsBooleanValue)
             {
-                L($"{prop} = editing.{prop};");
+                L($"{prop} = editing.{prop}" + (formColumn.IsToggleSwitchValue && column.IsNullable ? " ?? false" : "") + ";");
             }
             else if (formColumn.IsDateValue)
             {
@@ -304,7 +305,7 @@ public static class DesktopFormCode
             }
             else if (formColumn.IsBooleanValue)
             {
-                L($"entity.{prop} = {prop}" + (column.IsNullable ? "" : " ?? false") + ";");
+                L($"entity.{prop} = {prop}" + (column.IsNullable || formColumn.IsToggleSwitchValue ? "" : " ?? false") + ";");
             }
             else if (formColumn.IsDateValue)
             {

@@ -12,15 +12,21 @@ the same idea plus child grids for tables that hang off this one):
 
 Column selection mirrors TS_Component.tt (its Angular add/edit form): every column except the primary
 key, computed and identity columns. A foreign key becomes a ComboBox of the parent's rows (skipped for
-a table in the NoLookupParents setting, which stays a plain number box); a bit column becomes a CheckBox.
+a table in the NoLookupParents setting, which stays a plain number box); a bit column becomes a CheckBox
+(a ToggleSwitch when the column is in ToggleSwitchColumns); a column with a short list of choices is a
+ComboBox (RadioButtons when the column is in RadioButtonColumns and has four values at most).
 
-Field binding: WinUI3's compiled x:Bind cannot convert a TextBox's string Text to a numeric, date or
-Guid property without a converter class this template cannot assume your project has, so every
-TEXT-BOX-BACKED field (numbers, dates, plain text, Guid) is a STRING property on the ViewModel; SaveAsync
-parses each one into the entity's real column type and reports the first bad value instead of throwing.
-Dates are typed as plain text (yyyy-MM-dd), not a DatePicker, for the same reason (DatePicker.Date is a
-DateTimeOffset, not a DateTime). A ComboBox's SelectedValue and a CheckBox's IsChecked DO bind straight
-to an int?/bool? property - WinUI3 does not need a converter for either of those.
+Field binding: WinUI3's compiled x:Bind cannot convert a TextBox's string Text to a numeric or Guid
+property without a converter class this template cannot assume your project has, so a TEXT-BOX-BACKED
+field (plain text, a Guid, a number that is not shown in a NumberBox) is a STRING property on the
+ViewModel; SaveAsync parses each one into the entity's real column type and reports the first bad value
+instead of throwing. The other controls bind to a property of their own type, which needs no converter:
+a NumberBox (whole numbers, decimals and money) to a double, where NaN is blank and SaveAsync checks the
+range and rounds money; a CalendarDatePicker to a DateTimeOffset?, with a Clear button beside it for a
+nullable date (the time of day of a date and time column is kept apart and put back on save); a CheckBox
+to a bool? and a ToggleSwitch to a bool (a null column reads as off and saves as false); a ComboBox's
+SelectedValue to an int?, long?, Guid? or string? and its SelectedItem, like a RadioButtons', to a string.
+A time-of-day column (`time`) is not a field of any form yet.
 
 Data access: the entity's own CRUD goes through <TableName>Repo (generate it with CS_Repo first - same
 assumption WinUI3_JunctionEditor.tt makes about SP_Junction.tt); each drop-down's OPTIONS come straight

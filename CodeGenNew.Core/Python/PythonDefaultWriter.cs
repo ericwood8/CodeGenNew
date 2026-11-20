@@ -11,7 +11,7 @@ public static class PythonDefaultWriter
     public static string GroupArgument(Names n, Func<string, string> value) => "{" + string.Join(", ", n.Groups.Select(g => $"\"{g}\": {value(g)}")) + "}";
 
     /// <summary> The helpers above the routes. </summary>
-    public static string Helpers(Names n) => Fill(HelperText, n);
+    public static string Helpers(Names n) => Fill(HelperText, n, ("§MOVED_TYPE", DefaultRowScreens.MovedType), ("§MOVED_TITLE", DefaultRowScreens.MovedTitle), ("§LEAVES_TEXT", DefaultRowScreens.LeavesGroupText), ("§TAKEN_TEXT", DefaultRowScreens.GroupTakenText));
 
     /// <summary> <c>POST {id}/make-default</c>. </summary>
     public static string Route(Names n, string route, string schema, string keyType, string writeDepends, string userParameter) =>
@@ -38,6 +38,15 @@ def settle_default(session: Session, row_id, groups: dict, wants_default: bool) 
     with session.no_autoflush:
         others = _others_of_group(row_id, groups) + [§CLASS.§FLAG.is_(True)]
         has_default = session.scalars(select(§CLASS.§KEY).where(*others).limit(1)).first() is not None
+        if row_id is not None:
+            # the default row of a group moves: its own group would be left without a default, or the new group would have two (the stored values are read from the database, not from the row being changed)
+            stored = session.execute(select(§CLASS.§FLAG, *[getattr(§CLASS, name) for name in groups]).where(§CLASS.§KEY == row_id)).first()
+            if stored is not None and stored[0] and any(stored[position + 1] != value for position, value in enumerate(groups.values())):
+                was = {name: stored[position + 1] for position, name in enumerate(groups)}
+                if session.scalars(select(§CLASS.§KEY).where(*_others_of_group(row_id, was)).limit(1)).first() is not None:
+                    raise ApiError(409, "§MOVED_TITLE", problem_type="§MOVED_TYPE", detail="§LEAVES_TEXT")
+                if has_default:
+                    raise ApiError(409, "§MOVED_TITLE", problem_type="§MOVED_TYPE", detail="§TAKEN_TEXT")
         if not wants_default:
             return not has_default
         if has_default:

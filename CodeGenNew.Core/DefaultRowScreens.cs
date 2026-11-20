@@ -23,6 +23,16 @@ public static class DefaultRowScreens
 
     public const string FailedText = "Problem while making it the default!";
 
+    /// <summary> The default row of a group is moved into a group that already has a default of its own: refused by every stack (the API answers 409 with this sentence, a desktop dialog shows it). </summary>
+    public const string GroupTakenText = "Another row is already the default of that group, so this default row cannot move there.";
+
+    /// <summary> The default row of a group that has other rows is moved to another group: it would leave its own group without a default. </summary>
+    public const string LeavesGroupText = "This row is the default of its group; make another row the default before moving it to another group.";
+
+    public const string MovedType = ProblemTypes.Prefix + "default-row-moved";
+
+    public const string MovedTitle = "Default row cannot move";
+
     /// <summary> Shown for the flag of the saved row (the form shows it as text, since only the route moves it). </summary>
     public const string YesText = "Yes";
 
@@ -53,7 +63,30 @@ public static class DefaultRowScreens
             return "";
         string flag = shape.Flag.CSharpName();
         string groups = string.Concat(shape.Groups.Select(g => $" && x.{g.CSharpName()} == entity.{g.CSharpName()}"));
-        return $"        if (_editing is null)\n            entity.{flag} = !await {context}.Set<{table.TableName}>().AnyAsync(x => x.{flag}{groups});\n\n";
+        string key = shape.Key.CSharpName();
+        string set = $"{context}.Set<{table.TableName}>().AsNoTracking()";
+        string names = string.Join(", ", shape.Groups.Select(g => $"x.{g.CSharpName()}"));
+        string differs = string.Join(" || ", shape.Groups.Select(g => $"defaultWas.{g.CSharpName()} != entity.{g.CSharpName()}"));
+        string was = string.Concat(shape.Groups.Select(g => $" && x.{g.CSharpName()} == defaultWas.{g.CSharpName()}"));
+        string Refuse(string text) => "                {\n"
+            + $"                    ErrorMessage = \"{text}\";\n"
+            + $"                    await {context}.Entry(entity).ReloadAsync();   // the refused values are not kept in the tracked row\n"
+            + "                    return false;\n"
+            + "                }\n";
+        // the default row of a group is moved to another group: its own group would be left without a default, or the new group would have two (the unique index of the flag would end the app); the save is refused
+        // here, where the person can read why. The other stacks answer the same two sentences from the API.
+        return $"        if (_editing is null)\n            entity.{flag} = !await {context}.Set<{table.TableName}>().AnyAsync(x => x.{flag}{groups});\n"
+            + $"        else if (entity.{flag})\n"
+            + "        {\n"
+            + $"            var defaultWas = await {set}.Where(x => x.{key} == entity.{key}).Select(x => new {{ {names} }}).FirstAsync();\n"
+            + $"            if ({differs})\n"
+            + "            {\n"
+            + $"                if (await {set}.AnyAsync(x => x.{key} != entity.{key}{was}))\n"
+            + Refuse(LeavesGroupText)
+            + $"                if (await {set}.AnyAsync(x => x.{key} != entity.{key} && x.{flag}{groups}))\n"
+            + Refuse(GroupTakenText)
+            + "            }\n"
+            + "        }\n\n";
     }
 
     /// <summary> The view-model members of the dialog's button (four spaces in): its visibility for the saved row and the method that makes the row the default and shows it in the form. A WinUI3 dialog (<paramref name="clientExpression"/> null)

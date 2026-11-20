@@ -88,6 +88,8 @@ public sealed class FormColumn
     /// <summary> A whole number, held as a double (NaN is blank) and saved after checking it is whole and in range. </summary>
     public bool IsWholeNumberValue => Held == ValueKind.WholeNumber;
     public bool IsBooleanValue => Held == ValueKind.Boolean;
+    /// <summary> A yes/no column the project lists in ToggleSwitchColumns: a toggle switch, held as a plain bool because the switch cannot show "unknown" (a null column reads as off and saves as false). </summary>
+    public bool IsToggleSwitchValue => IsBooleanValue && _project.IsToggleSwitch(_form.Table.TableName, Column.Name);
     public bool IsDateValue => Held == ValueKind.Date;
     /// <summary> A uniqueidentifier typed as text. </summary>
     public bool IsGuidValue => Held == ValueKind.Guid;

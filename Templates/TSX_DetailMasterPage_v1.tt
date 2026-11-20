@@ -68,7 +68,7 @@
         string Gate(string jsx) => gated ? "{canWrite && " + jsx + "}" : jsx;
         bool nameActive = form.IsNameActive;   // a Name and an IsActive column: the whole list is read, narrowed by a name box and an Active only check box on the page, with no paging or sort
         string problemCall = odata ? "problemText" : "problemDetail";   // reads the API's own words from a problem answer
-        bool partyTaken = !odata && PartyScreens.SaysTaken(Model, Project);   // the identifier table of PartyTables: a pair another row holds is refused (409) in the API's own words
+        bool partyTaken = !odata && (PartyScreens.SaysTaken(Model, Project) || TableShapes.For(Model, Project).DefaultRow is not null);   // the identifier table of PartyTables (a pair another row holds) and a default-row table (a default row that cannot move) are refused (409) in the API's own words
         string pageName = odata ? baseName + "ODataDetailMasterPage" : baseName + "DetailMasterPage";
         string apiVar = odata ? ReactNames.ODataApiVar(Model.TableName) : ReactNames.ApiVar(Model.TableName);
         string apiFile = odata ? ReactNames.ODataApiFile(Model.TableName) : ReactNames.ApiFile(Model.TableName);

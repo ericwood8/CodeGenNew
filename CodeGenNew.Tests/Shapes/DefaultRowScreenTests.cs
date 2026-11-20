@@ -132,6 +132,65 @@ public class DefaultRowScreenTests
         }
         Expect.Contains(files.Single(f => f.Key.EndsWith(".App/ViewModels/CustomerAddressDetailViewModel.cs", StringComparison.Ordinal)).Value,
             "entity.IsDefault = !await _context.Set<CustomerAddress>().AnyAsync(x => x.IsDefault && x.CustomerId == entity.CustomerId && x.AddressType == entity.AddressType);");
+
+        // the default row of a group moved to another group is refused in the dialog (it would leave its group without a default, or break the unique index of the flag and end the app);
+        // the Uno dialog and the web stacks get the same two sentences from the API
+        string winui = files.Single(f => f.Key.EndsWith(".App/ViewModels/CustomerAddressDetailViewModel.cs", StringComparison.Ordinal)).Value;
+        Expect.Contains(winui, "else if (entity.IsDefault)");
+        Expect.Contains(winui, "var defaultWas = await _context.Set<CustomerAddress>().AsNoTracking().Where(x => x.CustomerAddressId == entity.CustomerAddressId).Select(x => new { x.CustomerId, x.AddressType }).FirstAsync();");
+        Expect.Contains(winui, "if (defaultWas.CustomerId != entity.CustomerId || defaultWas.AddressType != entity.AddressType)");
+        Expect.Contains(winui, "ErrorMessage = \"" + DefaultRowScreens.LeavesGroupText + "\";");
+        Expect.Contains(winui, "ErrorMessage = \"" + DefaultRowScreens.GroupTakenText + "\";");
+        Assert.DoesNotContain(DefaultRowScreens.GroupTakenText, files.Single(f => f.Key.EndsWith(".Uno/ViewModels/CustomerAddressDetailViewModel.cs", StringComparison.Ordinal)).Value);
+    }
+
+    [TestMethod]
+    public async Task Every_api_refuses_to_move_a_default_row_and_the_clients_show_the_sentence()
+    {
+        var (report, files) = await GenerateAsync("Api,Python,Rust,Blazor,Uno,React");
+        Assert.IsTrue(report.Success, string.Join("\n", report.Errors));
+
+        // the React page shows the detail of the 409 of a refused save (it has no other 409 to tell apart)
+        string page = FileEnding(files, "CustomerAddressPage.tsx");
+        Expect.Contains(page, "const problemDetail = (error: unknown): string | undefined => {");
+        Expect.Contains(page, "err.status === 409) { setError(problemDetail(err) ?? 'A row with this value already exists!'); }");
+
+        string dotnet = files.Single(f => f.Value.Contains("public static async Task<IResult?> CheckDefaultAsync(")).Value;
+        Expect.Contains(dotnet, "if (stored is not null && stored.IsDefault && (stored.CustomerId != row.CustomerId || stored.AddressType != row.AddressType))");
+        Expect.Contains(dotnet, "RowShapeProblems.Problem(409, \"" + DefaultRowScreens.MovedType + "\", \"" + DefaultRowScreens.MovedTitle + "\", \"" + DefaultRowScreens.LeavesGroupText + "\")");
+        Expect.Contains(dotnet, "RowShapeProblems.Problem(409, \"" + DefaultRowScreens.MovedType + "\", \"" + DefaultRowScreens.MovedTitle + "\", \"" + DefaultRowScreens.GroupTakenText + "\")");
+
+        string python = FileEnding(files, "app/routes/customer_address.py");
+        Expect.Contains(python, "if stored is not None and stored[0] and any(stored[position + 1] != value for position, value in enumerate(groups.values())):");
+        Expect.Contains(python, "raise ApiError(409, \"" + DefaultRowScreens.MovedTitle + "\", problem_type=\"" + DefaultRowScreens.MovedType + "\", detail=\"" + DefaultRowScreens.LeavesGroupText + "\")");
+        Expect.Contains(python, "detail=\"" + DefaultRowScreens.GroupTakenText + "\")");
+
+        string rust = FileEnding(files, "src/routes/customer_address.rs");
+        Expect.Contains(rust, "if stored.is_default && (stored.customer_id != row.customer_id || stored.address_type != row.address_type) {");
+        Expect.Contains(rust, "ApiError::Rejected(409, \"" + DefaultRowScreens.MovedType + "\", \"" + DefaultRowScreens.MovedTitle + "\", \"" + DefaultRowScreens.LeavesGroupText + "\".into())");
+        Expect.Contains(rust, "\"" + DefaultRowScreens.GroupTakenText + "\".into())");
+
+        // the Blazor and Uno clients read the sentence (Angular shows the detail of any 409, React above); a project without default rows has no such line
+        foreach (string template in new[] { "BLZ_EssentialSupport_v1.tt", "UNO_EssentialSupport_v1.tt" })
+        {
+            foreach (bool listed in new[] { true, false })
+            {
+                var project = ProjectSettings.FromValues(new Dictionary<string, string> { ["ProjectName"] = "Shop", ["DefaultRowTables"] = listed ? "CustomerAddress:IsDefault:CustomerId+AddressType" : "" });
+                var result = await Repo.Cache.RunAsync(Repo.Template(template), project);
+                Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
+                string support = result.GeneratedText!.ReplaceLineEndings("\n");
+                string line = "Message is \"" + DefaultRowScreens.GroupTakenText + "\" or \"" + DefaultRowScreens.LeavesGroupText + "\" => Message";
+                if (listed)
+                {
+                    Expect.Contains(support, line);
+                    Expect.Contains(support, "await ProblemDetailAsync(response) is { } refusal");
+                }
+                else
+                {
+                    Assert.DoesNotContain(line, support);
+                }
+            }
+        }
     }
 
     [TestMethod]

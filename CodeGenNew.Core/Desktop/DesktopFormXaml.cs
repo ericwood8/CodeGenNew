@@ -123,6 +123,11 @@ public static class DesktopFormXaml
                 L(I + $"          SelectedValue=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{(formColumn.IsKeyLookupField ? " IsEnabled=\"{x:Bind ViewModel.IsNewRow}\"" : "")} />");
             }
         }
+        else if (formColumn.IsChoicesField && column.Choices!.Count <= ProjectSettings.MaxRadioChoices && project.IsRadioButtons(table.TableName, column.Name))
+        {
+            L(I + $"<RadioButtons Header=\"{label}\"{required} ItemsSource=\"{{x:Bind ViewModel.{prop}Choices}}\"");
+            L(I + $"              SelectedItem=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\" />");
+        }
         else if (formColumn.IsChoicesField)
         {
             L(I + $"<ComboBox Header=\"{label}\"{required} ItemsSource=\"{{x:Bind ViewModel.{prop}Choices}}\"");
@@ -150,6 +155,10 @@ public static class DesktopFormXaml
             L(I + $"<NumberBox Header=\"{label}\"{required} Value=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{enabled}");
             L(I + $"           Minimum=\"{range.Min}\" Maximum=\"{range.Max}\" SmallChange=\"1\" LargeChange=\"{(range.Max - range.Min >= 100 ? 10 : 1)}\"");
             L(I + $"           SpinButtonPlacementMode=\"Inline\" ValidationMode=\"InvalidInputOverwritten\"{width} />");
+        }
+        else if (formColumn.IsBooleanField && formColumn.IsToggleSwitchValue)
+        {
+            L(I + $"<ToggleSwitch Header=\"{label}\" IsOn=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\" />");
         }
         else if (formColumn.IsBooleanField)
         {

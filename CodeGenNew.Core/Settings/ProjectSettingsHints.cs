@@ -194,6 +194,8 @@ public static class ProjectSettingsHints
         ["NotFutureDateColumns"] = "comma-separated date columns that can never be later than today (BirthDate, or Employee.HireDate for one table): the insert, update and save routines refuse a later date",
         ["EmailColumns"] = "comma-separated text columns that hold an email address whatever their name (Reach, or Contact.Backup for one table): checked, and edited with an email box. A name that is Mail or ends in Mail, or has Email in it, needs no entry",
         ["UrlColumns"] = "comma-separated text columns that hold a web address whatever their name (Where, or Site.Address for one table). A name with Url, Website, Link, Homepage, WebPage or WebAddress in it, or that is Web or ends in Web, needs no entry",
+        ["ToggleSwitchColumns"] = "comma-separated yes/no columns the WinUI3 and Uno forms show as a toggle switch instead of a check box (IsActive, or Item.InStock for one table).",
+        ["RadioButtonColumns"] = "comma-separated columns with a short list of choices (a MySQL enum, four values at most) that the WinUI3 and Uno forms show as radio buttons instead of a drop-down (Priority, or Task.Status for one table).",
         ["PlainTextColumns"] = "comma-separated text columns whose name says email, phone or URL but that hold something else (EmailTemplate, or Site.PhoneNotes for one table): they get no format check",
         ["ApiFolder"] = "React / Angular folder for the api modules, relative to the source folder; blank = api",
         ["ModelsFolder"] = "React / Angular folder for the TypeScript models; blank = models",
