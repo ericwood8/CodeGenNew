@@ -4,7 +4,7 @@ using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> A column whose values the database lists (a MySQL enum) is a drop-down on every screen instead of a free text box. </summary>
 [TestClass]

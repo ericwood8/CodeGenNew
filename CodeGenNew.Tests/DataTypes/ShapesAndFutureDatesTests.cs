@@ -1,7 +1,7 @@
 using System.Data;
 using CodeGenNew.Core;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> The postal code, social security number and link shapes, and the "never later than today" rule, in every validator the generated apps have. </summary>
 [TestClass]

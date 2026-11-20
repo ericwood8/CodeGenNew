@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Desktop;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Desktop;
 
 /// <summary> EditableChildren on the desktop stacks: the child rows are boxes inside the parent's dialog (rows, lookups and panel written from Core), saved with the parent: in one transaction on WinUI3, in
 /// the API's parent-with-children request on Uno. </summary>

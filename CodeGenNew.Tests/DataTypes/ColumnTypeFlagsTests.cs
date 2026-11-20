@@ -2,7 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> The type flags of a column come from its SqlType alone, so no provider sets them. </summary>
 [TestClass]

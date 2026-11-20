@@ -5,7 +5,7 @@ using CodeGenNew.SchemaIntrospection;
 using Microsoft.Data.Sqlite;
 using CodeGenNew.Core.Api;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Desktop;
 
 /// <summary> ChangeGates and GuardedColumns on WinUI3, which reads the database itself: the gates class, the dialogs that call it and the guarded fields. </summary>
 [TestClass]

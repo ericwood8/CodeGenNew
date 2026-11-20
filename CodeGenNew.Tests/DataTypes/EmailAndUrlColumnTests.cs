@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Settings;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> Which text columns hold an email address or a web address: the name, or the project's EmailColumns and UrlColumns. </summary>
 [TestClass]

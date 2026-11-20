@@ -1,7 +1,7 @@
 using System.Data;
 using CodeGenNew.Core;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> The type mapping and caption rules every template shares, checked once for every SQL type. </summary>
 [TestClass]

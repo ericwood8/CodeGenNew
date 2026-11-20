@@ -2,7 +2,7 @@ using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Desktop;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Desktop;
 
 /// <summary> The Columns list of the WinUI3 and Uno list pages: one set of C# text in Core, the store and row control written by the GridColumns templates, the members the master screens add. </summary>
 [TestClass]

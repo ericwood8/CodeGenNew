@@ -2,7 +2,7 @@ using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> SQL Server's timestamp is a row version the routines never copy or supply; another database's timestamp is an ordinary date. </summary>
 [TestClass]

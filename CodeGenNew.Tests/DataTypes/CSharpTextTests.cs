@@ -1,7 +1,7 @@
 using System.Data;
 using CodeGenNew.Core;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> The string literals and initializers every C# template writes. </summary>
 [TestClass]

@@ -4,7 +4,7 @@ using CodeGenNew.Generation;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Core.Desktop;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Desktop;
 
 /// <summary> DesktopTests=true: the WinUI3 and Uno apps ship a test project that compiles their own view models, and a test class per dialog whose cases come from one plan in Core. </summary>
 [TestClass]

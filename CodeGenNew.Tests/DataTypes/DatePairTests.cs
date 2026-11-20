@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 using CodeGenNew.Core.Desktop;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> Two date columns where the second must not be earlier than the first: where the pair comes from (the names, a CHECK constraint, the project), what takes it away, and the check of stored rows. </summary>
 [TestClass]

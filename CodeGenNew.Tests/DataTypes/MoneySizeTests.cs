@@ -1,7 +1,7 @@
 using CodeGenNew.Core;
 using CodeGenNew.Core.Settings;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> A decimal the size SQL Server gives money, and the project's lists of money columns. </summary>
 [TestClass]

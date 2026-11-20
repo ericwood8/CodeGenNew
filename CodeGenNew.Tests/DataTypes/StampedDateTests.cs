@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Core.Rust;
 using CodeGenNew.Core.Sql;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> The audit dates the server stamps: set in the statement or the handler (never from the body), shown with the time of day, and kept to the digits the column holds. </summary>
 [TestClass]

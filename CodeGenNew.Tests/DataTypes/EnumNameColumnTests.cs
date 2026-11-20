@@ -1,7 +1,7 @@
 using System.Data;
 using CodeGenNew.Core;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> A lookup table whose text column is called like the table (CompanyType.CompanyType) or anything else still names its enum members. </summary>
 [TestClass]

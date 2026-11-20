@@ -1,7 +1,7 @@
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Desktop;
 
 /// <summary> The controls and helpers every WinUI3 list page and dialog shares are written once by the Controls essentials group, not by the table templates. </summary>
 [TestClass]

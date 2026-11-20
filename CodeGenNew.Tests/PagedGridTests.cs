@@ -2,6 +2,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Generation;
 using CodeGenNew.TemplateEngine;
 using CodeGenNew.Tests.Web;
+using CodeGenNew.Tests.Desktop;
 
 namespace CodeGenNew.Tests;
 

@@ -3,7 +3,7 @@ using CodeGenNew.Cli;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.Desktop;
 
 /// <summary> WinUI3_DirectoryListing and the kind of template it is: one that needs no table and no database (TemplateConfig.NoDatabase). </summary>
 [TestClass]

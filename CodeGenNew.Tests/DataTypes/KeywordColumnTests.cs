@@ -1,7 +1,7 @@
 using System.Data;
 using CodeGenNew.Core;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> A column named like a C# reserved word (AdventureWorks has Product.Class) must still give code that compiles. </summary>
 [TestClass]

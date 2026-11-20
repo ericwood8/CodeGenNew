@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Desktop;
 
-namespace CodeGenNew.Tests;
+namespace CodeGenNew.Tests.DataTypes;
 
 /// <summary> A whole-number key the database does not hand out (no identity, no default) is typed by the person on a new row, like a text key, and the entity says EF Core must send it. </summary>
 [TestClass]
