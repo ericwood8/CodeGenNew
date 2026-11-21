@@ -61,6 +61,8 @@
     else
     {
         string table = Model.TableName;
+        string? groupColumn = tableGrid ? Project.GridGroupColumn(table) : null;   // GridGroupBy: the list groups its page by this column (a toggle on the toolbar)
+        bool exportAll = Project.GridExportAll(table);   // GridExportTables: an Export all button writes every matching row to a CSV file
         string title = form.Title;
         // The dialog Add and Edit open: the Detail-Master dialog when DatabaseModel.IsDetailMaster says the table has one, else the plain Detail dialog.
         string editDialog = table + (DatabaseModel.IsDetailMaster(Model, Project) ? "DetailMasterDialog" : "DetailDialog");
@@ -228,6 +230,12 @@
 <# } #>
                 <Button Content="Refresh" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnRefreshClick" />
                 <Button Content="Columns" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnColumnsClick" />
+<# if (groupColumn is not null) { #>
+                <ToggleButton x:Name="GroupToggle" Content="Group" IsChecked="True" Click="OnGroupToggled" />
+<# } #>
+<# if (exportAll) { #>
+                <Button Content="Export all" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnExportAllClick" />
+<# } #>
 <#= (partyBox ? PartyScreens.DesktopBox() : "") + (rateNames is not null ? RateScreens.DesktopBox() : "") + (taxBox ? TaxDesktopScreens.Box() : "") #><# if (softScreen) { #>
                 <ToggleButton Content="Show deleted" IsChecked="{x:Bind ViewModel.ShowDeleted, Mode=TwoWay}" Click="OnShapeViewClick" />
 <# } #>
@@ -307,7 +315,7 @@
                     Background="Transparent" RightTapped="OnGridRightTapped">
                 <tv:TableView x:Name="Table" ItemsSource="{x:Bind ViewModel.Rows}" AutomationProperties.Name="<#= title.Pluralize() #>"
                               IsReadOnly="True" SelectionMode="Single" AutoGenerateColumns="False" ShowExportOptions="False"
-                              CanFilterColumns="False" CanGroupColumns="False" CanReorderColumns="False"
+                              CanFilterColumns="False" CanGroupColumns="False" CanReorderColumns="True" ColumnReordered="OnTableColumnReordered"
                               Sorting="OnTableSorting" ClearSorting="OnTableClearSorting" />
             </Border>
 
@@ -464,7 +472,7 @@ public sealed partial class <#= table #>ListPage : Page
     }
 
 <# if (tableGrid) { #>
-<#= DesktopGridColumns.TableViewPageMembers(table + "ListViewModel", actionWidth, table) #>
+<#= DesktopGridColumns.TableViewPageMembers(table + "ListViewModel", actionWidth, table, groups: groupColumn is not null) #>
 <# } else { #>
     // The sorted column's header shows an arrow after its caption.
     private void ShowSortMarks() => BuildHeader();
@@ -481,6 +489,14 @@ public sealed partial class <#= table #>ListPage : Page
 
 <# } #>
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();
+<# if (groupColumn is not null) { #>
+
+<#= DesktopGridExtras.GroupMembers(table + "ListRow", groupColumn, false) #>
+<# } #>
+<# if (exportAll) { #>
+
+<#= DesktopGridExtras.ExportPageMembers(title.Pluralize(), false) #>
+<# } #>
 
 <#= (partyBox ? PartyScreens.DesktopHandlers().TrimEnd('\n') + "\n" : "") + (rateNames is not null ? RateScreens.DesktopHandlers() : "") + (taxBox ? TaxDesktopScreens.Handlers() : "") #>
 <# if (!logOnly) { #>
@@ -1250,6 +1266,9 @@ public partial class <#= table #>ListViewModel : ViewModelBase
 <#
         }
 #>
+<# if (exportAll) { #>
+<#= DesktopGridExtras.ExportViewModelMembers #>
+<# } #>
     /// <summary> The person picked another page size under the grid: the first page is read again with it. </summary>
     public async Task ChangePageSizeAsync(int size)
     {

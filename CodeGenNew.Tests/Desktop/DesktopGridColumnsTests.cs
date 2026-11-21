@@ -239,7 +239,7 @@ public class DesktopGridColumnsTests
         string members = DesktopGridColumns.ViewModelMembers(ChosenGridColumns.For(FormModel.For(table, Project())));
 
         Expect.Contains(members, "public static readonly GridColumnInfo[] OfferedColumns =");
-        Expect.Contains(members, "public IReadOnlyList<GridColumnInfo> ShownColumns => OfferedColumns.Where(c => IsShown(c.Name)).ToList();");
+        Expect.Contains(members, "public IReadOnlyList<GridColumnInfo> ShownColumns => _chosenColumns.Where(IsShown).Select(n => OfferedColumns[Array.IndexOf(OfferedNames, n)]).ToList();");
         Expect.Contains(members, "private List<string> VisibleCells(List<string> cells)");
         Expect.DoesNotContain(members, "--");
     }

@@ -32,7 +32,7 @@ public static class GridColumnStore
         System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? "App",
         "GridColumns.json");
 
-    /// <summary> The columns a grid shows: the saved ones the table still offers (in the table's order), or the starting columns when nothing valid was saved. </summary>
+    /// <summary> The columns a grid shows: the saved ones the table still offers, in the order they were saved (a person can drag a column to another place), or the starting columns when nothing valid was saved. </summary>
     public static List<string> Load(string gridKey, IReadOnlyList<string> offered, IReadOnlyList<string> initial)
     {
         lock (Gate)
@@ -40,7 +40,7 @@ public static class GridColumnStore
             var saved = ReadAll().GetValueOrDefault(gridKey);
             if (saved is null)
                 return [.. initial];
-            var kept = offered.Where(saved.Contains).ToList();
+            var kept = saved.Where(offered.Contains).Distinct().ToList();
             return kept.Count > 0 ? kept : [.. initial];
         }
     }
@@ -73,14 +73,27 @@ public static class GridColumnStore
         }
     }
 
-    /// <summary> The choice after one column is ticked or cleared: the table's order is kept, and the last shown column cannot be cleared. </summary>
+    /// <summary> The choice after one column is ticked or cleared: the order of the shown columns is kept, a column that is ticked goes before the first shown column the table offers after it (or last),
+    /// and the last shown column cannot be cleared. </summary>
     public static List<string> Toggle(IReadOnlyList<string> chosen, IReadOnlyList<string> offered, string name)
     {
         if (!offered.Contains(name))
             return [.. chosen];
         if (chosen.Contains(name))
             return chosen.Count == 1 ? [.. chosen] : chosen.Where(n => n != name).ToList();
-        return offered.Where(n => n == name || chosen.Contains(n)).ToList();
+        var next = chosen.ToList();
+        var order = offered.ToList();
+        int position = next.FindIndex(n => order.IndexOf(n) > order.IndexOf(name));
+        next.Insert(position < 0 ? next.Count : position, name);
+        return next;
+    }
+
+    /// <summary> The choice after a column was dragged: the shown columns in the order the grid now has them. A shown column the order leaves out goes last; a name that is not shown is ignored. </summary>
+    public static List<string> Reorder(IReadOnlyList<string> chosen, IReadOnlyList<string> order)
+    {
+        var next = order.Where(chosen.Contains).Distinct().ToList();
+        next.AddRange(chosen.Where(n => !next.Contains(n)));
+        return next;
     }
 
     /// <summary> A long or multi-line text as a grid cell shows it: the first characters, then three dots. </summary>
@@ -263,10 +276,18 @@ public sealed class GridCells : Grid
         L("    /// <summary> The last shown column cannot be hidden: a grid with no column shows nothing to open a row from. </summary>");
         L("    public bool IsLastColumn(string name) => _chosenColumns.Count == 1 && _chosenColumns[0] == name;");
         L();
-        L("    public IReadOnlyList<GridColumnInfo> ShownColumns => OfferedColumns.Where(c => IsShown(c.Name)).ToList();");
+        L("    /// <summary> The shown columns in the order the person chose (a dragged column keeps its new place). </summary>");
+        L("    public IReadOnlyList<GridColumnInfo> ShownColumns => _chosenColumns.Where(IsShown).Select(n => OfferedColumns[Array.IndexOf(OfferedNames, n)]).ToList();");
         L();
         L("    /// <summary> Shows or hides a column and keeps the choice. The caller reloads (page 1). </summary>");
         L("    public void ToggleColumn(string name) => ChooseColumns(GridColumnStore.Toggle(_chosenColumns, OfferedNames, name));");
+        L();
+        L("    /// <summary> Keeps the order the grid now has. The caller reads the page again (the same page) and builds the columns again, so the texts of a row and the columns agree. </summary>");
+        L("    public void SetColumnOrder(IReadOnlyList<string> order)");
+        L("    {");
+        L("        _chosenColumns = GridColumnStore.Reorder(_chosenColumns, order);");
+        L("        GridColumnStore.Save(GridKey, _chosenColumns, InitialColumns);");
+        L("    }");
         L();
         L("    /// <summary> Back to the starting columns, and forget the saved choice. The caller reloads (page 1). </summary>");
         L("    public void ResetColumns() => ChooseColumns([.. InitialColumns]);");
@@ -285,8 +306,8 @@ public sealed class GridCells : Grid
         L("        PageNumber = 1;");
         L("    }");
         L();
-        L("    /// <summary> The texts of a row's shown columns, from the texts of every offered column (in the order of OfferedColumns). </summary>");
-        L("    private List<string> VisibleCells(List<string> cells) => [.. OfferedColumns.Select((c, i) => (c.Name, Text: cells[i])).Where(x => IsShown(x.Name)).Select(x => x.Text)];");
+        L("    /// <summary> The texts of a row's shown columns, in the order of ShownColumns, from the texts of every offered column (in the order of OfferedColumns). </summary>");
+        L("    private List<string> VisibleCells(List<string> cells) => [.. _chosenColumns.Where(IsShown).Select(n => cells[Array.IndexOf(OfferedNames, n)])];");
         return o.ToString();
     }
 
@@ -359,7 +380,7 @@ public sealed class GridCells : Grid
     /// <summary> The members a WinUI3 list page gains when <c>WinUI3Grid=TableView</c>, in place of <see cref="PageMembers"/>: the columns built for the shown columns (the page has <c>Table</c>, a
     /// <c>WinUI.TableView.TableView</c>, and a <c>RowActions</c> data template for the Actions column), the sort arrows, the handlers that give the sort back to the database, and the Columns menu.
     /// The database sorts, so the table's own sort never runs: <c>Sorting</c> is handled here and the arrows are set from the view model's sort. </summary>
-    public static string TableViewPageMembers(string viewModelType, string actionWidth, string gridKey) => $$"""
+    public static string TableViewPageMembers(string viewModelType, string actionWidth, string gridKey, bool groups = false) => $$"""
     // The columns: one for each shown column (its text is item N of the row's VisibleCells), then Actions. The database sorts: a header click comes back through OnTableSorting.
     private void BuildColumns()
     {
@@ -389,9 +410,23 @@ public sealed class GridCells : Grid
             Width = new GridLength({{actionWidth}}),
             CanSort = false,
             CanFilter = false,
-            CanResize = false
+            CanResize = false,
+            CanReorder = false
         });
+{{(groups ? "        ApplyGrouping();" : DesktopGridExtras.Skip)}}
         ShowSortMarks();
+    }
+
+    // A column was dragged to another place: the order is kept, then the page is read again and the columns are built again in that order (a cell's text is item N of VisibleCells,
+    // so the order of the texts and the order of the columns must agree). Actions stays last.
+    private void OnTableColumnReordered(object? sender, TableViewColumnReorderedEventArgs e)
+    {
+        ViewModel.SetColumnOrder(Table.Columns.Select(c => c.Tag as string).OfType<string>().ToList());
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await ViewModel.LoadAsync();
+            BuildColumns();
+        });
     }
 
     // The sorted column shows the table's own arrow.
@@ -436,5 +471,5 @@ public sealed class GridCells : Grid
     }
 
 {{ColumnsMenuMembers(viewModelType, "BuildColumns", "() => { ViewModel.ResetColumns(); GridWidthStore.Forget(\"" + gridKey + "\"); }")}}
-""";
+""".StripSkipped();
 }
