@@ -190,7 +190,7 @@ public static class TestJson
         L("<Project Sdk=\"Microsoft.NET.Sdk\">");
         L();
         L("  <PropertyGroup>");
-        L($"    <TargetFramework>{(stack == DesktopTestStack.WinUI3 ? DotNetTarget.Framework(project.DatabaseDialect) : "net11.0")}</TargetFramework>");
+        L($"    <TargetFramework>{(stack == DesktopTestStack.WinUI3 ? "net11.0" : "net11.0")}</TargetFramework>");
         L("    <Nullable>enable</Nullable>");
         L("    <ImplicitUsings>enable</ImplicitUsings>");
         L("    <IsPackable>false</IsPackable>");
@@ -219,7 +219,7 @@ public static class TestJson
                 var (sqlite, sqliteVersion) = EfProviderInfo.PackageVersion(SqlDialect.Sqlite);
                 L($"    <PackageReference Include=\"{sqlite}\" Version=\"{sqliteVersion}\" />");
             }
-            string configurationJson = DotNetTarget.Package(project.DatabaseDialect, "10.0.12");
+            string configurationJson = "11.0.0";
             L($"    <PackageReference Include=\"Microsoft.Extensions.Configuration.Json\" Version=\"{configurationJson}\" />");
         }
         L("  </ItemGroup>");

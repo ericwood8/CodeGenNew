@@ -22,7 +22,7 @@
     string providerName = EfProviderInfo.For(dialect).UseMethod;
     var (packageName, providerVersion) = EfProviderInfo.PackageVersion(dialect);
     string providerPackage = packageName +"\" Version=\"" + providerVersion;
-    string framework = DotNetTarget.Framework(dialect);
+    string framework = "net11.0";
     string user = Project.DatabaseUser ?? "";
     string connection = dialect switch
     {
@@ -117,9 +117,6 @@
 
   <ItemGroup>
     <PackageReference Include="<#= providerPackage #>" />
-<# if (!DotNetTarget.IsEleven(dialect)) { #>
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
-<# } #>
 <#
     if (Project.OData)
     {
@@ -130,7 +127,7 @@
     if (Project.ApiAuth)
     {
 #>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="<#= DotNetTarget.Package(dialect, "10.0.0") #>" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="11.0.0" />
 <#
     }
     if (Project.ApiValidation)
@@ -793,14 +790,14 @@ public class DatabaseHealthCheck(<#= contextName #> context) : IHealthCheck
             : HealthCheckResult.Unhealthy("The database cannot be reached.");
 }
 @@@FILE Dockerfile@@@
-FROM mcr.microsoft.com/dotnet/sdk:<#= DotNetTarget.ImageTag(dialect) #> AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 COPY <#= projectName #>.Api.csproj .
 RUN dotnet restore
 COPY . .
 RUN dotnet publish -c Release -o /app
 
-FROM mcr.microsoft.com/dotnet/aspnet:<#= DotNetTarget.ImageTag(dialect) #>
+FROM mcr.microsoft.com/dotnet/aspnet:11.0
 WORKDIR /app
 COPY <#= fromBuild #> /app .
 ENV Urls=http://+:8080 \

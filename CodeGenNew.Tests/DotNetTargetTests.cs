@@ -9,8 +9,8 @@ public sealed class DotNetTargetTests
     [DataRow("Sqlite", "net11.0", "Microsoft.EntityFrameworkCore.Sqlite\" Version=\"11.0.0")]
     [DataRow("SqlServer", "net11.0", "Microsoft.EntityFrameworkCore.SqlServer\" Version=\"11.0.0")]
     [DataRow("MySql", "net11.0", "Microting.EntityFrameworkCore.MySql\" Version=\"11.0.0")]
-    [DataRow("PostgreSql", "net10.0", "Npgsql.EntityFrameworkCore.PostgreSQL\" Version=\"10.0.0")]
-    public async Task The_api_project_targets_net11_except_over_PostgreSQL(string dialect, string framework, string provider)
+    [DataRow("PostgreSql", "net11.0", "Npgsql.EntityFrameworkCore.PostgreSQL\" Version=\"11.0.0")]
+    public async Task The_api_project_targets_net11(string dialect, string framework, string provider)
     {
         var project = ProjectSettings.FromValues(new Dictionary<string, string> { ["ProjectName"] = "Shop", ["DatabaseProvider"] = dialect });
         var result = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), project);
@@ -18,13 +18,13 @@ public sealed class DotNetTargetTests
         string text = result.GeneratedText!.ReplaceLineEndings("\n");
         Expect.Contains(text, $"<TargetFramework>{framework}</TargetFramework>");
         Expect.Contains(text, provider);
-        // the framework of .NET 11 carries the package, so a reference to it is only written for the .NET 10 output
-        Assert.AreEqual(framework == "net10.0", text.Contains("System.Security.Cryptography.Pkcs"));
+        // the framework of .NET 11 carries the package, so no reference to it is written
+        Expect.DoesNotContain(text, "System.Security.Cryptography.Pkcs");
     }
 
     [TestMethod]
     [DataRow("Sqlite", "11.0")]
-    [DataRow("PostgreSql", "10.0")]
+    [DataRow("PostgreSql", "11.0")]
     public async Task The_dockerfile_uses_the_images_of_the_target_framework(string dialect, string tag)
     {
         var project = ProjectSettings.FromValues(new Dictionary<string, string> { ["ProjectName"] = "Shop", ["DatabaseProvider"] = dialect, ["ApiProduction"] = "true" });

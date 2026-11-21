@@ -27,7 +27,7 @@ Project is actively being worked on. Issues and Pull Requests are welcomed.  We 
 
 | Dependency | Used by | Notes |
 |---|---|---|
-| [.NET 11 SDK](https://dotnet.microsoft.com/) (version 11 is required; the generated Uno project pins its `global.json` to an 11.0 SDK) | all projects, and the generated projects | Target framework (`net11.0`), and required at run time to compile templates. Generated output over PostgreSQL stays on `net10.0` with the Entity Framework Core 10 packages (the .NET 11 SDK builds it too) until Npgsql releases its Entity Framework Core 11 provider. |
+| [.NET 11 SDK](https://dotnet.microsoft.com/) (version 11 is required; the generated Uno project pins its `global.json` to an 11.0 SDK) | all projects, and the generated projects | Target framework (`net11.0`), and required at run time to compile templates. |
 | [Windows App SDK 2.7.0](https://github.com/microsoft/WindowsAppSDK) (WinUI 3) | `CodeGenNew.App` only | GUI framework, unpackaged (no MSIX); its native runtime is bundled. .NET itself is framework-dependent — see specs.md. |
 | [CommunityToolkit.Mvvm](https://www.nuget.org/packages/CommunityToolkit.Mvvm) 8.4.0 (WinUI 3) | `CodeGenNew.App` only | MVVM helpers (`[ObservableProperty]`, `[RelayCommand]`), classic backing-field style — see ARCHITECTURE.md. |
 | [Microsoft.Data.SqlClient](https://www.nuget.org/packages/Microsoft.Data.SqlClient), [Npgsql](https://www.nuget.org/packages/Npgsql), [MySqlConnector](https://www.nuget.org/packages/MySqlConnector) | `Connections`, `SchemaIntrospection` | The ADO.NET providers for SQL Server, PostgreSQL and MySQL. |

@@ -380,7 +380,7 @@ public sealed class GridCells : Grid
     /// <summary> The members a WinUI3 list page gains when <c>WinUI3Grid=TableView</c>, in place of <see cref="PageMembers"/>: the columns built for the shown columns (the page has <c>Table</c>, a
     /// <c>WinUI.TableView.TableView</c>, and a <c>RowActions</c> data template for the Actions column), the sort arrows, the handlers that give the sort back to the database, and the Columns menu.
     /// The database sorts, so the table's own sort never runs: <c>Sorting</c> is handled here and the arrows are set from the view model's sort. </summary>
-    public static string TableViewPageMembers(string viewModelType, string actionWidth, string gridKey, bool groups = false) => $$"""
+    public static string TableViewPageMembers(string viewModelType, string actionWidth, string gridKey, bool groups = false, int frozen = 0) => $$"""
     // The columns: one for each shown column (its text is item N of the row's VisibleCells), then Actions. The database sorts: a header click comes back through OnTableSorting.
     private void BuildColumns()
     {
@@ -413,6 +413,7 @@ public sealed class GridCells : Grid
             CanResize = false,
             CanReorder = false
         });
+{{(frozen > 0 ? "        Table.FrozenColumnCount = Math.Min(" + frozen + ", columns.Count);   // these columns stay in place while the others scroll sideways" : DesktopGridExtras.Skip)}}
 {{(groups ? "        ApplyGrouping();" : DesktopGridExtras.Skip)}}
         ShowSortMarks();
     }

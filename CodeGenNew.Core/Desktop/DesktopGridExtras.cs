@@ -35,6 +35,37 @@ public static class DesktopGridExtras
 
 """.StripSkipped();
 
+    /// <summary> The number columns of a table that <c>GridTotalColumns</c> names and the grid offers, as (name, caption, C# type, nullable). Other names drop out. </summary>
+    public static List<(string Name, string Caption, string Type, bool Nullable)> TotalColumns(ProjectSettings project, string table, IEnumerable<ColumnModel> offered) =>
+        [.. project.GridTotalColumns(table)
+            .Select(name => offered.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name)))
+            .OfType<ColumnModel>()
+            .Where(c => !c.IsIdentity && c.CSharpBase() is "int" or "long" or "short" or "byte" or "decimal" or "double" or "float")
+            .Select(c => (c.Name, GridCaption.For(c, Labels.Column(c.Name)), c.CSharpBase(), c.IsNullable))];
+
+    /// <summary> The line under the grid: "Page total: Quantity 12, Amount 1,234.50". </summary>
+    public const string TotalsProperty = """
+    [ObservableProperty]
+    private string _totalsText = "";
+
+""";
+
+    /// <summary> The statements that make <c>TotalsText</c> from <c>rows</c>, the rows of the page that was read, for the total columns the person has not hidden. </summary>
+    public static string TotalsLoadCode(IReadOnlyList<(string Name, string Caption, string Type, bool Nullable)> columns)
+    {
+        string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        var o = new System.Text.StringBuilder("        var totals = new List<string>();\n");
+        foreach (var c in columns)
+        {
+            string value = c.Nullable ? $"r.{c.Name} ?? 0" : $"r.{c.Name}";
+            string format = c.Type is "decimal" or "double" or "float" ? "\"N2\"" : "\"N0\"";
+            o.Append($"        if (IsShown({Quote(c.Name)}))\n");
+            o.Append($"            totals.Add({Quote(c.Caption.TrimEnd('.'))} + \" \" + rows.Sum(r => (decimal)({value})).ToString({format}));\n");
+        }
+        o.Append("        TotalsText = totals.Count == 0 ? \"\" : \"Page total: \" + string.Join(\", \", totals);\n");
+        return o.ToString();
+    }
+
     /// <summary> The view model's Export all: it reads the pages of 1000 rows through the ordinary load (so the search, the sort and the shown columns are the grid's), collects
     /// the shown cells, then reads the page that was on show again. Returns the number of rows written, or -1 when a page could not be read. </summary>
     public const string ExportViewModelMembers = """

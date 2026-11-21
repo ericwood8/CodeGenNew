@@ -107,6 +107,8 @@
         // At most 20 columns, no long text (see GridColumns for when multi-line text is let in).
         // the columns the Columns list offers (every column of the form); the grid shows the ones the person chose, starting with what GridColumns picks
         var chosen = ChosenGridColumns.For(form);
+        var totalColumns = tableGrid ? DesktopGridExtras.TotalColumns(Project, table, chosen.Offered.Select(c => c.Column)) : [];   // GridTotalColumns: a page total line under the grid
+        int frozenColumns = tableGrid ? Project.GridFrozenColumns(table) : 0;   // GridFrozenColumns: the first columns stay in place
         var shown = chosen.Offered.Select(c => c.Column).ToList();
 
         var parents = form.ParentsOf(shown);
@@ -320,6 +322,9 @@
         <Grid Grid.Row="<#= gridRow #>" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
+<# if (totalColumns.Count > 0) { #>
+                <RowDefinition Height="Auto" />
+<# } #>
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -377,8 +382,12 @@
             </Border>
 
 <# } #>
+<# if (totalColumns.Count > 0) { #>
+            <!-- The sum of the number columns of the rows on show -->
+            <TextBlock Grid.Row="1" Margin="8,0" FontWeight="Bold" Text="{x:Bind ViewModel.TotalsText, Mode=OneWay}" />
+<# } #>
             <!-- Pagination -->
-            <Border Grid.Row="1" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+            <Border Grid.Row="<#= totalColumns.Count > 0 ? 2 : 1 #>" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                     BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
                 <views:PaginationBar
                     PageLabel="{x:Bind ViewModel.PageLabel, Mode=OneWay}"
@@ -390,7 +399,7 @@
                     PageSizeChanged="OnPageSizeChanged" />
             </Border>
 
-            <views:BusyOverlay Grid.RowSpan="2" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+            <views:BusyOverlay Grid.RowSpan="<#= totalColumns.Count > 0 ? 3 : 2 #>" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
         </Grid>
     </Grid>
 </Page>
@@ -487,7 +496,7 @@ public sealed partial class <#= stemName #>ListPage : Page
     }
 
 <# if (tableGrid) { #>
-<#= DesktopGridColumns.TableViewPageMembers(stemName + "ListViewModel", actionWidth, stemName, groups: groupColumn is not null) #>
+<#= DesktopGridColumns.TableViewPageMembers(stemName + "ListViewModel", actionWidth, stemName, groups: groupColumn is not null, frozen: frozenColumns) #>
 <# } else { #>
     // The sorted column's header shows an arrow after its caption.
     private void ShowSortMarks() => BuildHeader();
@@ -1170,6 +1179,8 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
             ];
             Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= softScreen ? ", NormalVisibility = ShowDeleted ? Visibility.Collapsed : Visibility.Visible, RestoreVisibility = ShowDeleted && " + (gated ? "_api.Session.HasRole([\"" + Project.AuthAdminRole + "\"])" : "true") + " ? Visibility.Visible : Visibility.Collapsed" : "" #><#= gated ? ", WriteVisibility = WriteVisibility" : "" #><#= queue is null ? "" : $", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #><#= inbound is null ? "" : $", ProcessedVisibility = {InboundScreens.UnprocessedCs(inbound, "e", inbound.Processed.CSharpName())} ? Visibility.Visible : Visibility.Collapsed" #><#= contentShape is null ? "" : string.Concat(ContentScreens.Actions.Select(a => $", {a.Caption}Visibility = {ContentScreens.ShownCs(a, "e", contentShape.Status.CSharpName(), contentShape)}{(gated ? " && WriteVisibility == Visibility.Visible" : "")} ? Visibility.Visible : Visibility.Collapsed")) #><#= defaultRow is null ? "" : $", MakeDefaultVisibility = !e.{defaultRow.Flag.CSharpName()}{(gated ? " && WriteVisibility == Visibility.Visible" : "")} ? Visibility.Visible : Visibility.Collapsed" #> });
         }
+<# if (totalColumns.Count > 0) { #>
+<#= DesktopGridExtras.TotalsLoadCode(totalColumns) #><# } #>
 <# if (queue is not null) { #>
         await LoadStatsAsync();
 <# } #>
@@ -1451,6 +1462,9 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
 #>
 <# if (exportAll) { #>
 <#= DesktopGridExtras.ExportViewModelMembers #>
+<# } #>
+<# if (totalColumns.Count > 0) { #>
+<#= DesktopGridExtras.TotalsProperty #>
 <# } #>
     /// <summary> The person picked another page size under the grid: the first page is read again with it. </summary>
     public async Task ChangePageSizeAsync(int size)
