@@ -108,6 +108,16 @@ public class FeaturePlanAndScreensTests
     }
 
     [TestMethod]
+    public async Task The_React_app_imports_useEffect_to_read_the_flags()
+    {
+        var project = ProjectSettings.FromValues(Values(new() { ["ProjectName"] = "Acme" }));
+        var result = await Repo.Cache.RunAsync(Repo.Template("TSX_EssentialShell_v1.tt"), project);
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        Expect.Contains(result.GeneratedText!.ReplaceLineEndings("\n"), "import { useEffect, useState } from 'react';");
+    }
+
+    [TestMethod]
     public async Task A_field_a_flag_hides_is_named_by_table_column_and_flag_and_only_with_the_flag_tables()
     {
         var database = await ReadAsync();

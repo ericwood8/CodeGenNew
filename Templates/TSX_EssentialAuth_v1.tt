@@ -253,10 +253,10 @@ describe('auth', () => {
   });
 });
 @@@FILE src/<#= pagesFolder #>/LoginPage.tsx@@@
-import { <# if (tenants || people) { #>useEffect, <# } #>useState } from 'react';
-import type { FormEvent } from 'react';
+import { useActionState, <# if (tenants || people) { #>useEffect, <# } #>useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { <# if (people) { #>createFirstPerson, firstPersonOpen, <# } #>LoginError, <# if (tenants) { #>signInTenants, <# } #>useAuth } from '../<#= apiFolder #>/auth';
+import { SubmitButton } from '../<#= componentsFolder #>/SubmitButton';
 import '../<#= componentsFolder #>/auth.css';
 
 export function LoginPage() {
@@ -273,7 +273,6 @@ export function LoginPage() {
   const [tenantChoices, setTenantChoices] = useState<{ id: number; name: string }[]>([]);
 <# } #>
   const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
 
 <# if (tenants) { #>
   useEffect(() => {
@@ -291,16 +290,15 @@ export function LoginPage() {
   }, []);
 
 <# } #>
-  const signIn = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  // the form's action: React keeps it pending until the sign-in returns, and the button (useFormStatus) is off meanwhile
+  const [, signIn] = useActionState(async (_previous: null, _data: FormData): Promise<null> => {
     setMessage('');
 <# if (people) { #>
     if (first) {
-      if (password.length < <#= UserScreenPlan.MinimumPasswordLength #>) { setMessage('<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>'); return; }
-      if (password !== confirm) { setMessage('<#= UserScreenWords.PasswordsDiffer #>'); return; }
+      if (password.length < <#= UserScreenPlan.MinimumPasswordLength #>) { setMessage('<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>'); return null; }
+      if (password !== confirm) { setMessage('<#= UserScreenWords.PasswordsDiffer #>'); return null; }
     }
 <# } #>
-    setBusy(true);
     try {
 <# if (people) { #>
       if (first) {
@@ -328,10 +326,9 @@ export function LoginPage() {
       else if (error instanceof LoginError && error.status === <#= HttpStatus.Forbidden #>) setMessage('<#= TenantWords.SignInRefused #>');
 <# } #>
       else setMessage('Could not sign in right now.');
-    } finally {
-      setBusy(false);
     }
-  };
+    return null;
+  }, null);
 
   return (
     <div className="login-container">
@@ -339,7 +336,7 @@ export function LoginPage() {
 <# if (people) { #>
       {first && <p className="hint"><#= UserScreenWords.FirstPersonHint #></p>}
 <# } #>
-      <form onSubmit={signIn}>
+      <form action={signIn}>
         <div className="form-group">
           <label htmlFor="userName">User name</label>
           <input id="userName" name="userName" type="text" value={userName} onChange={(event) => setUserName(event.target.value)} autoComplete="username" required autoFocus />
@@ -367,13 +364,13 @@ export function LoginPage() {
         </div>
 <# } #>
         {message && <p className="error" role="alert">{message}</p>}
-        <button type="submit" disabled={busy || !userName || !password}><# if (people) { #>{first ? '<#= UserScreenWords.FirstPersonButton #>' : 'Sign in'}<# } else { #>Sign in<# } #></button>
+        <SubmitButton disabled={!userName || !password}><# if (people) { #>{first ? '<#= UserScreenWords.FirstPersonButton #>' : 'Sign in'}<# } else { #>Sign in<# } #></SubmitButton>
       </form>
     </div>
   );
 }
 @@@FILE src/<#= pagesFolder #>/__tests__/LoginPage.test.tsx@@@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginPage } from '../LoginPage';
@@ -439,6 +436,30 @@ describe('LoginPage', () => {
   it('has a general message for anything else', async () => {
     await submit(<#= HttpStatus.InternalServerError #>);
     expect(await screen.findByText('Could not sign in right now.')).toBeInTheDocument();
+  });
+
+  it('keeps the button off while the sign-in runs, so it is sent once', async () => {
+    let finish: () => void = () => {};
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => String(input).endsWith('/api/auth/login')
+      ? new Promise<Response>((resolve) => { finish = () => void answer(<#= HttpStatus.Ok #>)(input, init).then(resolve); })
+      : answer(<#= HttpStatus.Ok #>)(input, init));
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<p>home</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('User name'), { target: { value: 'pat' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
+    const button = screen.getByRole('button', { name: 'Sign in' });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/auth/login'))).toHaveLength(1);
+    await act(async () => { finish(); });
+    expect(await screen.findByText('home')).toBeInTheDocument();
   });
 <# if (people) { #>
 

@@ -67,6 +67,38 @@ public class ReactFormActionTests
         Expect.Contains(text, "SubmitButton.tsx@@@");
         Expect.Contains(text, "import { useFormStatus } from 'react-dom';");
         Expect.Contains(text, "const { pending } = useFormStatus();");
-        Expect.Contains(text, "<button type=\"submit\" disabled={pending}>{children}</button>");
+        Expect.Contains(text, "<button type=\"submit\" disabled={pending || disabled}>{children}</button>");
+    }
+
+    [TestMethod]
+    public async Task The_app_without_feature_flags_does_not_import_useEffect()
+    {
+        async Task<string> App(params (string, string)[] more)
+        {
+            var project = ProjectSettings.FromValues([new("ProjectName", "Acme"), new("Auth", "true"), new("ApiAuth", "true"), new("UserTable", "Employee"), .. more.Select(m => new KeyValuePair<string, string>(m.Item1, m.Item2))]);
+            var result = await Repo.Cache.RunAsync(Repo.Template("TSX_EssentialShell_v1.tt"), project);
+            Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+            return result.GeneratedText!.ReplaceLineEndings("\n");
+        }
+
+        string plain = await App();
+        Expect.Contains(plain, "import { useState } from 'react';");
+        Expect.DoesNotContain(plain, "useEffect");
+    }
+
+    [TestMethod]
+    public async Task The_sign_in_form_is_a_form_action_and_its_button_is_off_while_the_sign_in_runs()
+    {
+        var project = ProjectSettings.FromValues([new("ProjectName", "Acme"), new("Auth", "true"), new("ApiAuth", "true"), new("UserTable", "Employee")]);
+        var result = await Repo.Cache.RunAsync(Repo.Template("TSX_EssentialAuth_v1.tt"), project);
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!.ReplaceLineEndings("\n");
+
+        Expect.Contains(text, "const [, signIn] = useActionState(async (_previous: null, _data: FormData): Promise<null> => {");
+        Expect.Contains(text, "<form action={signIn}>");
+        Expect.Contains(text, "<SubmitButton disabled={!userName || !password}>");
+        Expect.Contains(text, "it('keeps the button off while the sign-in runs, so it is sent once'");
+        Expect.DoesNotContain(text, "onSubmit=");
+        Expect.DoesNotContain(text, "setBusy");
     }
 }

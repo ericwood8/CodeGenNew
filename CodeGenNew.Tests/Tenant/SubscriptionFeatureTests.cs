@@ -321,6 +321,10 @@ public class SubscriptionFeatureTests
         Expect.Contains(read("ProjectDetailMasterPage.tsx"), "const planDetail = (error: unknown): string =>");
         Expect.Contains(read("ProjectDetailMasterPage.tsx"), "else if (err instanceof ApiError && err.status === 402) { setError(planDetail(err)); }");
         Expect.Contains(read("MembersPage.tsx"), "error.status === 402");
+        Expect.Contains(read("MembersPage.tsx"), "<form action={addForm}>");
+        Expect.Contains(read("MembersPage.tsx"), "<SubmitButton>Add</SubmitButton>");
+        Expect.Contains(read("LoginPage.tsx"), "<form action={signIn}>");
+        Expect.DoesNotContain(read("LoginPage.tsx"), "setBusy");
     }
 
     [TestMethod]

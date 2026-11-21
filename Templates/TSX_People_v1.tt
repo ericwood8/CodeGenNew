@@ -13,6 +13,7 @@
     // ==========================================================================================
     string apiFolder = Project.ApiFolder;
     string pagesFolder = Project.PagesFolder;
+    string componentsFolder = Project.ComponentsFolder;
     var people = PeoplePlan.For(Database, Project);
     if (people is not null && Project.Auth)
     {
@@ -63,8 +64,9 @@ export const changeMemberRole = (personId: number, role: string): Promise<void> 
 
 export const removeMember = (personId: number): Promise<void> => request<void>(`<#= PeopleWords.MembersPath #>/${personId}`, { method: 'DELETE' });
 @@@FILE src/<#= pagesFolder #>/MembersPage.tsx@@@
-import { useEffect, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { ApiError } from '../<#= apiFolder #>/client';
+import { SubmitButton } from '../<#= componentsFolder #>/SubmitButton';
 import { addMember, <#= role ? "changeMemberRole, " : "" #>listCandidates, listMembers, removeMember } from '../<#= apiFolder #>/people';
 import type { Member, MemberCandidate } from '../<#= apiFolder #>/people';
 
@@ -106,7 +108,8 @@ export function MembersPage() {
     setAdding(true);
   };
 
-  const add = async () => {
+  // the form's action: React keeps it pending until the member is added, and the Add button (useFormStatus) is off meanwhile
+  const [, addForm] = useActionState(async (): Promise<null> => {
     setMessage('');
     try {
       await addMember(Number(chosen)<#= role ? ", newRole" : "" #>);
@@ -117,12 +120,13 @@ export function MembersPage() {
       if (error instanceof ApiError && error.status === <#= HttpStatus.PaymentRequired #>) {
         // the plan allows no more seats, or the subscription is paused: the API says which
         try { setMessage((JSON.parse(error.message) as { detail?: string }).detail ?? '<#= SubscriptionFeature.PausedFallback #>'); } catch { setMessage('<#= SubscriptionFeature.PausedFallback #>'); }
-        return;
+        return null;
       }
 <# } #>
       setMessage(error instanceof ApiError && error.status === <#= HttpStatus.Conflict #> ? '<#= PeopleWords.MemberExistsDetail #>' : 'Problem while adding!');
     }
-  };
+    return null;
+  }, null);
 <#
             if (role)
             {
@@ -160,7 +164,7 @@ export function MembersPage() {
       </div>
       {message && <p className="error" role="alert">{message}</p>}
       {adding && (
-        <form onSubmit={(event) => { event.preventDefault(); void add(); }}>
+        <form action={addForm}>
           <label htmlFor="memberPerson"><#= MemberWords.PersonLabel #></label>
           <select id="memberPerson" value={chosen} onChange={(event) => setChosen(event.target.value)}>
             {candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
@@ -169,7 +173,7 @@ export function MembersPage() {
           <label htmlFor="memberRole"><#= MemberWords.RoleLabel #></label>
           <input id="memberRole" type="text" value={newRole} onChange={(event) => setNewRole(event.target.value)} placeholder="<#= MemberWords.RoleHint #>" />
 <# } #>
-          <button type="submit">Add</button>
+          <SubmitButton>Add</SubmitButton>
           <button type="button" onClick={() => setAdding(false)}>Cancel</button>
         </form>
       )}

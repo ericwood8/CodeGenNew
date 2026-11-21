@@ -43,7 +43,7 @@ createRoot(document.getElementById('root')!).render(
 );
 @@@FILE src/App.tsx@@@
 <# if (Project.Auth) { #>
-import { useEffect, useState } from 'react';
+import { <# if (features) { #>useEffect, <# } #>useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { screens } from './screens';
 import { useAuth } from './<#= Project.ApiFolder #>/auth';
