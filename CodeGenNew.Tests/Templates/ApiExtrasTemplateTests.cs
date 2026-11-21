@@ -226,6 +226,22 @@ public class ApiExtrasTemplateTests
     }
 
     [TestMethod]
+    [DataRow(SqlDialect.SqlServer, "SqlServer", "DeadlockVictim => Constraint.Busy")]
+    [DataRow(SqlDialect.PostgreSql, "PostgreSql", "SerializationFailure or DeadlockDetected => Constraint.Busy")]
+    [DataRow(SqlDialect.MySql, "MySql", "LockWaitTimeout or Deadlock => Constraint.Busy")]
+    [DataRow(SqlDialect.Sqlite, "Sqlite", "Busy or BusyRecovery or BusySnapshot or BusyTimeout or Locked or LockedSharedCache => Constraint.Busy")]
+    public async Task A_write_that_met_another_writer_answers_503_with_Retry_After_instead_of_500(SqlDialect dialect, string provider, string arm)
+    {
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("DatabaseProvider", provider)));
+        Assert.IsTrue(result.Success, dialect + ": " + string.Join(" | ", result.Errors));
+        var files = GeneratedFiles.Split(result.GeneratedText!.Replace("\r\n", "\n")).ToDictionary(f => f.RelativePath, f => f.Content.Replace("\r\n", "\n"));
+        string problems = files["Problems.cs"];
+        Expect.Contains(problems, arm);
+        Expect.Contains(problems, "Constraint.Busy => Problem(StatusCodes.Status503ServiceUnavailable, \"" + ProblemTypes.DatabaseBusy + "\"");
+        Expect.Contains(problems, "http.Response.Headers.RetryAfter = \"1\";");
+    }
+
+    [TestMethod]
     public async Task Every_project_answers_errors_as_problem_details_and_a_refused_write_says_why()
     {
         foreach (var (dialect, provider, exception, value, names) in new[]

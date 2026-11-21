@@ -13,6 +13,7 @@ public static class ProblemTypes
     public const string ValueTooLong = Prefix + "value-too-long";
     public const string ValueRequired = Prefix + "value-required";
     public const string DatabaseRefused = Prefix + "database-refused";
+    public const string DatabaseBusy = Prefix + "database-busy";
     public const string ChangedByElse = Prefix + "changed-by-someone-else";
 
     // a request the API refused

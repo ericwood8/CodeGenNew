@@ -36,6 +36,8 @@ public static class ConstraintErrors
         public const int StringTruncated = 8152;
         public const int StringTruncatedWithDetail = 2628;
         public const int NullNotAllowed = 515;
+        /// <summary> The transaction was the deadlock victim: it is safe to send the request again. </summary>
+        public const int DeadlockVictim = 1205;
     }
 
     /// <summary> <c>Npgsql.PostgresException.SqlState</c>. </summary>
@@ -45,6 +47,8 @@ public static class ConstraintErrors
         public const string ForeignKeyViolation = "23503";
         public const string StringDataRightTruncation = "22001";
         public const string NotNullViolation = "23502";
+        public const string SerializationFailure = "40001";
+        public const string DeadlockDetected = "40P01";
     }
 
     /// <summary> <c>MySqlException.Number</c>. </summary>
@@ -55,6 +59,8 @@ public static class ConstraintErrors
         public const int NoReferencedRow = 1452;
         public const int DataTooLong = 1406;
         public const int ColumnCannotBeNull = 1048;
+        public const int LockWaitTimeout = 1205;
+        public const int Deadlock = 1213;
     }
 
     /// <summary> <c>SqliteException.SqliteExtendedErrorCode</c>. </summary>
@@ -64,6 +70,13 @@ public static class ConstraintErrors
         public const int PrimaryKeyConstraint = 1555;
         public const int ForeignKeyConstraint = 787;
         public const int NotNullConstraint = 1299;
+        /// <summary> SQLITE_BUSY and SQLITE_LOCKED with their extended forms: another writer holds the database; the request can be sent again. </summary>
+        public const int Busy = 5;
+        public const int BusyRecovery = 261;
+        public const int BusySnapshot = 517;
+        public const int BusyTimeout = 773;
+        public const int Locked = 6;
+        public const int LockedSharedCache = 262;
     }
 }
 

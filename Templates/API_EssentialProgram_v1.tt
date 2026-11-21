@@ -56,10 +56,12 @@
             $"private const string UniqueViolation = \"{ConstraintErrors.PostgreSql.UniqueViolation}\";",
             $"private const string ForeignKeyViolation = \"{ConstraintErrors.PostgreSql.ForeignKeyViolation}\";",
             $"private const string StringDataRightTruncation = \"{ConstraintErrors.PostgreSql.StringDataRightTruncation}\";",
-            $"private const string NotNullViolation = \"{ConstraintErrors.PostgreSql.NotNullViolation}\";"
+            $"private const string NotNullViolation = \"{ConstraintErrors.PostgreSql.NotNullViolation}\";",
+            $"private const string SerializationFailure = \"{ConstraintErrors.PostgreSql.SerializationFailure}\";",
+            $"private const string DeadlockDetected = \"{ConstraintErrors.PostgreSql.DeadlockDetected}\";"
         ],
         [
-            "UniqueViolation => Constraint.Unique,", "ForeignKeyViolation => Constraint.ForeignKey,", "StringDataRightTruncation => Constraint.TooLong,", "NotNullViolation => Constraint.Required,"
+            "UniqueViolation => Constraint.Unique,", "ForeignKeyViolation => Constraint.ForeignKey,", "StringDataRightTruncation => Constraint.TooLong,", "NotNullViolation => Constraint.Required,", "SerializationFailure or DeadlockDetected => Constraint.Busy,"
         ]),
         SqlDialect.MySql => ("MySqlConnector.MySqlException database", "database.Number",
         [
@@ -67,20 +69,28 @@
             $"private const int RowIsReferenced = {ConstraintErrors.MySql.RowIsReferenced};",
             $"private const int NoReferencedRow = {ConstraintErrors.MySql.NoReferencedRow};",
             $"private const int DataTooLong = {ConstraintErrors.MySql.DataTooLong};",
-            $"private const int ColumnCannotBeNull = {ConstraintErrors.MySql.ColumnCannotBeNull};"
+            $"private const int ColumnCannotBeNull = {ConstraintErrors.MySql.ColumnCannotBeNull};",
+            $"private const int LockWaitTimeout = {ConstraintErrors.MySql.LockWaitTimeout};",
+            $"private const int Deadlock = {ConstraintErrors.MySql.Deadlock};"
         ],
         [
-            "DuplicateEntry => Constraint.Unique,", "RowIsReferenced or NoReferencedRow => Constraint.ForeignKey,", "DataTooLong => Constraint.TooLong,", "ColumnCannotBeNull => Constraint.Required,"
+            "DuplicateEntry => Constraint.Unique,", "RowIsReferenced or NoReferencedRow => Constraint.ForeignKey,", "DataTooLong => Constraint.TooLong,", "ColumnCannotBeNull => Constraint.Required,", "LockWaitTimeout or Deadlock => Constraint.Busy,"
         ]),
         SqlDialect.Sqlite => ("Microsoft.Data.Sqlite.SqliteException database", "database.SqliteExtendedErrorCode",
         [
             $"private const int UniqueConstraint = {ConstraintErrors.Sqlite.UniqueConstraint};",
             $"private const int PrimaryKeyConstraint = {ConstraintErrors.Sqlite.PrimaryKeyConstraint};",
             $"private const int ForeignKeyConstraint = {ConstraintErrors.Sqlite.ForeignKeyConstraint};",
-            $"private const int NotNullConstraint = {ConstraintErrors.Sqlite.NotNullConstraint};"
+            $"private const int NotNullConstraint = {ConstraintErrors.Sqlite.NotNullConstraint};",
+            $"private const int Busy = {ConstraintErrors.Sqlite.Busy};",
+            $"private const int BusyRecovery = {ConstraintErrors.Sqlite.BusyRecovery};",
+            $"private const int BusySnapshot = {ConstraintErrors.Sqlite.BusySnapshot};",
+            $"private const int BusyTimeout = {ConstraintErrors.Sqlite.BusyTimeout};",
+            $"private const int Locked = {ConstraintErrors.Sqlite.Locked};",
+            $"private const int LockedSharedCache = {ConstraintErrors.Sqlite.LockedSharedCache};"
         ],
         [
-            "UniqueConstraint or PrimaryKeyConstraint => Constraint.Unique,", "ForeignKeyConstraint => Constraint.ForeignKey,", "NotNullConstraint => Constraint.Required,"
+            "UniqueConstraint or PrimaryKeyConstraint => Constraint.Unique,", "ForeignKeyConstraint => Constraint.ForeignKey,", "NotNullConstraint => Constraint.Required,", "Busy or BusyRecovery or BusySnapshot or BusyTimeout or Locked or LockedSharedCache => Constraint.Busy,"
         ]),
         _ => ("Microsoft.Data.SqlClient.SqlException database", "database.Number",
         [
@@ -89,10 +99,11 @@
             $"private const int ForeignKeyViolation = {ConstraintErrors.SqlServer.ForeignKey};",
             $"private const int StringTruncated = {ConstraintErrors.SqlServer.StringTruncated};",
             $"private const int StringTruncatedWithDetail = {ConstraintErrors.SqlServer.StringTruncatedWithDetail};",
-            $"private const int NullNotAllowed = {ConstraintErrors.SqlServer.NullNotAllowed};"
+            $"private const int NullNotAllowed = {ConstraintErrors.SqlServer.NullNotAllowed};",
+            $"private const int DeadlockVictim = {ConstraintErrors.SqlServer.DeadlockVictim};"
         ],
         [
-            "UniqueConstraint or UniqueIndex => Constraint.Unique,", "ForeignKeyViolation => Constraint.ForeignKey,", "StringTruncated or StringTruncatedWithDetail => Constraint.TooLong,", "NullNotAllowed => Constraint.Required,"
+            "UniqueConstraint or UniqueIndex => Constraint.Unique,", "ForeignKeyViolation => Constraint.ForeignKey,", "StringTruncated or StringTruncatedWithDetail => Constraint.TooLong,", "NullNotAllowed => Constraint.Required,", "DeadlockVictim => Constraint.Busy,"
         ])
     };
     string errorConstants = string.Join("\n", errors.Constants.Select(c => "    " + c));
@@ -372,7 +383,7 @@ namespace <#= apiNamespace #>;
 /// </summary>
 public static partial class ApiProblems
 {
-    private enum Constraint { Unique, ForeignKey, TooLong, Required }
+    private enum Constraint { Unique, ForeignKey, TooLong, Required, Busy }
 
     // The numbers <#= dialect #> raises for a refused write, read from the provider's exception.
 <#= errorConstants #>
@@ -410,6 +421,7 @@ public static partial class ApiProblems
             Constraint.ForeignKey when removing => Problem(StatusCodes.Status409Conflict, "<#= ProblemTypes.InUse #>", "In use", $"The {table} cannot be removed because other rows use it."),
             Constraint.ForeignKey => Problem(StatusCodes.Status400BadRequest, "<#= ProblemTypes.RelatedRowMissing #>", "Related row missing", $"The {table} names a row that does not exist."),
             Constraint.TooLong => Problem(StatusCodes.Status400BadRequest, "<#= ProblemTypes.ValueTooLong #>", "Value too long", $"A value is too long for the {table}."),
+            Constraint.Busy => Problem(StatusCodes.Status503ServiceUnavailable, "<#= ProblemTypes.DatabaseBusy #>", "The database is busy", "Another change held the database at the same moment. Send the request again."),
             Constraint.Required => Problem(StatusCodes.Status400BadRequest, "<#= ProblemTypes.ValueRequired #>", "Value required", $"A required value of the {table} is missing."),
             _ => Problem(StatusCodes.Status500InternalServerError, "<#= ProblemTypes.DatabaseRefused #>", "The database refused the change", "The change could not be saved.")
         };
@@ -484,6 +496,8 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problems, IHostEn
             logger.LogWarning("{Title} on {Path}: {Detail}", problem.Title, http.Request.Path, problem.Detail);
 
         http.Response.StatusCode = problem.Status!.Value;
+        if (problem.Status == StatusCodes.Status503ServiceUnavailable)
+            http.Response.Headers.RetryAfter = "1";
         return await problems.TryWriteAsync(new ProblemDetailsContext { HttpContext = http, ProblemDetails = problem, Exception = exception });
     }
 }
