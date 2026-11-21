@@ -133,6 +133,7 @@ def main():
     parser.add_argument("--requests", type=int, default=20)
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--tests", action="store_true", help="also run the generated tests of the party tables")
+    parser.add_argument("--extension", action="store_true", help="play the one-to-one extension save (Customer.CustomerProfile, ASP.NET API) of the InvoiceSystem schema instead of the party tables")
     parser.add_argument("--no-generate", action="store_true")
     parser.add_argument("--cli-dir")
     args = parser.parse_args()
@@ -148,9 +149,12 @@ def main():
 
     settings = {"ProjectName": name, "Stacks": ",".join(STACKS[s] for s in stacks), "EnumTables": "none", "AccessMode": "Ef", "DatabaseProvider": KINDS[args.kind], "DatabaseName": args.db,
                 "PartyTables": "Party:PartyIdentifier", "ApiTests": "true", "PythonTests": "true", "RustTests": "true"}
+    if args.extension:
+        del settings["PartyTables"]
+        settings.update(EditableChildren="Customer.CustomerProfile", OnlyTables="Customer,CustomerProfile,CustomerStatus")
     if args.kind != "mssql":
         settings["DatabaseUser"] = args.user or ""
-        settings["OnlyTables"] = "Party,PartyIdentifier"
+        settings.setdefault("OnlyTables", "Party,PartyIdentifier")
     if args.kind == "mysql":
         settings["NamingStyle"] = "Pascal"   # parties_mysql.sql is snake case: party_identifier is PartyIdentifier in the generated code
     for item in args.set:
@@ -161,7 +165,7 @@ def main():
         shutil.rmtree(work, ignore_errors=True)
         connect = ["--provider", KINDS[args.kind], "-S", args.host, "-d", args.db]
         if args.kind == "mssql":
-            connect += ["-E", "--schema", "party"]
+            connect += ["-E"] if args.extension else ["-E", "--schema", "party"]
         else:
             connect += ["-U", args.user or ""]
             if password:
@@ -186,7 +190,7 @@ def main():
     for stack in stacks:
         if args.tests:
             failed = tests(args, stack, work, name, password) or failed
-        failed = play(args, stack, work, password) or failed
+        failed = play(args, stack, work, password, checks=[("extension_check.py", [])] if args.extension else None) or failed
     print("output:", work)
     print("FAILED" if failed else "ALL OK")
     return 1 if failed else 0
