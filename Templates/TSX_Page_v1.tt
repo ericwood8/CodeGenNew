@@ -133,8 +133,8 @@
         bool contentScreen = TableShapes.For(Model, Project).Content is not null || TableShapes.For(Model, Project).Asset is not null;
 
         // ================= imports
-        T("import { useEffect, useRef, useState } from 'react';");
-        T("import type { FormEvent } from 'react';");
+        T(oneRow ? "import { useActionState, useEffect, useRef, useState } from 'react';" : "import { startTransition, useActionState, useEffect, useOptimistic, useRef, useState } from 'react';");
+        T($"import {{ SubmitButton }} from '../{componentsFolder}/SubmitButton';");
         T($"import {{ firstBroken, snapshotOf, type StoredValues }} from '../{componentsFolder}/storedValues';");
         T("import { useNavigate, useSearchParams } from 'react-router-dom';");
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
@@ -247,7 +247,11 @@
         }
         T();
         T($"export function {pageName}() {{");
-        if (!oneRow) T($"  const [{listName}, {setList}] = useState<{baseName}[]>([]);");
+        if (!oneRow)
+        {
+        T($"  const [{listName}, {setList}] = useState<{baseName}[]>([]);");
+        T($"  const [shownRows, hideRow] = useOptimistic({listName}, (current, id: {keyTs}) => current.filter((row) => row.{keyProp} !== id)); // a deleted row leaves the grid at once and comes back if the delete is refused");
+        }
         foreach (var p in parents)
         {
             if (Ahead(p))
@@ -257,6 +261,7 @@
         }
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
         if (softScreen || validOnScreen) T("  const [shapeView, setShapeView] = useState<'deleted' | 'validOn' | null>(null); // the dialog of the deleted rows, or of the rows valid on a day");
+        T("  const formElement = useRef<HTMLFormElement | null>(null);");
         T("  const storedValues = useRef<StoredValues | null>(null); // what the form showed when the row opened: a field still showing that is not checked again; {} on a new row, where every field is");
         if (form.Guards.Count > 0) T("  const [guards, setGuards] = useState<Record<string, boolean>>({}); // which guarded columns the signed-in person may change (GET guards)");
         // a typed key is set on a new row too, so the key can no longer say whether the row is new: `adding` does
@@ -381,7 +386,7 @@
         {
             T();
             T("  // The whole list is here: the name box and the Active only check box narrow it without another call.");
-            T($"  const visibleRows = {listName}.filter((row) => (!activeOnly || row.isActive) && (row.name ?? '').toLowerCase().includes(searchText.trim().toLowerCase()));");
+            T($"  const visibleRows = shownRows.filter((row) => (!activeOnly || row.isActive) && (row.name ?? '').toLowerCase().includes(searchText.trim().toLowerCase()));");
         }
         T();
         T("  useEffect(() => {");
@@ -437,10 +442,10 @@
         T("    }");
         T("  };");
         T();
-        T("  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {");
-        T("    event.preventDefault();");
+        T("  // the form's action: React keeps it pending until the save returns, and the Submit button (useFormStatus) is off meanwhile");
+        T("  const [, submitForm] = useActionState(async (_previous: null, _data: FormData): Promise<null> => {");
         T("    // the browser's own check is off (noValidate): it would refuse a field that still holds a stored value breaking a rule, so the form asks for the first field that changed and is invalid");
-        T("    const broken = firstBroken(event.currentTarget, storedValues.current);");
+        T("    const broken = formElement.current ? firstBroken(formElement.current, storedValues.current) : null;");
         T("    if (broken) {");
         if (tabbed)
         {
@@ -450,17 +455,18 @@
             T("      requestAnimationFrame(() => broken.reportValidity());");
         }
         else T("      broken.reportValidity();");
-        T("      return;");
+        T("      return null;");
         T("    }");
-        T("    if (selectedRow) void submit(selectedRow);");
-        T("  };");
+        T("    if (selectedRow) await submit(selectedRow);");
+        T("    return null;");
+        T("  }, null);");
         T();
         if (!oneRow)
         {
-        T($"  const remove = async (id: {keyTs}): Promise<void> => {{");
-        T("    if (!confirm('Are you sure you want to delete this?')) return;");
+        T($"  const deleteRow = async (id: {keyTs}): Promise<void> => {{");
         T("    try {");
         T($"      await {apiVar}.delete(id);");
+        T($"      {setList}((rows) => rows.filter((row) => row.{keyProp} !== id));");
         T("      load(page); // read the page again: the total, the rows that move up and the last page all change");
         T("    } catch (err) {");
         T($"      if (err instanceof ApiError && {(odata || PolymorphicPlan.RefusesDeleteOf(Model.TableName, Project) ? $"(err.status === {HttpStatus.BadRequest} || err.status === {HttpStatus.Conflict})" : $"err.status === {HttpStatus.BadRequest}")}) {{");
@@ -474,6 +480,14 @@
         T("        setError('Problem while deleting!');");
         T("      }");
         T("    }");
+        T("  };");
+        T();
+        T($"  const remove = (id: {keyTs}): void => {{");
+        T("    if (!confirm('Are you sure you want to delete this?')) return;");
+        T("    startTransition(async () => {");
+        T("      hideRow(id);");
+        T("      await deleteRow(id);");
+        T("    });");
         T("  };");
         }
         if (canClone && !oneRow)
@@ -885,7 +899,7 @@
         }
         T("        </thead>");
         T("        <tbody>");
-        T($"          {{{(nameActive ? "visibleRows" : listName)}.map(({variable}) => (");
+        T($"          {{{(nameActive ? "visibleRows" : "shownRows")}.map(({variable}) => (");
         T($"            <tr key={{{variable}.{keyProp}}}>");
         foreach (var column in columnList)
         {
@@ -937,7 +951,7 @@
         T("        </select>");
         T("      </label>");
         }
-        T($"      {{loaded && {(nameActive ? "visibleRows" : listName)}.length === 0 && <p className=\"no-rows\">Nothing found.</p>}}");
+        T($"      {{loaded && {(nameActive ? "visibleRows" : "shownRows")}.length === 0 && <p className=\"no-rows\">Nothing found.</p>}}");
         }
         T();
         // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
@@ -998,7 +1012,7 @@
             T($"            {{picture && <img src={{picture}} alt={{selectedRow.{JsonNames.Camel(dialogAsset.FileName.Name)} ?? ''}} style={{{{ maxWidth: {AssetScreens.PictureEdge}, maxHeight: {AssetScreens.PictureEdge} }}}} />}}");
             T("          </div>");
         }
-        T("          <form noValidate ref={(form) => { if (form && storedValues.current === null) storedValues.current = snapshotOf(form); }} onSubmit={handleSubmit}>");
+        T("          <form noValidate ref={(form) => { formElement.current = form; if (form && storedValues.current === null) storedValues.current = snapshotOf(form); }} action={submitForm}>");
         if (tabbed)
         {
             T("            <div role=\"tablist\">");
@@ -1244,7 +1258,7 @@
         }
         T();
         T("            <div className=\"form-buttons\">");
-        T("              " + (oneRow ? Gate("<button type=\"submit\">Submit</button>") : "<button type=\"submit\">Submit</button>"));
+        T("              " + (oneRow ? Gate("<SubmitButton>Submit</SubmitButton>") : "<SubmitButton>Submit</SubmitButton>"));
         T(oneRow ? "              <button type=\"button\" onClick={cancel}>Reload</button>" : "              <button type=\"button\" onClick={cancel}>Cancel</button>");
         T("            </div>");
         T("          </form>");

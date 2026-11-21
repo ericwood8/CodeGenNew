@@ -1808,7 +1808,7 @@ public class TemplateRenderingTests
         string tsx = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Holiday()))
             .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
 
-        Expect.Contains(tsx, "import { useEffect, useRef, useState } from 'react';");
+        Expect.Contains(tsx, "import { startTransition, useActionState, useEffect, useOptimistic, useRef, useState } from 'react';");
         Expect.Contains(tsx, "export function HolidayPage() {");
         Expect.Contains(tsx, "const [holidays, setHolidays] = useState<Holiday[]>([]);");
         Expect.Contains(tsx, "useEffect(() => {");
@@ -2060,7 +2060,7 @@ public class TemplateRenderingTests
         string page = await Render("TSX_Page_v1.tt", Sample.DepartmentTeam());
         Expect.Contains(page, "departmentTeamApi.getAll().then((result) => {");
         Expect.Contains(page, "setDepartmentTeams(result);");
-        Expect.Contains(page, "const visibleRows = departmentTeams.filter((row) => (!activeOnly || row.isActive) && (row.name ?? '').toLowerCase().includes(searchText.trim().toLowerCase()));");
+        Expect.Contains(page, "const visibleRows = shownRows.filter((row) => (!activeOnly || row.isActive) && (row.name ?? '').toLowerCase().includes(searchText.trim().toLowerCase()));");
         Expect.Contains(page, "aria-label=\"Search by Name\"");
         Expect.Contains(page, "Active only</label>");
         Expect.Contains(page, "{visibleRows.map((departmentTeam) => (");
@@ -2082,7 +2082,7 @@ public class TemplateRenderingTests
         ], childForeignKeys: [Sample.ChildForeignKey("DepartmentTeam", "DepartmentId", "DepartmentId")]);
         string detail = await Render("TSX_DetailMasterPage_v1.tt", table);
         Expect.Contains(detail, "departmentApi.getAll().then((result) => {");
-        Expect.Contains(detail, "const visibleRows = departments.filter(");
+        Expect.Contains(detail, "const visibleRows = shownRows.filter(");
         Expect.DoesNotContain(detail, "PaginationBar");
         Expect.DoesNotContain(detail, "load(page)");
         Expect.Contains(detail, "const [departmentTeamRows, setDepartmentTeamRows] = useState<any[]>([]);");   // the child grids stay

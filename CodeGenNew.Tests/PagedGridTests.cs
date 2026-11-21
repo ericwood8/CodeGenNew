@@ -84,7 +84,7 @@ public class PagedGridTests
         Expect.Contains(tsx, "const pageSizeChoices = [10, 20, 50, 100];");
         Expect.Contains(tsx, "const [pageSize, setPageSize] = useState(initialPageSize);");
         Expect.Contains(tsx, "<select value={pageSize} onChange={(event) => { const size = Number(event.target.value); setPageSize(size); load(1, filters, sort, size); }}>");
-        Expect.Contains(tsx, "{loaded && holidays.length === 0 && <p className=\"no-rows\">Nothing found.</p>}");
+        Expect.Contains(tsx, "{loaded && shownRows.length === 0 && <p className=\"no-rows\">Nothing found.</p>}");
         Expect.Contains(tsx, "setLoaded(true);");
         // PaginationBar.tsx is written once with the essentials: the page must not pass it anything the older file does not know
         Expect.DoesNotContain(tsx, "onPageSize=");

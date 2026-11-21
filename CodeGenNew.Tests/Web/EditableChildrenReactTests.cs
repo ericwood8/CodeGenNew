@@ -100,7 +100,7 @@ public class EditableChildrenReactTests
         Expect.Contains(page, "<button type=\"button\" onClick={addProjectTask}>Add Project Task</button>");
 
         // the editor is inside the form, before Submit, and the read-only grid and its "save first" note are gone
-        Assert.IsLessThan(page.IndexOf("<button type=\"submit\"", StringComparison.Ordinal), page.IndexOf("<fieldset>", StringComparison.Ordinal));
+        Assert.IsLessThan(page.IndexOf("<SubmitButton>", StringComparison.Ordinal), page.IndexOf("<fieldset>", StringComparison.Ordinal));
         Assert.IsLessThan(page.IndexOf("</form>", StringComparison.Ordinal), page.IndexOf("<fieldset>", StringComparison.Ordinal));
         foreach (string text in new[] { "Save this Project first", "projectTaskColumns", "projectTaskSort", "orderColumns", "formatChildCell", "sortRows", "editProjectTask", "deleteProjectTask" })
             Expect.DoesNotContain(page, text);

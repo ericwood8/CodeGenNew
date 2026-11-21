@@ -750,7 +750,7 @@ public class ProjectSettingsTests
         Assert.IsTrue(text.Contains("activeTab = 0") || text.Contains("setTab(0)"), "a new form opens on the Main tab");
         if (template.StartsWith("TSX"))
         {
-            Expect.Contains(text, "const broken = firstBroken(event.currentTarget, storedValues.current);");
+            Expect.Contains(text, "const broken = formElement.current ? firstBroken(formElement.current, storedValues.current) : null;");
             Expect.Contains(text, "const panel = broken.closest('[role=\"tabpanel\"]');");
         }
     }

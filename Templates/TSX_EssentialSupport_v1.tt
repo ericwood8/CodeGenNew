@@ -250,6 +250,15 @@ export function firstBroken(form: HTMLFormElement, stored: StoredValues | null):
   }
   return null;
 }
+@@@FILE src/<#= componentsFolder #>/SubmitButton.tsx@@@
+import type { ReactNode } from 'react';
+import { useFormStatus } from 'react-dom';
+
+// The Submit button of a form whose action is running: it is off until the action returns, so a second click cannot save twice.
+export function SubmitButton({ children }: { children: ReactNode }) {
+  const { pending } = useFormStatus();
+  return <button type="submit" disabled={pending}>{children}</button>;
+}
 @@@FILE src/<#= componentsFolder #>/CurrencyInput.tsx@@@
 import { useEffect, useRef, useState } from 'react';
 
