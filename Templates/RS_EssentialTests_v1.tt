@@ -96,9 +96,10 @@ pub const ADMIN_ROLE: &str = <#= Str(Project.AuthAdminRole) #>;
 <#
         }
 #>
-/// What the router answered: the status and the body as text.
+/// What the router answered: the status, the Retry-After header (when there is one) and the body as text.
 pub struct Reply {
     pub status: StatusCode,
+    pub retry_after: Option<String>,
     pub body: String,
 }
 
@@ -364,8 +365,9 @@ impl Client {
         request.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40000))));
         let response = self.router.clone().oneshot(request).await.expect("the router answers");
         let status = response.status();
+        let retry_after = response.headers().get(header::RETRY_AFTER).and_then(|value| value.to_str().ok()).map(str::to_string);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.expect("the body of the answer");
-        Reply { status, body: String::from_utf8_lossy(&bytes).into_owned() }
+        Reply { status, retry_after, body: String::from_utf8_lossy(&bytes).into_owned() }
     }
 
     pub async fn get(&self, path: &str) -> Reply {

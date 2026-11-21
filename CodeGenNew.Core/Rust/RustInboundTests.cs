@@ -123,6 +123,7 @@ async fn a_caller_over_the_limit_of_requests_a_minute_is_refused() {
     let refused = client.post_text(&path, "application/json", message(None)).await;
     clear(&api).await;
     assert!(refused.status == StatusCode::TOO_MANY_REQUESTS && refused.json()["type"].as_str().is_some_and(|text| text.ends_with("§T_RATE")), "{}", refused.body);
+    assert!(refused.retry_after.as_deref().and_then(|seconds| seconds.parse::<u32>().ok()).is_some_and(|seconds| seconds >= 1), "Retry-After: {:?}", refused.retry_after);
 }
 """";
 
