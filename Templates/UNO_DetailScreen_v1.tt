@@ -449,7 +449,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         }
 #>
 
-<#= assetDialog is not null ? AssetDialogCode.Members(Model, assetDialog, "_api." + UnoNames.ClientProperty(table)) : "" #><#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, type, "_api." + UnoNames.ClientProperty(table)) : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogMembers(form, defaultRowShape, type, "_api." + UnoNames.ClientProperty(table)) : "" #>    public <#= table #>DetailViewModel(ApiClients api, <#= type #>? editing)
+<#= assetDialog is not null ? AssetDialogCode.Members(Model, assetDialog, "_api." + UnoNames.ClientProperty(table)) : "" #><#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, type, "_api." + UnoNames.ClientProperty(table)) : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogMembers(form, defaultRowShape, type, "_api." + UnoNames.ClientProperty(table)) : "" #><#= DesktopFormXaml.RatePercentMember(form, Project) #>    public <#= table #>DetailViewModel(ApiClients api, <#= type #>? editing)
     {
         _api = api;
         _editing = editing;

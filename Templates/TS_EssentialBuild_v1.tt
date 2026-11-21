@@ -157,6 +157,12 @@
     }
   }
 }
+@@@FILE .browserslistrc@@@
+# The browsers the app is built for: the current and the previous version of each (ES2022 is the floor, as in tsconfig.json).
+last 2 Chrome versions
+last 2 Edge versions
+last 2 Firefox versions
+last 2 Safari versions
 @@@FILE tsconfig.json@@@
 /* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
 /* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */

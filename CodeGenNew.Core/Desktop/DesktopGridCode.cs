@@ -32,7 +32,7 @@ public static class DesktopGridCode
         var formColumn = form.Field(column);
         if (formColumn.IsLookupCell || formColumn.IsBooleanCell || formColumn.IsDateCell || formColumn.IsDateTimeCell)
             return false;
-        return formColumn.IsMoneyCell || formColumn.IsDecimalCell || (!TemplateHelpers.IsText(column) && (column.IsNumericColumn || column.IsIntegerColumn));
+        return formColumn.IsMoneyCell || formColumn.IsDecimalCell || formColumn.IsRateCell || (!TemplateHelpers.IsText(column) && (column.IsNumericColumn || column.IsIntegerColumn));
     }
 
     public static string CellLines(FormModel form, ProjectSettings project, ColumnModel column, bool cut = false)
@@ -60,9 +60,11 @@ public static class DesktopGridCode
             text = (nullable ? $"e.{prop} is {{ }} {varName}Money ? " : "")
                 + $"new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"{project.CurrencyCode}\") {{ IsGrouped = true, FractionDigits = {NumericClassifier.CurrencyDigits(column)} }}.FormatDouble((double){(nullable ? varName + "Money" : "e." + prop)})"
                 + (nullable ? " : \"\"" : "") + ",";
+        else if (formColumn.IsRateCell)
+            text = nullable ? $"e.{prop} is {{ }} {varName}Rate ? ({varName}Rate * 100).ToString(\"0.{new string('#', formColumn.RatePercentDecimals)}\") + \"%\" : \"\"," : $"(e.{prop} * 100).ToString(\"0.{new string('#', formColumn.RatePercentDecimals)}\") + \"%\",";
         else if (formColumn.IsDecimalCell)
             // a decimal that is not money shows two decimals, as on the web
-            text = $"e.{prop}" + (nullable ? "?.ToString(\"N2\") ?? \"\"" : ".ToString(\"N2\")") + ",";
+            text = $"e.{prop}" + (nullable ? $"?.ToString(\"N{formColumn.CellDecimals}\") ?? \"\"" : $".ToString(\"N{formColumn.CellDecimals}\")") + ",";
         else if (TemplateHelpers.IsText(column))
             text = $"e.{prop}" + (nullable ? " ?? \"\"" : "") + ",";
         else   // number or Guid

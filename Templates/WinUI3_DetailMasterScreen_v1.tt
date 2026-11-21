@@ -845,7 +845,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
             Write(FeatureScreenCode.DesktopViewModelMembers(userScreen is not null));
 #>
 
-<#= assetDialog is not null ? AssetDialogCode.Members(Model, assetDialog, null) : "" #><#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, table, null) : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogMembers(form, defaultRowShape, table, null) : "" #>    public <#= table #>DetailMasterViewModel(<#= contextType #> context, <#= table #>? editing)
+<#= assetDialog is not null ? AssetDialogCode.Members(Model, assetDialog, null) : "" #><#= contentShape is not null ? ContentScreens.DialogMembers(form, contentShape, table, null) : "" #><#= defaultRowShape is not null ? DefaultRowScreens.DialogMembers(form, defaultRowShape, table, null) : "" #><#= DesktopFormXaml.RatePercentMember(form, Project) #>    public <#= table #>DetailMasterViewModel(<#= contextType #> context, <#= table #>? editing)
     {
         _context = context;
         _repo = new <#= table #>Repo(context);

@@ -131,6 +131,8 @@ public class ColumnModel
     public bool IsMoneyCell => Cell == CellKind.Money;
     /// <summary> A grid shows the value as a decimal that is not money, with two decimals. </summary>
     public bool IsDecimalCell => Cell == CellKind.Decimal;
+    /// <summary> The decimals a decimal cell shows: two, or the column's own scale when it holds more (a rate of 0.085 is not shown as 0.09). </summary>
+    public int CellDecimals => Math.Clamp(Scale ?? 2, 2, 6);
     /// <summary> A grid shows the value as it is (text, a whole number or anything else). </summary>
     public bool IsPlainCell => Cell == CellKind.Plain;
 

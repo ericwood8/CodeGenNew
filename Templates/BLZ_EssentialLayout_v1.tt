@@ -79,6 +79,8 @@
 body { margin: 0; }
 .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
 .app.menu-closed { grid-template-columns: 1fr; }
+/* a phone-width window puts the menu above the page instead of beside it */
+@media (max-width: 640px) { .app, .app.menu-closed { grid-template-columns: minmax(0, 1fr); } .rail { border-right: 0; border-bottom: 1px solid #8884; } }
 .hamburger { padding: 4px 10px; margin-bottom: 8px; font-size: 20px; line-height: 1; background: none; border: 1px solid transparent; border-radius: 4px; color: inherit; cursor: pointer; }
 .hamburger:hover { background: #8883; }
 .rail { display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; border-right: 1px solid #8884; }
@@ -86,6 +88,8 @@ body { margin: 0; }
 .rail a.active { background: #8883; font-weight: 600; }
 main { padding: 16px 24px; }
 table { border-collapse: collapse; width: 100%; }
+/* a phone-width window scrolls a wide table inside the page instead of scrolling the whole page sideways */
+@media (max-width: 640px) { table { display: block; overflow-x: auto; } }
 th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #8884; }
 th button.sort { background: none; border: 0; color: inherit; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
 tbody tr:hover { background: #8881; }

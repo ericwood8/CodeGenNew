@@ -111,6 +111,11 @@ public sealed class FormColumn
     /// <summary> A grid shows an amount of money, with the currency. </summary>
     public bool IsMoneyCell => !IsLookupCell && !IsLogTimestamp && Column.IsMoneyCell;
     /// <summary> A grid shows a decimal that is not money, with two decimals. </summary>
+    /// <summary> The rate column of a tax line or its category: a grid shows the fraction as a percentage (0.08 as 8%). </summary>
+    public bool IsRateCell => TaxLinePlan.RateColumns(_project).Any(r => r.EqualsIgnoreCase($"{_form.Table.TableName}.{Column.Name}"));
+    /// <summary> The most decimals a percentage shows (a rate with a scale of 4 holds 0.0825, which is 8.25%). </summary>
+    public int RatePercentDecimals => Math.Max(2, (Column.Scale ?? 2) - 2);
+    public int CellDecimals => Column.CellDecimals;
     public bool IsDecimalCell => !IsLookupCell && !IsLogTimestamp && Column.IsDecimalCell;
     /// <summary> A grid shows the value as it is. </summary>
     public bool IsPlainCell => !IsLookupCell && !IsLogTimestamp && Column.IsPlainCell;

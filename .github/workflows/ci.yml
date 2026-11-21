@@ -93,6 +93,31 @@ jobs:
       - name: Walk the ${{ matrix.stack }} Expense screen of the owner-scoped schema
         run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --schema owner_scoped
 
+  # The same walk in Firefox and WebKit (the browsers Playwright ships). A failing leg reports but does not fail the build until the stacks are clean in both (item 154).
+  browser-walk-other:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [react, angular, blazor]
+        browser: [firefox, webkit]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 11.0.x
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install playwright
+      - run: playwright install --with-deps ${{ matrix.browser }}
+      - name: Walk the ${{ matrix.stack }} app in ${{ matrix.browser }}
+        run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --browser ${{ matrix.browser }} --build-cli
+
   # The Uno browser head needs the wasm-tools workload and draws on a canvas, so it is driven through its accessibility page.
   browser-walk-uno:
     runs-on: ubuntu-latest

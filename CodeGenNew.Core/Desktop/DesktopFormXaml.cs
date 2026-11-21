@@ -10,6 +10,12 @@ namespace CodeGenNew.Core.Desktop;
 /// to the view model's property of the column's name. Every dialog writes the same text from here. A guarded field is wrapped by the template around this. Twelve spaces in, whole lines. </summary>
 public static class DesktopFormXaml
 {
+    /// <summary> The view-model method the form of a table with a tax rate column binds to (four spaces in, a blank line after), so the rate reads as a percentage; empty for any other table. </summary>
+    public static string RatePercentMember(FormModel form, ProjectSettings project) =>
+        form.Columns.Any(c => form.Field(c).IsRateCell && form.Field(c).IsSystemStampField)
+            ? "    public string RatePercent(double? value) => value is { } rate ? Math.Round(rate * 100, 4).ToString(\"0.####\", System.Globalization.CultureInfo.CurrentCulture) + \"%\" : \"\";\n\n"
+            : "";
+
     /// <summary> <paramref name="withGuards"/>: a guarded column (<c>GuardedColumns</c>) is wrapped in a panel that is enabled only when the view model's <c>&lt;Column&gt;Allowed</c> is true, with the guard's sentence
     /// under it when not (the Uno dialogs read the API's guards; the WinUI3 ones have none). </summary>
     public static string Field(FormModel form, ProjectSettings project, TableModel table, ColumnModel column, bool textKey, bool withGuards = false)
@@ -93,7 +99,7 @@ public static class DesktopFormXaml
             L(I + $"<StackPanel Spacing=\"2\"{panelVisibility}>");
             L(I + $"    <TextBlock Text=\"{label}\" FontWeight=\"SemiBold\" />");
             // the default flag reads "Yes" or "No" (the view model's YesNo, written with the dialog's Make default members)
-            string shown = DefaultRowScreens.IsFlagColumn(table, project, column) ? $"ViewModel.{DefaultRowScreens.YesNoMethod}(ViewModel.{prop})" : $"ViewModel.{prop}";
+            string shown = DefaultRowScreens.IsFlagColumn(table, project, column) ? $"ViewModel.{DefaultRowScreens.YesNoMethod}(ViewModel.{prop})" : formColumn.IsRateCell ? $"ViewModel.RatePercent(ViewModel.{prop})" : $"ViewModel.{prop}";
             L(I + $"    <TextBlock Text=\"{{x:Bind {shown}, Mode=OneWay}}\" IsTextSelectionEnabled=\"True\" />");
             L(I + "</StackPanel>");
             return o.ToString();

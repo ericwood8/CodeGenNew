@@ -282,7 +282,7 @@ public class FormModelTests
     }
 
     [TestMethod]
-    public async Task The_winui3_list_shows_a_decimal_that_is_not_money_with_two_decimals_like_the_web()
+    public async Task The_winui3_list_shows_a_decimal_that_is_not_money_with_its_own_decimals_like_the_web()
     {
         var table = Sample.Table("Job",
         [
@@ -292,8 +292,8 @@ public class FormModelTests
             Sample.Column("Spare", SqlDbType.Decimal, precision: 9, scale: 3, nullable: true, ordinal: 4)
         ]);
         string list = await Rendered("WinUI3_MasterScreen_v1.tt", table, Project());
-        StringAssert.Contains(list, "e.Weight.ToString(\"N2\"),");
-        StringAssert.Contains(list, "e.Spare?.ToString(\"N2\") ?? \"\",");
+        StringAssert.Contains(list, "e.Weight.ToString(\"N3\"),");
+        StringAssert.Contains(list, "e.Spare?.ToString(\"N3\") ?? \"\",");
     }
 
     [TestMethod]

@@ -58,5 +58,6 @@ With `TenantTable` and a `TenantMembership` the same file maps, for an administr
 - `POST /api/auth/members` with `{ "personId": 3, "role": "Employee" }` adds a membership (204; 404 for an unknown person; 409 `/problems/member-exists` when the person is in the tenant already). An empty role keeps the person's own role.
 - `PUT /api/auth/members/{personId}` with `{ "role": "Auditor" }` changes the role (204; 404 for a person who is not a member). Only with a role column.
 - `DELETE /api/auth/members/{personId}` removes the membership (204; 404; 403 `/problems/member-self` for the caller's own). The person stays a row of the user table.
+- Limits: a caller cannot remove their own membership (`member-self`), but one administrator can remove another, so a tenant can end with the caller as its only administrator and no other; and two first-person requests at the same moment could both succeed, because the empty-table check and the insert are two steps.
 
 The membership and user tables are read with the query filters off, since the tenant's own filter hides everyone who belongs elsewhere, and the caller's tenant is named in every query. All three APIs have them; `Docs/Verification/Tools/first_person_check.py` plays them against a running one.

@@ -1072,7 +1072,8 @@
             else if (formColumn.IsDateCell) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
             else if (formColumn.IsDateTimeCell) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 16).replace('T', ' ')}}";
             else if (formColumn.IsMoneyCell) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
-            else if (formColumn.IsDecimalCell) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
+            else if (formColumn.IsRateCell) cell = c.IsNullable ? $"{{{prop} == null ? '' : +({prop} * 100).toFixed({formColumn.RatePercentDecimals}) + '%'}}" : $"{{+({prop} * 100).toFixed({formColumn.RatePercentDecimals})}}%";
+            else if (formColumn.IsDecimalCell) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed({formColumn.CellDecimals})}}";
             else cell = column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
             T("              " + Shown(c, $"<td>{cell}</td>"));
         }
@@ -1173,6 +1174,8 @@
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsBooleanColumn ? $"{{selectedRow.{prop} ? '{DefaultRowScreens.YesText}' : '{DefaultRowScreens.NoText}'}}" : c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
+                if (formColumn.IsRateCell)   // a tax rate is a fraction, shown as a percentage
+                    stampValue = $"{{selectedRow.{prop} == null ? '' : +(selectedRow.{prop} * 100).toFixed({formColumn.RatePercentDecimals}) + '%'}}";
                 // a row from before the stamp existed says so instead of showing nothing
                 if (form.IsGuardStamp(c))
                     stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : '{GuardStamp.NotRecorded}'}}" : $"{{selectedRow.{prop} || '{GuardStamp.NotRecorded}'}}";

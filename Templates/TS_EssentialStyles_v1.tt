@@ -17,6 +17,8 @@ body { margin: 0; }
 main { padding: 16px 24px; }
 h1 { margin-top: 0; }
 table { border-collapse: collapse; width: 100%; }
+/* a phone-width window scrolls a wide table inside the page instead of scrolling the whole page sideways */
+@media (max-width: 640px) { table { display: block; overflow-x: auto; } }
 th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #8884; }
 tbody tr:hover { background: #8881; }
 /* The Edit / Clone / Delete buttons on a grid row: shaded and bold. */

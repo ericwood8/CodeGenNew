@@ -269,7 +269,7 @@
             if (formColumn.IsDateCell) return $"{{{prop}{q}.substring(0, 10)}}";
             if (formColumn.IsDateTimeCell) return $"{{{prop}{q}.substring(0, 16).replace('T', ' ')}}";
             if (formColumn.IsMoneyCell) { int d = NumericClassifier.CurrencyDigits(c); return $"{{{prop}{q}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
-            if (formColumn.IsDecimalCell) return $"{{{prop}{q}.toFixed(2)}}";
+            if (formColumn.IsDecimalCell) return $"{{{prop}{q}.toFixed({formColumn.CellDecimals})}}";
             return cut && column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
         }
         foreach (var column in columnList)

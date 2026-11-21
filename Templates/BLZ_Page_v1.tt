@@ -237,7 +237,8 @@
             if (c.IsDateCell) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
             if (c.IsDateTimeCell) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd HH:mm\")";
             if (c.IsMoneyCell) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
-            if (c.IsDecimalCell) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N2\")";
+            if (form.Field(c).IsRateCell) return $"@({(c.IsNullable ? prop + " is null ? \"\" : " : "")}({prop}{(c.IsNullable ? ".Value" : "")} * 100).ToString(\"0.{new string('#', form.Field(c).RatePercentDecimals)}\") + \"%\")";
+            if (c.IsDecimalCell) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N{c.CellDecimals}\")";
             return $"@{prop}";
         }
 
@@ -584,6 +585,8 @@
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampText = c.IsBooleanColumn ? $"@({bind} ? \"{DefaultRowScreens.YesText}\" : \"{DefaultRowScreens.NoText}\")" : IsDate(c) ? $"@{bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\")" : $"@{bind}";
+                if (formColumn.IsRateCell)   // a tax rate is a fraction, shown as a percentage
+                    stampText = $"@({(c.IsNullable ? bind + " is null ? \"\" : " : "")}({bind}{(c.IsNullable ? ".Value" : "")} * 100).ToString(\"0.{new string('#', formColumn.RatePercentDecimals)}\") + \"%\")";
                 // a row from before the stamp existed says so instead of showing nothing
                 if (form.IsGuardStamp(c))
                     stampText = IsDate(c) ? $"@({bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\") ?? \"{GuardStamp.NotRecorded}\")" : $"@({bind} ?? \"{GuardStamp.NotRecorded}\")";

@@ -58,6 +58,18 @@ public class AngularPackageTableTests
     }
 
     [TestMethod]
+    public async Task The_angular_build_names_the_browsers_it_is_built_for_and_react_builds_for_the_same_floor()
+    {
+        var angular = await Run("TS_EssentialBuild_v1.tt");
+        foreach (string browser in new[] { "Chrome", "Edge", "Firefox", "Safari" })
+            Expect.Contains(angular[".browserslistrc"], $"last 2 {browser} versions");
+
+        var react = await Repo.Cache.RunAsync(Repo.Template("TSX_EssentialBuild_v1.tt"), ProjectSettings.FromValues([new("ProjectName", "Acme")]));
+        Assert.IsTrue(react.Success, string.Join(" | ", react.Errors));
+        Expect.Contains(react.GeneratedText!, "build: { target: 'es2022' },");
+    }
+
+    [TestMethod]
     public async Task Angular_18_gets_a_package_json_it_can_install_and_a_karma_test_builder()
     {
         var files = await Run("TS_EssentialBuild_v1.tt", ("AngularVersion", "18"));

@@ -18,7 +18,9 @@ exits 1 on a failure. Everything it started is stopped at the end; the generated
 --schema owner_scoped generates an API with sign-in (ApiAuth, Auth, the Employee user table, OData screens) over Employee and Expense, an expense belonging to the employee in EmployeeId, sets passwords for three people (ann, bob and root, the administrator) and walks the Expense screen of React, Angular, Blazor or Uno signed in as each: the sign-in page, each person's own rows only, add (not on Uno, whose calendar date picker cannot be driven), edit and delete of one's own row, a row for someone else refused (not on Uno), and the API's refusals of another person's row.
 --out <folder> uses an already generated project (the folder that holds the Api project and the frontend folder or Blazor project) instead of generating one.
 --build-cli builds the command-line tool before generating (a fresh checkout, as in CI, has not built it).
---browser chrome|msedge picks the installed browser (default chrome). Needs `pip install playwright`; no browser is downloaded.
+--browser chrome|msedge|chromium|firefox|webkit picks the browser (default chrome; chrome and msedge are the installed ones, the other three are the ones Playwright
+ships and need `playwright install firefox webkit chromium` first). Needs `pip install playwright`; the script downloads no browser. --narrow runs every walk in a phone-width window (375 x 812). --browser-path <exe> launches that executable of the chosen
+Playwright browser (an older build left in the ms-playwright folder, say) instead of the one the installed Playwright expects.
 """
 import argparse
 import json
@@ -183,6 +185,56 @@ def drive(page, prove_failure):
         page.wait_for_timeout(900)
     check("Delete removes the rows from the database", not any(r["name"].startswith("Harness") for r in regions()))
     check("the grid shows no such row", page.locator("table").first.locator("tbody tr", has_text="Harness").count() == 0)
+
+
+def drive_inputs(page, prove_failure):
+    """The date and number boxes of the Region form in this browser: what is typed into them is what the form holds, what the API stores and what Edit shows again, a cleared date
+    is stored as nothing, and the form fits the window (with --narrow, a phone width: no sideways scroll and the form inside the window)."""
+    for leftover in [r for r in regions() if r["name"].startswith("Harness")]:
+        api_send("DELETE", f"/api/regions/{leftover['regionId']}")
+    page.goto(f"{DEV}/region")
+    page.get_by_role("heading", name="Regions").wait_for(timeout=90000)
+    form = page.locator('dialog[open], [role="dialog"]')
+    page.get_by_role("button", name="Add New").click()
+    form.wait_for()
+    field(form, "Name").fill("Harness Dates")
+    field(form, "Code").fill("HD")
+    field(form, "Population").fill("2500")
+    field(form, "Founded").fill("2024-03-05")
+    check("the date and number boxes hold what was typed", field(form, "Founded").input_value() == "2024-03-05" and field(form, "Population").input_value() == "2500",
+          f"{field(form, 'Founded').input_value()!r} {field(form, 'Population').input_value()!r}")
+    box = form.bounding_box() or {"x": 0, "width": 0}
+    width = page.evaluate("window.innerWidth")
+    check("the form is inside the window", box["x"] >= -1 and box["x"] + box["width"] <= width + 1, f"form {box['x']:.0f}+{box['width']:.0f} of {width}")
+    wide = page.evaluate("""() => [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1 && e.getBoundingClientRect().width > 0)
+        .slice(0, 4).map(e => e.tagName.toLowerCase() + (e.className && typeof e.className === 'string' ? '.' + e.className : '') + ' ' + Math.round(e.getBoundingClientRect().right))""")
+    check("the page does not scroll sideways", page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), "wider than the window: " + ", ".join(wide))
+    form.get_by_role("button", name=SUBMIT).click()
+    try:
+        form.wait_for(state="hidden", timeout=4000)
+    except Exception:
+        pass
+    saved = [r for r in regions() if r["name"] == "Harness Dates"]
+    check("the date and the number reach the database", len(saved) == 1 and str(saved[0].get("founded", ""))[:10] == "2024-03-05" and saved[0]["population"] == 2500, str(saved))
+    search_box(page, "Name").fill("Harness Dates")
+    page.get_by_role("button", name="Search").click()
+    page.wait_for_timeout(700)
+    page.locator("table").first.locator("tbody tr", has_text="Harness Dates").get_by_role("button", name="Edit").click()
+    form.wait_for()
+    check("Edit shows the saved date and number", field(form, "Founded").input_value() == "2024-03-05" and field(form, "Population").input_value() == "2500",
+          f"{field(form, 'Founded').input_value()!r} {field(form, 'Population').input_value()!r}")
+    sent = []
+    page.on("response", lambda r: sent.append(f"{r.request.method} {r.status}") if r.request.method in ("PUT", "POST") and "/api/regions" in r.url else None)
+    field(form, "Founded").fill("")
+    form.get_by_role("button", name=SUBMIT).click()
+    try:
+        form.wait_for(state="hidden", timeout=4000)
+    except Exception:
+        pass
+    after = [r for r in regions() if r["name"] == "Harness Dates"]
+    check("a cleared date is stored as nothing", len(after) == 1 and not after[0].get("founded"), f"answers {sent}; {after}")
+    for r in after:
+        api_send("DELETE", f"/api/regions/{r['regionId']}")
 
 
 def api_send(method, path, body=None):
@@ -879,6 +931,8 @@ def main():
     parser.add_argument("--prove-failure", action="store_true")
     parser.add_argument("--build-cli", action="store_true", help="build the command-line tool first (a fresh checkout has not)")
     parser.add_argument("--browser", default="chrome")
+    parser.add_argument("--narrow", action="store_true", help="a phone-width window (375 x 812) for every walk")
+    parser.add_argument("--browser-path", help="the executable of a firefox, webkit or chromium build to launch")
     args = parser.parse_args()
     try:
         from playwright.sync_api import sync_playwright
@@ -921,13 +975,18 @@ def main():
         dev = subprocess.Popen(command, cwd=front, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(os.environ, NG_CLI_ANALYTICS="false"), start_new_session=os.name != "nt")
         wait_for(DEV, 240, "the dev server")
         with sync_playwright() as p:
-            browser = p.chromium.launch(channel=args.browser, headless=True)
+            if args.browser in ("chrome", "msedge"):
+                browser = p.chromium.launch(channel=args.browser, headless=True)
+            elif args.browser in ("chromium", "firefox", "webkit"):
+                browser = getattr(p, args.browser).launch(headless=True, executable_path=args.browser_path)
+            else:
+                sys.exit(f"--browser {args.browser!r} is not one of chrome, msedge, chromium, firefox, webkit")
             try:
-                page = browser.new_page()
+                page = browser.new_page(viewport={"width": 375, "height": 812}) if args.narrow else browser.new_page()
                 errors = []
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.set_default_timeout(5000)
-                walks = [drive_junction] if args.schema == "junction" else [drive_owner_uno if args.stack == "uno" else drive_owner] if args.schema == "owner_scoped" else [drive_uno, drive_uno_dropdown, drive_uno_grids] if args.stack == "uno" else [drive, drive_more]
+                walks = [drive_junction] if args.schema == "junction" else [drive_owner_uno if args.stack == "uno" else drive_owner] if args.schema == "owner_scoped" else [drive_uno, drive_uno_dropdown, drive_uno_grids] if args.stack == "uno" else [drive, drive_more, drive_inputs]
                 for walk in walks:
                     try:
                         walk(page, args.prove_failure)

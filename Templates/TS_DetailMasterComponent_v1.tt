@@ -318,7 +318,8 @@
             else if (formColumn.IsDateCell) cell = $"{{{{ {prop} | date:'MM/dd/yyyy'{dateZone} }}}}";
             else if (formColumn.IsDateTimeCell) cell = $"{{{{ {prop} | date:'MM/dd/yyyy HH:mm'{dateZone} }}}}";
             else if (formColumn.IsMoneyCell) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
-            else if (formColumn.IsDecimalCell) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
+            else if (formColumn.IsRateCell) cell = $"{{{{ {prop} == null ? '' : ({prop} * 100 | number:'1.0-{formColumn.RatePercentDecimals}') + '%' }}}}";
+            else if (formColumn.IsDecimalCell) cell = $"{{{{ {prop} | number:'1.2-{formColumn.CellDecimals}' }}}}";
             else cell = column.Cut ? $"{{{{ cut({prop}) }}}}" : $"{{{{ {prop} }}}}";
             H($"                <td{If(c)}>{cell}</td>");
         }
@@ -397,6 +398,8 @@
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsBooleanColumn ? "{{ " + model + " ? '" + DefaultRowScreens.YesText + "' : '" + DefaultRowScreens.NoText + "' }}" : c.IsDateColumn ? "{{ " + model + " | date:'medium'" + dateZone + " }}" : "{{ " + model + " }}";
+                if (formColumn.IsRateCell)   // a tax rate is a fraction, shown as a percentage
+                    stampValue = "{{ " + model + " == null ? '' : (" + model + " * 100 | number:'1.0-" + formColumn.RatePercentDecimals + "') + '%' }}";
                 // who set a guarded column and when: a row from before the stamp existed says so instead of showing nothing
                 if (form.IsGuardStamp(c))
                     stampValue = c.IsDateColumn ? "{{ " + model + " ? (" + model + " | date:'medium'" + dateZone + ") : '" + GuardStamp.NotRecorded + "' }}" : "{{ " + model + " || '" + GuardStamp.NotRecorded + "' }}";
@@ -467,7 +470,9 @@
                 string minimum = DatePairs.EndingAt(Model, Project, c) is { } endsAfter
                     ? $" [attr.min]=\"selectedRow.{JsonNames.Camel(endsAfter.Start.Name)} ? selectedRow.{JsonNames.Camel(endsAfter.Start.Name)}.substring(0, 10) : null\""
                     : "";
-                H($"                <input type=\"date\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{minimum}{req}>");
+                // a date cleared from the keyboard is "" and the API refuses it: a nullable date reads an empty box as no value
+                string binding = c.IsNullable ? $"[ngModel]=\"{model}\" (ngModelChange)=\"{model} = $event || undefined\"" : $"[(ngModel)]=\"{model}\"";
+                H($"                <input type=\"date\" id=\"{id}\" name=\"{id}\" {binding}{minimum}{req}>");
                 if (c.IsNullable)
                 {
                     H($"                <button type=\"button\" class=\"btn-action\" (click)=\"{model} = undefined\">Clear</button>");

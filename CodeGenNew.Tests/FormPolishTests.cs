@@ -178,6 +178,40 @@ public class FormPolishTests
     }
 
     [TestMethod]
+    public async Task The_web_styles_fit_a_phone_width_window()
+    {
+        const string table = "@media (max-width: 640px) { table { display: block; overflow-x: auto; } }";
+        const string menu = "@media (max-width: 640px) { .app, .app.menu-closed { grid-template-columns: minmax(0, 1fr); }";
+        string react = (await RunEssentials("TSX_EssentialStyles_v1.tt"))["index.css"];
+        string angular = (await RunEssentials("TS_EssentialStyles_v1.tt"))["styles.css"];
+        string blazor = (await RunEssentials("BLZ_EssentialLayout_v1.tt")).Single(f => f.Key.EndsWith(".css")).Value;
+
+        Expect.Contains(react, table);
+        Expect.Contains(angular, table);
+        Expect.Contains(blazor, table);
+        Expect.Contains(react, menu);
+        Expect.Contains(blazor, menu);
+    }
+
+    [TestMethod]
+    public async Task An_angular_nullable_date_box_reads_an_empty_box_as_no_value_and_keeps_its_Clear_button()
+    {
+        var table = Sample.Table("Booking",
+        [
+            Sample.Column("BookingId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Guest", SqlDbType.NVarChar, characters: 50, ordinal: 2),
+            Sample.Column("Arrival", SqlDbType.Date, ordinal: 3),
+            Sample.Column("Departure", SqlDbType.Date, nullable: true, ordinal: 4)
+        ]);
+        var files = await Run("TS_Component_v1.tt", table, Project(("AngularVersion", "22")));
+        string html = files["booking.component.html"];
+
+        Expect.Contains(html, "id=\"bookingDeparture\" name=\"bookingDeparture\" [ngModel]=\"selectedRow.departure\" (ngModelChange)=\"selectedRow.departure = $event || undefined\">");
+        Expect.Contains(html, "(click)=\"selectedRow.departure = undefined\">Clear</button>");
+        Expect.Contains(html, "id=\"bookingArrival\" name=\"bookingArrival\" [(ngModel)]=\"selectedRow.arrival\"");   // a required date has no empty value to read
+    }
+
+    [TestMethod]
     public async Task Every_stack_styles_every_button_bold()
     {
         Expect.Contains((await RunEssentials("TSX_EssentialStyles_v1.tt"))["index.css"], "button, [role='tab'] { font-weight: 700; }");

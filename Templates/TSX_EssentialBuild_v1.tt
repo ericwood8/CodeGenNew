@@ -48,6 +48,8 @@ import react from '@vitejs/plugin-react';
 // so the dev server forwards them and the browser never makes a cross-origin request.
 export default defineConfig({
   plugins: [react()],
+  // the same floor as tsconfig.json: the current and the previous version of Chrome, Edge, Firefox and Safari
+  build: { target: 'es2022' },
   server: {
     port: <#= Project.DevPort("React") #>,
     proxy: {

@@ -23,6 +23,12 @@ Project is actively being worked on. Issues and Pull Requests are welcomed.  We 
 | Linux | Supported (built and tested in CI) | Not available |
 | macOS | Supported (built and tested in CI) | Not available |
 
+## Browsers for the generated web apps
+
+The generated React, Angular and Blazor apps are built for the current and the previous version of Chrome, Edge, Firefox and Safari (React: `build.target` `es2022` in `vite.config.ts`; Angular: `.browserslistrc`; both match the `ES2022` target of `tsconfig.json`). Internet Explorer and browsers older than that are not supported. The Uno browser head needs WebAssembly and draws on a canvas, so keyboard, text selection and assistive tools behave differently; it is checked in Chrome, Edge and Firefox, and its walk has failing steps in WebKit (see below). The web pages fit a phone-width window (the menu stacks above the page and a wide table scrolls inside the page); phones themselves are not tested.
+
+`Docs/Verification/Test-FrontEndPages.py --browser chrome|msedge|chromium|firefox|webkit [--narrow]` walks a generated app in each of them, with the date and number boxes read back. React, Angular and Blazor pass the walk in Chrome and Firefox, at a normal and at a phone width (`--narrow`); React and Angular pass in WebKit too. Blazor in WebKit passes its steps but the Windows build of Playwright's WebKit has no date input (the date box reports type `text`), so a date is not stored and Blazor's own script reports `Invalid element type 'text'`; Safari itself has date inputs, and a Linux or macOS WebKit run is still to be done. Uno passes in Firefox; in Playwright's WebKit it fails four keyboard-driven steps (an empty form refused, the Customer drop-down, the first page), not investigated: the walk drives Uno by focus and keys, and WebKit moves focus differently.
+
 ## Known dependencies
 
 | Dependency | Used by | Notes |
