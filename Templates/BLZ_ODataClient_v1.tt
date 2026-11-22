@@ -60,6 +60,11 @@
             foreach (string line in TaxScreens.CsClientLines()) L(line);
             foreach (string line in TaxScreens.CsClientMethod(BlazorNames.ApiRoute(table.TableName))) L(line);
         }
+        if (AllowanceScreens.HasBox(table, Project))
+        {
+            foreach (string line in AllowanceScreens.CsClientLines()) L(line);
+            foreach (string line in AllowanceScreens.CsClientMethod(BlazorNames.ApiRoute(table.TableName))) L(line);
+        }
         L("}");
     }
     Write(o.ToString());

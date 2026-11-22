@@ -159,6 +159,24 @@
         taxCategoryTable.FieldOf(taxPlan.CategoryKey).Name, taxCategoryTable.FieldOf(taxPlan.CategoryRate).Name, taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).Name,
         taxPlan.ValidTo is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidTo).Name, taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).Annotation, FieldOf(taxPlan.Day)?.Name, FieldOf(taxPlan.Day)?.Annotation,
         FieldOf(taxPlan.Document)?.Name, taxPlan.Label is null ? null : taxCategoryTable.FieldOf(taxPlan.Label).Name);
+    // AllowanceCharges: the amount worked out from the base and the percentage (or the percentage from the amount), stored positive, and GET allowance-charge-totals
+    var allowPlan = log || tenantTable ? null : AllowanceChargePlan.For(Model, Project);   // a table with its own owner or tenant column: the totals are limited to the caller's rows
+    var allowNames = allowPlan is null || FieldOf(allowPlan.Flag) is null || FieldOf(allowPlan.Base) is null || FieldOf(allowPlan.Percent) is null || FieldOf(allowPlan.Amount) is null ? null
+        : new PythonAllowanceWriter.Names(t.Class, FieldOf(allowPlan.Flag)!.Name, FieldOf(allowPlan.Base)!.Name, FieldOf(allowPlan.Percent)!.Name, FieldOf(allowPlan.Percent)!.Annotation, FieldOf(allowPlan.Amount)!.Name,
+            FieldOf(allowPlan.Amount)!.Annotation, allowPlan.Amount.Scale ?? AllowanceChargeWords.DefaultScale, allowPlan.Percent.Scale ?? AllowanceChargeWords.DefaultScale, FieldOf(allowPlan.Document)?.Name, FieldOf(allowPlan.Line)?.Name);
+    // DocumentTotals: the header's totals are written from its lines, its tax and its allowance rows in the same flush, and GET document-totals-check lists the headers that differ
+    var totalsPlan = log || tenantTable || scoped || tenanted ? null : DocumentTotalsPlan.For(Model, Project);
+    PythonTotalsWriter.Names? totalsNames = null;
+    if (totalsPlan is not null)
+    {
+        var totalsLines = PythonTable.Of(totalsPlan.Lines, Project);
+        var totalsExtra = totalsPlan.Allowance is null ? null : PythonTable.Of(totalsPlan.Allowance.Table, Project);
+        var totalsParts = totalsPlan.Columns.Owned().Select(p => (p.Part, FieldOf(p.Column)!.Name, FieldOf(p.Column)!.Annotation, p.Column.Scale ?? DocumentTotalsWords.DefaultScale)).ToList();
+        totalsNames = new PythonTotalsWriter.Names(new PythonTotalsWriter.Table(t.Class, t.Module, key), t.Module, new PythonTotalsWriter.Table(totalsLines.Class, totalsLines.Module, totalsLines.Key.Name), totalsLines.FieldOf(totalsPlan.LineKey).Name,
+            totalsLines.FieldOf(totalsPlan.LineAmount).Name, totalsExtra is null ? null : new PythonTotalsWriter.Table(totalsExtra.Class, totalsExtra.Module, totalsExtra.Key.Name), totalsExtra?.FieldOf(totalsPlan.Allowance!.Document!).Name,
+            totalsExtra?.FieldOf(totalsPlan.Allowance!.Flag).Name, totalsExtra?.FieldOf(totalsPlan.Allowance!.Amount).Name, totalsPlan.Tax is null ? null : totalsLines.FieldOf(totalsPlan.Tax.Tax).Name,
+            totalsPlan.Columns.Prepaid is null ? null : FieldOf(totalsPlan.Columns.Prepaid)!.Name, totalsPlan.Currency is null ? null : FieldOf(totalsPlan.Currency)!.Name, totalsParts, totalsPlan.Rounds, t.Route);
+    }
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -191,7 +209,7 @@
     clonedDates.Sort(StringComparer.Ordinal);
     if (clonedDates.Count > 0)
         Line($"from datetime import {string.Join(", ", clonedDates)}");
-    if (docNames is not null || taxNames is not null)
+    if (docNames is not null || taxNames is not null || allowNames is not null || totalsNames is not null)
         Line("from decimal import ROUND_HALF_UP, Decimal");
     if (tenantTable)
         Line("from typing import Any");
@@ -202,7 +220,7 @@
         Line("from uuid import UUID, uuid4");
     else if (uuidFilter)
         Line("from uuid import UUID");
-    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter || contentNames is not null || docNames is not null || taxNames is not null)
+    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter || contentNames is not null || docNames is not null || taxNames is not null || allowNames is not null || totalsNames is not null)
         Line();
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbCastType is not null);
     var sqlalchemy = new List<string> { "select" };
@@ -210,8 +228,14 @@
         sqlalchemy.Add("or_");
     if (defNames is not null)
         sqlalchemy.Add("update as sql_update");
-    if (softNames is not null)
+    if (softNames is not null || totalsNames is not null)
         sqlalchemy.Add("event");
+    if (totalsNames is not null)
+    {
+        sqlalchemy.Add("inspect");
+        if (defNames is null)
+            sqlalchemy.Add("update as sql_update");
+    }
     if (search || userPlan is not null || nameActive is not null || idNames is not null || partyNames is not null || rateNames is not null)
         sqlalchemy.Add("func");
     bool castsLookup = t.LookupName is { } castName && castName.Annotation != "str";
@@ -220,7 +244,7 @@
         sqlalchemy.Add("cast");
         sqlalchemy.Add("String");
     }
-    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
@@ -265,6 +289,12 @@
         Line($"from app.routes.{docRateTable.Module} import find_rate");
     if (taxCategoryTable is not null)
         Line($"from app.models.{taxCategoryTable.Module} import {taxCategoryTable.Class}");
+    if (totalsNames is not null)
+    {
+        Line($"from app.models.{totalsNames.Lines.Module} import {totalsNames.Lines.Class}");
+        if (totalsNames.Extra is not null)
+            Line($"from app.models.{totalsNames.Extra.Module} import {totalsNames.Extra.Class}");
+    }
     if (ownerLink is not null)
         Line($"from app.models.{parentModule} import {parentClass}");
     Line($"from app.schemas.{t.Module} import {t.Schema}");
@@ -467,6 +497,12 @@
         Line();
         Line(PythonTaxWriter.Helper(taxNames).TrimEnd('\n'));
     }
+    if (allowNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonAllowanceWriter.Helper(allowNames).TrimEnd('\n'));
+    }
     if (snapNames is not null)
     {
         Line();
@@ -520,6 +556,19 @@
     {
         Line();
         Line(PythonTaxWriter.Route(taxNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
+        Line();
+    }
+
+    if (totalsNames is not null)
+    {
+        Line();
+        Line(PythonTotalsWriter.Route(totalsNames).TrimEnd((char)10));
+        Line();
+    }
+    if (allowNames?.Document is not null)
+    {
+        Line();
+        Line(PythonAllowanceWriter.Route(allowNames, t.Route, readDepends, userParameter, (scoped ? "    statement = only_owned(statement, user)\n" : "") + (tenanted ? TenantFilter("statement") + "\n" : "")).TrimEnd('\n'));
         Line();
     }
 
@@ -753,6 +802,8 @@
         Line("    convert_currency(session, row, None)");
     if (taxNames is not null)
         Line("    apply_tax(session, row, None)");
+    if (allowNames is not null)
+        Line("    check_allowance(row)");
     if (snapNames is not null)
         Line("    fill_snapshot(session, row, True)");
     if (defNames is not null)
@@ -893,6 +944,8 @@
         Line("    convert_currency(session, row, stored)");
     if (taxNames is not null)
         Line("    apply_tax(session, row, tax_stored)");
+    if (allowNames is not null)
+        Line("    check_allowance(row)");
     if (snapNames is not null)
         Line("    fill_snapshot(session, row, False)");
     if (tenantField is not null)
@@ -1012,6 +1065,12 @@
         if (tenanted)
             Line(TenantFilter("statement"));
         Line($"    return session.scalars(statement.order_by({OrderColumn})).all()");
+    }
+    if (totalsNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonTotalsWriter.Module(totalsNames).TrimEnd((char)10));
     }
     Write(sb.ToString());
 #>

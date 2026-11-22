@@ -70,6 +70,8 @@
             foreach (string line in RateScreens.AngularServiceLines(baseName, "restUrl")) L(line);
         if (TaxScreens.HasBox(table, Project))
             foreach (string line in TaxScreens.AngularServiceLines("restUrl")) L(line);
+        if (AllowanceScreens.HasBox(table, Project))
+            foreach (string line in AllowanceScreens.AngularServiceLines("restUrl")) L(line);
         L("}");
     }
     Write(o.ToString());

@@ -240,6 +240,8 @@
             foreach (string line in RateScreens.AngularServiceLines(baseName, "apiUrl")) L(line);
         if (TaxScreens.HasBox(Model, Project))
             foreach (string line in TaxScreens.AngularServiceLines("apiUrl")) L(line);
+        if (AllowanceScreens.HasBox(Model, Project))
+            foreach (string line in AllowanceScreens.AngularServiceLines("apiUrl")) L(line);
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             L();

@@ -282,6 +282,8 @@ public static class DefaultAssetSeeder
         "RS_TestParties_v1.tt", "RS_TestParties_v1.tt.config",
         "RS_TestRates_v1.tt", "RS_TestRates_v1.tt.config",
         "RS_TestTax_v1.tt", "RS_TestTax_v1.tt.config",
+        "RS_TestAllowance_v1.tt", "RS_TestAllowance_v1.tt.config",
+        "PY_TestAllowance_v1.tt", "PY_TestAllowance_v1.tt.config",
         "PY_TestRates_v1.tt", "PY_TestRates_v1.tt.config",
         "PY_TestTax_v1.tt", "PY_TestTax_v1.tt.config",
         "RS_TestTenants_v1.tt", "RS_TestTenants_v1.tt.config",

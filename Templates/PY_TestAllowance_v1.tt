@@ -1,0 +1,22 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestAllowance_v1.tt
+    // Generates: tests/conftest.py and tests/test_allowance.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of what PY_Routes writes for AllowanceCharges. conftest.py is the one PY_TestApprovals writes. test_allowance.py adds rows through the routes and removes them after the test, and plays
+    // the cases: the amount worked out from the base and the percentage, the percentage from the base and the amount, a negative value, a percentage with no base and a row with nothing to work from
+    // refused, and with the document part the totals of a document. The words are AllowanceChargeWords.
+    // Written only for a project with PythonTests=true and a table the tests can fill (AllowanceTestPlan); not for SQL Server.
+    // Run them with pytest from the API's folder (requirements.txt lists pytest and httpx with PythonTests=true).
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (PythonAllowanceTests.Applies(Database, Project))
+    {
+        if (!PythonRateTests.Applies(Database, Project) && !PythonRateDocumentTests.Applies(Database, Project) && !PythonTaxTests.Applies(Database, Project))
+            Write("@@@FILE tests/conftest.py@@@\n" + PythonAllowanceTests.Conftest(Project, Database.Dialect));
+        Write("@@@FILE tests/test_allowance.py@@@\n" + PythonAllowanceTests.File(Database, Project));
+    }
+#>

@@ -344,6 +344,9 @@
         bool taxBox = !oneRow && !nameActive && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate
         if (taxBox)
             foreach (string line in TaxScreens.BlazorBox()) L(line);
+        bool allowBox = !oneRow && !nameActive && AllowanceScreens.HasBox(Model, Project);   // AllowanceCharges: the allowances, the charges and the net of one document
+        if (allowBox)
+            foreach (string line in AllowanceScreens.BlazorBox()) L(line);
         if (!oneRow && !nameActive)
         {
         L();
@@ -784,6 +787,8 @@
                 L("            }");
                 if (TaxScreens.IsChild(ch.Grid.Table, ch.Grid.Link.ReferencingColumns[0], Project))
                     L(TaxScreens.BlazorChildText(ch.Var));
+                if (AllowanceScreens.IsChild(ch.Grid.Table, ch.Grid.Link.ReferencingColumns[0], Project))
+                    L(AllowanceScreens.BlazorChildText(ch.Var));
             }
             L("        }");
         }
@@ -879,6 +884,8 @@
             L($"    private List<{ch.Type}> {ch.Var}Rows = [];");
             if (!ch.IsEditable && TaxScreens.IsChild(ch.Grid.Table, ch.Grid.Link.ReferencingColumns[0], Project))
                 L(TaxScreens.BlazorChildField(ch.Var));
+            if (!ch.IsEditable && AllowanceScreens.IsChild(ch.Grid.Table, ch.Grid.Link.ReferencingColumns[0], Project))
+                L(AllowanceScreens.BlazorChildField(ch.Var));
             if (ch.IsEditable)
                 L($"    private List<{ch.Type}> {ch.Var}Edit = [];   // the {ch.Title} rows being edited in the form; sent with the row");
             foreach (var f in ch.Filters)
@@ -1429,6 +1436,8 @@
                     L($"        {ch.Var}Edit = {ch.Var}Rows.Select(r => r.Copy()).ToList();");
                 else if (TaxScreens.IsChild(ch.Grid.Table, ch.Grid.Link.ReferencingColumns[0], Project))
                     L(TaxScreens.BlazorChildLoad(ch.Var));
+                else if (AllowanceScreens.IsChild(ch.Grid.Table, ch.Grid.Link.ReferencingColumns[0], Project))
+                    L(AllowanceScreens.BlazorChildLoad(ch.Var));
             }
             L("    }");
             foreach (var ch in editableChildren)
@@ -1607,6 +1616,8 @@
             foreach (string line in RateScreens.BlazorHandlers("Client", rateHandlers)) L(line);
         if (taxBox)
             foreach (string line in TaxScreens.BlazorHandlers("Client")) L(line);
+        if (allowBox)
+            foreach (string line in AllowanceScreens.BlazorHandlers("Client")) L(line);
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             L();

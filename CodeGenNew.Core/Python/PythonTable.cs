@@ -131,7 +131,7 @@ public sealed class PythonTable
     public IReadOnlyList<PythonField> StampedOnChange { get; }
 
     /// <summary> A field the server stamps, so the request schema makes it optional. </summary>
-    public bool IsStamped(PythonField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field) || SnapshotPlan.IsOwnedColumn(_model, _project, field.Column);
+    public bool IsStamped(PythonField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field) || SnapshotPlan.IsOwnedColumn(_model, _project, field.Column) || CodeGenNew.Core.Totals.DocumentTotalsPlan.IsOwnedColumn(_model, _project, field.Column);
 
     /// <summary> The value a column has when nothing was entered, as Python writes it: <c>False</c>, <c>None</c>, <c>""</c>, <c>0</c>. </summary>
     public static string DefaultValue(ColumnModel column) =>

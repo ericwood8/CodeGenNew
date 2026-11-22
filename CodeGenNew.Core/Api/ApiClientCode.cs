@@ -1,4 +1,5 @@
 using System.Text;
+using CodeGenNew.Core.Allowance;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Rate;
@@ -207,6 +208,11 @@ public static class ApiClientCode
         {
             foreach (string line in TaxScreens.CsClientLines()) L(line);
             foreach (string line in TaxScreens.CsClientMethod("{Url}")) L(line);
+        }
+        if (AllowanceScreens.HasBox(table, project))
+        {
+            foreach (string line in AllowanceScreens.CsClientLines()) L(line);
+            foreach (string line in AllowanceScreens.CsClientMethod("{Url}")) L(line);
         }
         if (!nameActive && TableShapes.For(table, project).DefaultRow is not null)
         {

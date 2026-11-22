@@ -1399,3 +1399,16 @@ DECLARE @sql NVARCHAR(MAX) = (
     WHERE NOT EXISTS (SELECT 1 FROM sys.indexes x WHERE x.name = i.IndexName AND x.object_id = OBJECT_ID('dbo.' + i.TableName)));
 IF @sql IS NOT NULL EXEC sys.sp_executesql @sql;
 GO
+
+-- 33. Allowances (discounts) and charges (surcharges) on a document: the server works the amount out
+IF OBJECT_ID('dbo.InvoiceAllowanceCharge', 'U') IS NULL
+CREATE TABLE dbo.InvoiceAllowanceCharge (
+    InvoiceAllowanceChargeId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_InvoiceAllowanceCharge PRIMARY KEY,
+    SalesInvoiceId INT NOT NULL CONSTRAINT FK_InvoiceAllowanceCharge_SalesInvoice REFERENCES dbo.SalesInvoice (SalesInvoiceId),
+    IsCharge BIT NOT NULL CONSTRAINT DF_InvoiceAllowanceCharge_IsCharge DEFAULT 0,
+    ReasonCode VARCHAR(10) NULL,
+    BaseAmount DECIMAL(18, 2) NULL,
+    Percentage DECIMAL(9, 4) NULL,
+    Amount DECIMAL(18, 2) NOT NULL
+);
+GO

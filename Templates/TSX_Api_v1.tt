@@ -194,6 +194,12 @@
             L("  // a table of TaxLines: the tax of one document by category and rate");
             L(TaxScreens.ReactApiLine());
         }
+        if (AllowanceScreens.HasBox(Model, Project))
+        {
+            L();
+            L("  // a table of AllowanceCharges: the allowances, the charges and the net of one document");
+            L(AllowanceScreens.ReactApiLine());
+        }
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             L();

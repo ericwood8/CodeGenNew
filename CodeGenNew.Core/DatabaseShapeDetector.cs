@@ -1,3 +1,4 @@
+using CodeGenNew.Core.Allowance;
 using System.Text.RegularExpressions;
 using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Rate;
@@ -24,7 +25,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), TaxLine(table, database, project),
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
                 Approval(table, database, project), RateDocument(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
@@ -218,6 +219,32 @@ public static class DatabaseShapeDetector
             return new ShapeSuggestion("Tax lines", "TaxLines", item, problem is null, problem is null ? why : $"{why}, but {problem}");
         }
         return null;
+    }
+
+    private static readonly string[] AllowanceFlagNames = [AllowanceChargeWords.DefaultFlag, "IsAllowance", "ChargeIndicator", "IsSurcharge", "IsDiscount"];
+    private static readonly string[] AllowanceBaseNames = [AllowanceChargeWords.DefaultBase, "BasisAmount", "BaseValue"];
+    private static readonly string[] AllowancePercentNames = [AllowanceChargeWords.DefaultPercent, "PercentageRate", "Percent"];
+
+    /// <summary> A table of discounts and surcharges: a yes/no column, a base amount, a percentage and an amount, in a table whose name says allowance, charge or discount. </summary>
+    private static ShapeSuggestion? Allowance(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (AllowanceChargePlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }]
+            || !new[] { "Allowance", "Charge", "Discount" }.Any(n => table.TableName.ContainsIgnoreCase(n)))
+            return null;
+        ColumnModel? Find(string[] names, Func<ColumnModel, bool> kind) => table.Columns.FirstOrDefault(c => kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
+        var flag = Find(AllowanceFlagNames, c => !c.IsNullable && c.CSharpBase() == "bool");
+        var baseColumn = Find(AllowanceBaseNames, AllowanceChargePlan.IsFractional);
+        var percent = Find(AllowancePercentNames, AllowanceChargePlan.IsFractional);
+        var amount = Find(["Amount", "ChargeAmount", "AllowanceAmount"], c => !c.IsNullable && AllowanceChargePlan.IsFractional(c));
+        if (flag is null || baseColumn is null || percent is null || amount is null)
+            return null;
+        var document = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !f.ReferencedTable.EqualsIgnoreCase(table.TableName))
+            .Select(f => table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(f.ReferencingColumns[0]))).FirstOrDefault(c => c is { IsIntegerColumn: true } && DocumentNames.Any(n => c.Name.EqualsIgnoreCase(n)));
+        string item = $"{table.TableName}:{flag.Name}:{baseColumn.Name}:{percent.Name}:{amount.Name}" + (document is null ? "" : ":" + document.Name);
+        var listed = project.WithOverrides([new("AllowanceCharges", string.Join(",", project.AllowanceCharges.Append(item)))]);
+        string? problem = AllowanceChargePlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"AllowanceCharges: {table.TableName}", StringComparison.OrdinalIgnoreCase));
+        string why = $"{flag.Name} says charge or allowance, and {amount.Name} can be worked out from {baseColumn.Name} and {percent.Name}";
+        return new ShapeSuggestion("Allowances and charges", "AllowanceCharges", item, problem is null, problem is null ? why : $"{why}, but {problem}");
     }
 
     private static ShapeSuggestion? Snapshot(TableModel table, DatabaseModel database, ProjectSettings project)

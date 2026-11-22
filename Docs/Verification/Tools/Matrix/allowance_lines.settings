@@ -1,0 +1,8 @@
+# the allowance on a line as well as on a document: python matrix_check.py AllowanceLines --settings-file Matrix/allowance_lines.settings
+@schema=allowance_charges_lines
+@stack=api,python,rust
+AllowanceCharges=InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId:InvoiceLineId
+AccessMode=Ef
+ApiTests=true
+PythonTests=true
+RustTests=true

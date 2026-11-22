@@ -4,6 +4,7 @@ using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Totals;
 
 namespace CodeGenNew.Core.Desktop;
 
@@ -254,7 +255,7 @@ public static class DesktopFormCode
         string label = Labels.Column(column.Name);
         var table = form.Table;
         // the status and published time of a content table are shown, not edited: the routes (and the content rules before the save) own them
-        if (ContentScreens.IsStateColumn(table, project, column) || DefaultRowScreens.IsFlagColumn(table, project, column) || SnapshotPlan.IsOwnedColumn(table, project, column) || RateDocumentPlan.IsOwnedColumn(table, project, column) || TaxLinePlan.IsOwnedColumn(table, project, column))
+        if (ContentScreens.IsStateColumn(table, project, column) || DefaultRowScreens.IsFlagColumn(table, project, column) || SnapshotPlan.IsOwnedColumn(table, project, column) || RateDocumentPlan.IsOwnedColumn(table, project, column) || TaxLinePlan.IsOwnedColumn(table, project, column) || DocumentTotalsPlan.IsOwnedColumn(table, project, column))
             return "";
         var o = new StringBuilder();
         void L(string s) => o.Append("        ").Append(s).Append('\n');

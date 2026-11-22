@@ -1,0 +1,9 @@
+# the allowance and charge totals box on the list of every front end, and the generated tests of each stack: python matrix_check.py Allowance --settings-file Matrix/allowance_screens.settings (React and Angular in separate runs: allowance_react.settings and allowance_angular.settings, with --frontend)
+@schema=allowance_charges
+@stack=api,python,rust,blazor,uno,winui3
+AllowanceCharges=InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+PythonTests=true
+RustTests=true

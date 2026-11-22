@@ -1,3 +1,4 @@
+using CodeGenNew.Core.Allowance;
 using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
@@ -23,6 +24,7 @@ public static class DesktopSaveChecks
         text.Append(DesktopFormCode.SnapshotCheckLines(project, table, context));
         text.Append(RateScreens.WinUI3DocumentCheck(table, project, context));
         text.Append(TaxScreens.WinUI3Check(table, project, context));
+        text.Append(AllowanceScreens.WinUI3Check(table, project));
         text.Append(AssetDesktopCode.CheckLines(project, table, context));
         return text.ToString();
     }

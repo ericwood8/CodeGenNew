@@ -1,0 +1,9 @@
+# the same for react: python matrix_check.py AllowanceDoc --settings-file Matrix/allowance_document_react.settings --frontend
+@schema=allowance_charges_document
+@stack=react
+AllowanceCharges=InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+PythonTests=true
+RustTests=true

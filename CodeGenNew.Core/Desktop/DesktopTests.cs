@@ -2,6 +2,7 @@ using System.Text;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Totals;
 using CodeGenNew.Core.Web;
 
 namespace CodeGenNew.Core.Desktop;
@@ -101,6 +102,13 @@ public sealed class DesktopTestPlan
             string[] zeroed = [JsonNames.Camel(tax.Rate!), JsonNames.Camel(tax.Tax!)];
             members = members.Select(m => m.StartsWith(ApiSampleValues.Json(JsonNames.Camel(tax.Category!)) + ": ") ? ApiSampleValues.Json(JsonNames.Camel(tax.Category!)) + ": null"
                 : zeroed.Any(z => m.StartsWith(ApiSampleValues.Json(z) + ": ")) ? m[..(m.IndexOf(": ") + 2)] + "0" : m).ToList();
+        }
+        // DocumentTotals: a save writes the totals from the rows, so the sample header carries none and nothing prepaid, which is what a save leaves of it
+        if (DocumentTotalsPlan.Entries(project).FirstOrDefault(e => e.Table.EqualsIgnoreCase(table.TableName)) is { } totalsEntry)
+        {
+            var zeroedTotals = totalsEntry.Parts.Where(p => !p.Key.EqualsIgnoreCase(DocumentTotalsWords.TokenCurrency) && !p.Key.EqualsIgnoreCase(DocumentTotalsWords.TokenRound) && !p.Key.EqualsIgnoreCase(DocumentTotalsWords.TokenAllowance))
+                .Select(p => ApiSampleValues.Json(JsonNames.Camel(p.Value)) + ": ").ToList();
+            members = members.Select(m => zeroedTotals.Any(z => m.StartsWith(z)) ? m[..(m.IndexOf(": ") + 2)] + "0" : m).ToList();
         }
         // a row version is filled by the database, and SQLite is given the same starting value for it (TestDb), so an update finds the row it expects
         members = members.Concat(table.Columns.Where(c => c.IsRowVersionColumn).Select(c => ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + ApiSampleValues.Json(DesktopTestCode.RowVersionBase64)));

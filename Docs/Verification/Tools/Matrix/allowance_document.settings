@@ -1,0 +1,10 @@
+# the totals of a document under the allowance and charge grid of the Invoice page or dialog (Blazor, Uno, WinUI3; React and Angular in separate runs: allowance_document_react.settings and allowance_document_angular.settings, with --frontend): python matrix_check.py AllowanceDoc --settings-file Matrix/allowance_document.settings
+@schema=allowance_charges_document
+@stack=api,python,rust,blazor,uno,winui3
+AllowanceCharges=InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+DesktopTests=true
+PythonTests=true
+RustTests=true

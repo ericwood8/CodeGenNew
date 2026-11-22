@@ -231,6 +231,9 @@
         bool taxBox = !oneRow && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate, over the REST route on the OData screen too
         if (taxBox)
             foreach (string line in TaxScreens.AngularBox()) H(line);
+        bool allowBox = !oneRow && AllowanceScreens.HasBox(Model, Project);   // AllowanceCharges: the allowances, the charges and the net of one document
+        if (allowBox)
+            foreach (string line in AllowanceScreens.AngularBox()) H(line);
         if (chooseColumns)
         {
             H();
@@ -758,7 +761,7 @@
             spec.Append("    expect(component.selectedRow).not.toBeNull();\n    expect(component.adding).toBe(true);\n  });\n});\n");
         }
         else
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + (partyBox ? "\n" + PartyScreens.AngularBoxTest() : "") + (rateNames is { } rateSpec ? "\n" + RateScreens.AngularBoxTest(rateSpec) : "") + (taxBox ? "\n" + TaxScreens.AngularBoxTest() : "") + "\n});\n");
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + (partyBox ? "\n" + PartyScreens.AngularBoxTest() : "") + (rateNames is { } rateSpec ? "\n" + RateScreens.AngularBoxTest(rateSpec) : "") + (taxBox ? "\n" + TaxScreens.AngularBoxTest() : "") + (allowBox ? "\n" + AllowanceScreens.AngularBoxTest() : "") + "\n});\n");
         if (writeRoles.Count > 0 && !oneRow) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
         if (testRow is not null && !oneRow) spec.Append(testRow.AngularOpenedFromAnotherPage(title, cls));
 
@@ -1098,6 +1101,8 @@
             foreach (string line in RateScreens.AngularHandlers(rateHandlers)) T(line);
         if (taxBox)
             foreach (string line in TaxScreens.AngularHandlers()) T(line);
+        if (allowBox)
+            foreach (string line in AllowanceScreens.AngularHandlers()) T(line);
         if (TableShapes.For(Model, Project).DefaultRow is not null)
         {
             // Make default moves the mark of the row's group to this row on the server; the grid is read again.

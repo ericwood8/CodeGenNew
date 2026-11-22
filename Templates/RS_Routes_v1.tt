@@ -125,7 +125,47 @@
         taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).BaseType, taxPlan.ValidTo is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidTo).Name, taxPlan.ValidTo?.IsNullable ?? false,
         taxPlan.Day is null ? null : t.FieldOf(taxPlan.Day).Name, taxPlan.Day is null ? null : t.FieldOf(taxPlan.Day).BaseType, taxPlan.Document is null ? null : t.FieldOf(taxPlan.Document).Name,
         taxPlan.Document is null ? null : DialectInfo.For(Model.Dialect).Quote(taxPlan.Document.DbName), taxPlan.Document is null ? null : t.FieldOf(taxPlan.Document).BaseType, taxPlan.Label is null ? null : taxCategoryTable.FieldOf(taxPlan.Label).Name);
+    // AllowanceCharges: the amount worked out from the base and the percentage (or the percentage from the amount), stored positive, and GET allowance-charge-totals
+    var allowPlan = !tenantTable && !log ? AllowanceChargePlan.For(Model, Project) : null;
+    var allowNames = allowPlan is null ? null : new RustAllowanceWriter.Names(t.Struct, t.Table, t.SelectList, t.FieldOf(allowPlan.Flag).Name, t.FieldOf(allowPlan.Base).Name, t.FieldOf(allowPlan.Base).BaseType, allowPlan.Base.IsNullable,
+        t.FieldOf(allowPlan.Percent).Name, t.FieldOf(allowPlan.Percent).BaseType, allowPlan.Percent.IsNullable, t.FieldOf(allowPlan.Amount).Name, t.FieldOf(allowPlan.Amount).BaseType,
+        allowPlan.Amount.Scale ?? AllowanceChargeWords.DefaultScale, allowPlan.Percent.Scale ?? AllowanceChargeWords.DefaultScale, allowPlan.Document is null ? null : t.FieldOf(allowPlan.Document).Name,
+        allowPlan.Document is null ? null : DialectInfo.For(Model.Dialect).Quote(allowPlan.Document.DbName), allowPlan.Document is null ? null : t.FieldOf(allowPlan.Document).BaseType, allowPlan.Document?.IsNullable ?? false,
+        allowPlan.Line is null ? null : t.FieldOf(allowPlan.Line).Name, allowPlan.Line is null ? null : DialectInfo.For(Model.Dialect).Quote(allowPlan.Line.DbName), allowPlan.Line is null ? null : t.FieldOf(allowPlan.Line).BaseType, allowPlan.Line?.IsNullable ?? false);
     var docPlan = !scoped && !tenanted && !log ? RateDocumentPlan.For(Model, Project) : null;
+    // DocumentTotals: the header's totals are written from its lines, its tax and its allowance rows in the transaction of the save, and GET document-totals-check lists the headers that differ
+    RustTotalsWriter.Names? totalsNames = null;
+    RustTotalsWriter.Names? feederNames = null;
+    string totalsHeaderModule = "";
+    bool feedsLines = false;
+    if (!tenantTable && !log && !scoped && !tenanted && RatePlan.Remembered(Project) is { } totalsDatabase)
+    {
+        RustTotalsWriter.Tbl TotalsTable(RustTable x) => new RustTotalsWriter.Tbl(x.Struct, x.Module, x.Table, x.SelectList);
+        RustTotalsWriter.Field TotalsField(RustTable x, ColumnModel c) => new RustTotalsWriter.Field(x.FieldOf(c).Name, x.FieldOf(c).BaseType, x.FieldOf(c).IsOption);
+        var quote = DialectInfo.For(Model.Dialect);
+        foreach (var shape in DocumentTotalsPlan.All(Project, totalsDatabase))
+        {
+            var header = RustTable.Of(shape.Header, Project);
+            var lines = RustTable.Of(shape.Lines, Project);
+            var extra = shape.Allowance is null ? null : RustTable.Of(shape.Allowance.Table, Project);
+            var names = new RustTotalsWriter.Names(TotalsTable(header), TotalsField(header, shape.Key), quote.Quote(shape.Key.DbName), shape.Columns.Prepaid is null ? null : TotalsField(header, shape.Columns.Prepaid), shape.Currency is null ? null : TotalsField(header, shape.Currency),
+                TotalsTable(lines), quote.Quote(shape.LineKey.DbName), TotalsField(lines, shape.LineKey), TotalsField(lines, shape.LineAmount), shape.Tax is null ? null : TotalsField(lines, shape.Tax.Tax),
+                extra is null ? null : TotalsTable(extra), shape.Allowance?.Document is null ? null : quote.Quote(shape.Allowance.Document.DbName), shape.Allowance?.Document is null ? null : TotalsField(extra!, shape.Allowance.Document),
+                shape.Allowance is null ? null : TotalsField(extra!, shape.Allowance.Flag), shape.Allowance is null ? null : TotalsField(extra!, shape.Allowance.Amount),
+                shape.Columns.Owned().Select(p => (p.Part, TotalsField(header, p.Column), quote.Quote(p.Column.DbName), p.Column.Scale ?? DocumentTotalsWords.DefaultScale)).ToList(), shape.Rounds, header.Route);
+            if (shape.Header.TableName.EqualsIgnoreCase(Model.TableName))
+                totalsNames = names;
+            else if (shape.Lines.TableName.EqualsIgnoreCase(Model.TableName) || (shape.Allowance?.Table.TableName.EqualsIgnoreCase(Model.TableName) ?? false))
+            {
+                feederNames = names;
+                totalsHeaderModule = header.Module;
+                feedsLines = shape.Lines.TableName.EqualsIgnoreCase(Model.TableName);
+            }
+        }
+    }
+    string insertFn = totalsNames is not null || feederNames is not null ? "insert_with_totals" : "repo::insert";
+    string updateFn = totalsNames is not null || feederNames is not null ? "update_with_totals" : "repo::update";
+    string deleteFn = feederNames is not null ? "delete_with_totals" : "repo::delete";
     var docRateTable = docPlan is null ? null : RustTable.Of(docPlan.Rates.Table, Project);
     var docNames = docPlan is null ? null : new RustRateDocumentWriter.Names(t.Struct, t.FieldOf(docPlan.Currency).Name, t.FieldOf(docPlan.Rate).Name, t.FieldOf(docPlan.Rate).BaseType, t.FieldOf(docPlan.Amount).Name,
         t.FieldOf(docPlan.Amount).BaseType, t.FieldOf(docPlan.BaseAmount).Name, t.FieldOf(docPlan.BaseAmount).BaseType, docPlan.Day is null ? null : t.FieldOf(docPlan.Day).Name, docPlan.Day is null ? null : t.FieldOf(docPlan.Day).BaseType,
@@ -151,14 +191,14 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || taxNames?.Document is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
-    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || taxNames?.Document is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
     Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -184,6 +224,12 @@
     Line($"use crate::models::{t.Module}::{t.Struct};");
     if (docRateTable is not null)
         Line($"use crate::routes::{docRateTable.Module}::find_rate;");
+    if (totalsNames is not null)
+    {
+        Line($"use crate::models::{totalsNames.Lines.Module}::{totalsNames.Lines.Struct};");
+        if (totalsNames.Extra is not null)
+            Line($"use crate::models::{totalsNames.Extra.Module}::{totalsNames.Extra.Struct};");
+    }
     Line($"use crate::repos::{t.Module} as repo;");
     Line(log ? "use crate::support::{ApiError, ApiResult, Pool};" : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : usesDb ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
     if (validate && !log)
@@ -254,6 +300,10 @@
         sb.Append(RustRateWriter.RouteLine(t.Route, readLayer));
     if (taxNames?.Document is not null)
         sb.Append(RustTaxWriter.RouteLine(t.Route, readLayer));
+    if (allowNames?.Document is not null)
+        sb.Append(RustAllowanceWriter.RouteLine(t.Route, readLayer));
+    if (totalsNames is not null)
+        sb.Append(RustTotalsWriter.RouteLine(t.Route));
     if (contentPlan is not null)
     {
         sb.Append(RustContentWriter.StatusRouteLines(t.Route, writeLayer));
@@ -293,6 +343,15 @@
     {
         Line(RustTaxWriter.Code(taxNames));
         Line(RustTaxWriter.Subtotals(taxNames));
+    }
+    if (totalsNames is not null)
+        Line(RustTotalsWriter.Header(totalsNames));
+    if (feederNames is not null)
+        Line(RustTotalsWriter.Feeder(feederNames, feedsLines ? feederNames.Lines : feederNames.Extra!, feedsLines ? feederNames.LineKey : feederNames.ExtraDocument!, t.Key.Name, keyType, textKey ? "&id" : "id", totalsHeaderModule));
+    if (allowNames is not null)
+    {
+        Line(RustAllowanceWriter.Code(allowNames));
+        Line(RustAllowanceWriter.Totals(allowNames, scoped || tenanted ? userArgument : null, scoped || tenanted ? filterArguments : null));
     }
     if (snapNames is not null)
         Line(RustSnapshotWriter.Code(snapNames));
@@ -490,7 +549,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -563,11 +622,13 @@
         Line("    convert_currency(&pool, &mut row, None).await?;");
     if (taxNames is not null)
         Line("    apply_tax(&pool, &mut row, None).await?;");
+    if (allowNames is not null)
+        Line("    check_allowance(&mut row)?;");
     if (snapNames is not null)
         Line("    fill_snapshot(&pool, &mut row, None).await?;");
     if (defNames is not null)
         Line("    let moves_default = settle_default(&pool, None, &mut row).await?;");
-    Line(idNames is not null ? RustPartyWriter.InsertLines : rateNames is not null ? RustRateWriter.InsertLines : "    let row = repo::insert(&pool, &row).await?;");
+    Line(idNames is not null ? RustPartyWriter.InsertLines : rateNames is not null ? RustRateWriter.InsertLines : $"    let row = {insertFn}(&pool, &row).await?;");
     if (defNames is not null)
         Line($"    let row = if moves_default {{\n        move_default(&pool, &row).await?;\n        repo::get_by_id(&pool, {(textKey ? "&" : "")}row.{t.Key.Name}).await?.ok_or(ApiError::NotFound)?\n    }} else {{\n        row\n    }};");
     if (tenantTable)
@@ -617,7 +678,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -674,6 +735,8 @@
         Line($"    let tax_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
         Line("    apply_tax(&pool, &mut row, Some(&tax_stored)).await?;");
     }
+    if (allowNames is not null)
+        Line("    check_allowance(&mut row)?;");
     if (snapNames is not null)
     {
         Line($"    let snapshot_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
@@ -694,7 +757,7 @@
     else if (rateNames is not null)
         Line(RustRateWriter.UpdateLines(idArg));
     else
-    Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
+    Line($"    {updateFn}(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
     if (tenantTable)
@@ -742,7 +805,7 @@
         Line($"    match repo::soft_delete(&pool, {idArg}, Some(by.as_str())).await? {{");
     }
     else
-        Line(soft ? (t.SoftBy is not null ? $"    match repo::soft_delete(&pool, {idArg}, None).await? {{" : $"    match repo::soft_delete(&pool, {idArg}).await? {{") : $"    match repo::delete(&pool, {idArg}).await? {{");
+        Line(soft ? (t.SoftBy is not null ? $"    match repo::soft_delete(&pool, {idArg}, None).await? {{" : $"    match repo::soft_delete(&pool, {idArg}).await? {{") : $"    match {deleteFn}(&pool, {idArg}).await? {{");
     Line("        0 => Err(ApiError::NotFound),");
     if (assetPlan is not null)
     {

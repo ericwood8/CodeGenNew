@@ -118,6 +118,7 @@
         // EditableChildren: the child tables whose rows are added, changed and removed inside this form and sent with it in one request (EditableChild, the rule the API's create and update use too);
         // every other child keeps its read-only grid under the form
         var gridChildren = children.Where(g => !g.IsEditable).ToList();
+        bool allowChild(ChildGrid ch) => AllowanceScreens.IsChild(ch.Table, ch.Link.ReferencingColumns[0], Project);   // AllowanceCharges: the allowances, the charges and the net of this document under the grid
         bool taxChild(ChildGrid ch) => TaxScreens.IsChild(ch.Table, ch.Link.ReferencingColumns[0], Project);   // TaxLines: a line table of this document shows its tax by category and rate under the grid
         var editableChildren = children.Where(g => g.IsEditable).ToList();
         // FeatureFields: a cell of an editable child grid is drawn only while its flag is on; the row keeps the value
@@ -603,6 +604,8 @@
             H("            </table>");
             if (taxChild(child))
                 H(TaxScreens.AngularChildText(child.Variable));
+            if (allowChild(child))
+                H(AllowanceScreens.AngularChildText(child.Variable));
             H($"            <ul *ngIf=\"childSortMenu && childSortMenu.child === '{child.Variable}'\" class=\"sort-menu\" role=\"menu\" [style.left.px]=\"childSortMenu.x\" [style.top.px]=\"childSortMenu.y\">");
             H($"                <li role=\"none\"><button type=\"button\" role=\"menuitem\" [disabled]=\"!childSorts['{child.Variable}']\" (click)=\"clearChildSort('{child.Variable}')\">Clear sort</button></li>");
             H("            </ul>");
@@ -995,6 +998,8 @@
             T($"  {child.Variable}Columns: string[] = [];");
             if (taxChild(child))
                 T(TaxScreens.AngularChildState(child.Variable));
+            if (allowChild(child))
+                T(AllowanceScreens.AngularChildState(child.Variable));
             if (child.FlaggedJson.Count > 0)
                 T($"  get {child.Variable}Shown(): string[] {{ return this.{child.Variable}Columns.filter((col) => ![{string.Join(", ", child.FlaggedJson.Select(f => $"...(this.features.enabled('{f.Flag.Replace("\\", "\\\\").Replace("'", "\\'")}') ? [] : ['{f.Json}'])"))}].includes(col)); }}   // FeatureFields: a column whose flag is off is not drawn");
             T($"  private readonly {child.Variable}Hidden: string[] = [" + string.Join(", ", child.HiddenJson.Select(n => "'" + n + "'")) + "];");
@@ -1237,6 +1242,8 @@
             T("    });");
             if (taxChild(child))
                 foreach (string line in TaxScreens.AngularChildLoad(child.Variable, apiPrefix, child.ApiRoute)) T(line);
+            if (allowChild(child))
+                foreach (string line in AllowanceScreens.AngularChildLoad(child.Variable, apiPrefix, child.ApiRoute)) T(line);
             T("  }");
             if (child.KeyJson is not null)
             {

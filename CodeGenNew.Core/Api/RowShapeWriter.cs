@@ -1,10 +1,12 @@
 using System.Text;
+using CodeGenNew.Core.Allowance;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Sql;
 using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Totals;
 
 namespace CodeGenNew.Core.Api;
 
@@ -13,7 +15,7 @@ namespace CodeGenNew.Core.Api;
 public static class RowShapeWriter
 {
     /// <summary> Whether the table's API has to call <c>CheckSaveAsync</c>. </summary>
-    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Content is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).Effective is not null || TableShapes.For(table, project).DefaultRow is not null || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PartyPlan.IsIdentifierTable(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project);
+    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Content is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).Effective is not null || TableShapes.For(table, project).DefaultRow is not null || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PartyPlan.IsIdentifierTable(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project);
 
     /// <summary> Whether the table's API has to call <c>CheckDeleteAsync</c>. </summary>
     public static bool HasDeleteCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).SoftDelete is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).DefaultRow is not null || PolymorphicPlan.RefusesDeleteOf(table.TableName, project);
@@ -33,7 +35,8 @@ public static class RowShapeWriter
             .Replace("§ID_TAKEN", PartyWords.IdentifierTakenType).Replace("§ID_TITLE", PartyWords.IdentifierTakenTitle)
             .Replace("§RATE_INVALID_TITLE", RateWords.InvalidTitle).Replace("§RATE_INVALID", RateWords.InvalidType).Replace("§RATE_TAKEN_TITLE", RateWords.TakenTitle).Replace("§RATE_TAKEN", RateWords.TakenType)
             .Replace("§RATE_NEEDED_TITLE", RateWords.NeededTitle).Replace("§RATE_NEEDED", RateWords.NeededType).Replace("§RATE_MISSING_TITLE", RateWords.MissingTitle).Replace("§RATE_MISSING", RateWords.MissingType)
-            .Replace("§TAX_NOTINFORCE_TITLE", TaxWords.NotInForceTitle).Replace("§TAX_NOTINFORCE", TaxWords.NotInForceType).Replace("§TAX_UNKNOWN_TITLE", TaxWords.UnknownTitle).Replace("§TAX_UNKNOWN", TaxWords.UnknownType));
+            .Replace("§TAX_NOTINFORCE_TITLE", TaxWords.NotInForceTitle).Replace("§TAX_NOTINFORCE", TaxWords.NotInForceType).Replace("§TAX_UNKNOWN_TITLE", TaxWords.UnknownTitle).Replace("§TAX_UNKNOWN", TaxWords.UnknownType)
+            .Replace("§ALLOWANCE_TITLE", AllowanceChargeWords.InvalidTitle).Replace("§ALLOWANCE", AllowanceChargeWords.InvalidType));
         if (project.PolymorphicLinks.Length > 0)
             o.Append(LinkShared.Replace("§UNKNOWN_TYPE", LinkWords.UnknownTypeType).Replace("§MISSING_TYPE", LinkWords.TargetMissingType).Replace("§INUSE_TYPE", LinkWords.TargetInUseType));
         if (project.DefaultRowTables.Length > 0)
@@ -334,6 +337,22 @@ public static class RowShapeWriter
             save.Append("        if (await CheckTaxAsync(context, row, isNew) is { } taxProblem)\n            return taxProblem;\n");
         }
 
+        if (AllowanceChargePlan.For(table, project) is { } allowance)
+        {
+            o.Append(AllowanceChargeWriter.Check(allowance, table.TableName));
+            var allowanceOwner = TableShapes.For(table, project).Owner;   // OwnedTables: the totals count only the rows of the owners the caller may see
+            o.Append(AllowanceChargeWriter.Totals(allowance, contextType, table.TableName, allowanceOwner));
+            if (allowance.Document is not null)
+                maps.Append(Fill("        app.MapGet(\"§R/" + AllowanceChargeWords.TotalsRoute + "\", ([FromServices] §CTX context" + (allowanceOwner is null ? "" : ", HttpContext http") + ", [FromQuery(Name = \"document\")] " + allowance.Document.CSharpBase() + "? document" + (allowance.Line is null ? "" : ", [FromQuery(Name = \"line\")] " + allowance.Line.CSharpBase() + "? line") + ") => AllowanceChargeTotalsAsync(context, " + (allowanceOwner is null ? "" : "http, ") + "document" + (allowance.Line is null ? "" : ", line") + "))§AUTH;\n"));
+            save.Append("        if (CheckAllowanceCharge(row) is { } allowanceProblem)\n            return allowanceProblem;\n");
+        }
+
+        if (DocumentTotalsPlan.For(table, project, database) is { } documentTotals)
+        {
+            o.Append(DocumentTotalsWriter.Check(documentTotals, contextType));
+            maps.Append(Fill("        app.MapGet(\"§R/" + DocumentTotalsWords.CheckRoute + "\", ([FromServices] §CTX context, [FromQuery(Name = \"id\")] " + documentTotals.Key.CSharpBase() + "? id) => DocumentTotalsCheckAsync(context, id))§AUTH;\n"));
+        }
+
         if (save.Length > 0)
             o.Append(Fill("    /// <summary> Runs before a create or update saves <paramref name=\"row\"/>; a result refuses the save. </summary>\n    public static async Task<IResult?> CheckSaveAsync(§CTX context, §T row, bool isNew)\n    {\n") + save + "        return null;\n    }\n\n");
         if (delete.Length > 0)
@@ -373,6 +392,7 @@ public static class RowShapeProblems
     public static IResult RateMissing(string detail) => Problem(404, "§RATE_MISSING", "§RATE_MISSING_TITLE", detail);
     public static IResult TaxUnknown(string detail) => Problem(400, "§TAX_UNKNOWN", "§TAX_UNKNOWN_TITLE", detail);
     public static IResult TaxNotInForce(string detail) => Problem(400, "§TAX_NOTINFORCE", "§TAX_NOTINFORCE_TITLE", detail);
+    public static IResult AllowanceInvalid(string detail) => Problem(400, "§ALLOWANCE", "§ALLOWANCE_TITLE", detail);
 }
 
 /// <summary> One row of a tree answer, depth first: level 1 is a root. </summary>

@@ -2,6 +2,8 @@ using System.Text;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Allowance;
+using CodeGenNew.Core.Totals;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
 
@@ -20,7 +22,7 @@ public static class RowShapeTests
         var asset = TableShapes.For(table, project).Asset;
         var defaultRow = TableShapes.For(table, project).DefaultRow;
         var identifiers = PartyPlan.IdentifiersOf(table, project);
-        if (tree is null && soft is null && effective is null && content is null && asset is null && defaultRow is null && identifiers is null && !RateApiTests.Applies(table, project) && !TaxApiTests.Applies(table, project))
+        if (tree is null && soft is null && effective is null && content is null && asset is null && defaultRow is null && identifiers is null && !RateApiTests.Applies(table, project) && !TaxApiTests.Applies(table, project) && !AllowanceApiTests.Applies(table, project) && !DocumentTotalsApiTests.Applies(table, project))
             return "";
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
@@ -560,6 +562,8 @@ public static class RowShapeTests
         }
         o.Append(RateApiTests.Methods(plan, table, project));
         o.Append(TaxApiTests.Methods(plan, table, project));
+        o.Append(AllowanceApiTests.Methods(plan, table, project));
+        o.Append(DocumentTotalsApiTests.Methods(plan, table, project));
         return o.ToString();
     }
 }

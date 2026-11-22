@@ -294,6 +294,9 @@
         bool taxBox = !oneRow && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate, over the REST route on the OData page too
         if (taxBox)
             foreach (string line in TaxScreens.ReactHandlers(apiVar)) T(line);
+        bool allowBox = !oneRow && AllowanceScreens.HasBox(Model, Project);   // AllowanceCharges: the allowances, the charges and the net of one document
+        if (allowBox)
+            foreach (string line in AllowanceScreens.ReactHandlers(apiVar)) T(line);
         if (nameActive || oneRow)
         {
         }
@@ -839,6 +842,8 @@
             foreach (string line in RateScreens.ReactBox()) T(line);
         if (taxBox)
             foreach (string line in TaxScreens.ReactBox()) T(line);
+        if (allowBox)
+            foreach (string line in AllowanceScreens.ReactBox()) T(line);
         if (chooseColumns)
         {
             T();
@@ -1345,6 +1350,8 @@
             foreach (string line in RateScreens.ReactBoxTests(apiVar, pageName, rateTests)) S(line);
         if (taxBox)
             foreach (string line in TaxScreens.ReactBoxTests(apiVar, pageName)) S(line);
+        if (allowBox)
+            foreach (string line in AllowanceScreens.ReactBoxTests(apiVar, pageName)) S(line);
         var testRow = nameActive ? null : GridTestRow.For(form, chosen);
         if (testRow is not null)
         {

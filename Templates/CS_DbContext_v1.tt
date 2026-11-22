@@ -4,6 +4,7 @@
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core.Totals" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
@@ -58,6 +59,35 @@
     var creatorMember = tenancy && TenantPlan.HasDesktopSignIn(Project) && Project.TenantMembership is not null ? TenantPlan.MembershipOf(Database, Project) : null;
     var creatorUser = creatorMember is null ? null : UserTable.Resolve(Database, Project).Item1;
     bool creators = creatorMember is not null && creatorUser is not null;
+    // DocumentTotals: a save that touches a header, its lines or its allowance rows writes the totals again in the same transaction
+    var totalsShapes = DocumentTotalsPlan.All(Project, Database).ToList();
+    bool totals = totalsShapes.Count > 0;
+    void TotalsStart(bool asynchronous)
+    {
+        Line(asynchronous
+            ? "        var totalsPending = await DocumentTotals.CollectAsync(this, cancellationToken);"
+            : "        var totalsPending = DocumentTotals.Collect(this);");
+        Line(asynchronous
+            ? "        await using var totalsTransaction = totalsPending.Any && Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(cancellationToken) : null;"
+            : "        using var totalsTransaction = totalsPending.Any && Database.CurrentTransaction is null ? Database.BeginTransaction() : null;");
+        Line(asynchronous
+            ? "        await DocumentTotals.LockAsync(this, totalsPending, cancellationToken);"
+            : "        DocumentTotals.Lock(this, totalsPending);");
+    }
+    void TotalsEnd(bool asynchronous)
+    {
+        if (asynchronous)
+        {
+            Line("        await DocumentTotals.ApplyAsync(this, totalsPending, cancellationToken);");
+            Line("        if (totalsTransaction is not null)");
+            Line("            await totalsTransaction.CommitAsync(cancellationToken);");
+        }
+        else
+        {
+            Line("        DocumentTotals.Apply(this, totalsPending);");
+            Line("        totalsTransaction?.Commit();");
+        }
+    }
     // a role table with a nullable tenant column that is listed in NoTenantTables: a tenant reads its own roles and the shared ones
     var sharedRoles = tenancy ? PermissionTables.SharedRoleTenant(Database, Project) : null;
     var sharedRoleTenant = sharedRoles?.Column;
@@ -218,6 +248,8 @@
             Line("    {");
             if (desktop)
                 Line("        StampTenant();");
+            if (totals)
+                TotalsStart(false);
             if (people is not null)
             {
                 Line("        var leaving = LeavingPeople();");
@@ -229,7 +261,18 @@
             }
             if (creators)
                 Line("        var tenants = AddedTenants();");
-            if (people is not null || creators)
+            if (totals)
+            {
+                Line("        int saved = base.SaveChanges(acceptAllChangesOnSuccess);");
+                if (people is not null || creators)
+                {
+                    Line("        if (" + Attached(false) + ")");
+                    Line("            saved += base.SaveChanges(acceptAllChangesOnSuccess);");
+                }
+                TotalsEnd(false);
+                Line("        return saved;");
+            }
+            else if (people is not null || creators)
             {
                 Line("        int saved = base.SaveChanges(acceptAllChangesOnSuccess);");
                 Line("        return " + Attached(false) + " ? saved + base.SaveChanges(acceptAllChangesOnSuccess) : saved;");
@@ -242,6 +285,8 @@
             Line("    {");
             if (desktop)
                 Line("        StampTenant();");
+            if (totals)
+                TotalsStart(true);
             if (people is not null)
             {
                 Line("        var leaving = LeavingPeople();");
@@ -253,7 +298,18 @@
             }
             if (creators)
                 Line("        var tenants = AddedTenants();");
-            if (people is not null || creators)
+            if (totals)
+            {
+                Line("        int saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);");
+                if (people is not null || creators)
+                {
+                    Line("        if (" + Attached(true) + ")");
+                    Line("            saved += await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);");
+                }
+                TotalsEnd(true);
+                Line("        return saved;");
+            }
+            else if (people is not null || creators)
             {
                 Line("        int saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);");
                 Line("        return " + Attached(true) + " ? saved + await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken) : saved;");
@@ -262,6 +318,25 @@
                 Line("        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);");
             Line("    }");
         }
+    }
+    if (totals && !(tenancy && (TenantPlan.HasDesktopSignIn(Project) || people is not null)))
+    {
+        Line();
+        Line("    public override int SaveChanges(bool acceptAllChangesOnSuccess)");
+        Line("    {");
+        TotalsStart(false);
+        Line("        int saved = base.SaveChanges(acceptAllChangesOnSuccess);");
+        TotalsEnd(false);
+        Line("        return saved;");
+        Line("    }");
+        Line();
+        Line("    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)");
+        Line("    {");
+        TotalsStart(true);
+        Line("        int saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);");
+        TotalsEnd(true);
+        Line("        return saved;");
+        Line("    }");
     }
     if (Database.IsPostgreSql)
     {
@@ -397,6 +472,8 @@
             Line("}");
         }
     }
+    if (totals)
+        Line(DocumentTotalsWriter.Context(totalsShapes, contextType).TrimEnd('\n'));
     if (textColumns.Count > 0)
     {
         Line();

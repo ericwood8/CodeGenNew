@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestAllowance_v1.tt
+    // Generates: tests/api/allowance_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of what RS_Routes writes for AllowanceCharges, run in process over a scratch database like RS_Test. Each test adds its own rows through the router and removes them again.
+    // The cases: the amount worked out from the base and the percentage, the percentage from the base and the amount, a negative value, a percentage with no base and a row with nothing to work from
+    // refused, and with the document part the totals of a document. The words are AllowanceChargeWords, as in the Python tests.
+    // Written only for a project with RustTests=true and a table the tests can fill (AllowanceTestPlan).
+    // Needs Client.start of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (RustAllowanceTests.Applies(Database, Project))
+        Write("@@@FILE tests/api/allowance_routes.rs@@@\n" + RustAllowanceTests.File(Database, Project));
+#>

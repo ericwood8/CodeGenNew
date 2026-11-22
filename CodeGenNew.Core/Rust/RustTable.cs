@@ -210,7 +210,7 @@ public sealed class RustTable
     public IReadOnlyList<RustField> InsertBound { get; }
 
     /// <summary> A field the server stamps, so a body may leave it out. </summary>
-    public bool IsStamped(RustField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field) || SnapshotPlan.IsOwnedColumn(_model, _project, field.Column);
+    public bool IsStamped(RustField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field) || SnapshotPlan.IsOwnedColumn(_model, _project, field.Column) || CodeGenNew.Core.Totals.DocumentTotalsPlan.IsOwnedColumn(_model, _project, field.Column);
 
     public string SelectAll { get; private set; } = "";
 

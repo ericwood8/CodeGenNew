@@ -73,6 +73,8 @@ Every one of these needs a single whole-number key unless the row says otherwise
 | Polymorphic link | `PolymorphicLinks` | A text type column, a whole-number id column with no foreign key, and at least two tables the type may name. The key must be a single whole number |
 | Single-row table | `SingleRowTables` | Nothing beyond what the setting says: the screen is one form |
 | Tax lines | `TaxLines` | A line table with a category key, a rate, a taxable amount and a tax amount column, and the category table with its rate (and, optionally, its validity dates) |
+| Allowances and charges | `AllowanceCharges` | A table with a NOT NULL yes/no column (charge or allowance), a base amount and a percentage (decimal, double or float) and a NOT NULL amount column, optionally with the column of the document it sits on and the column of the line; a table whose name says allowance, charge or discount is suggested |
+| Document totals | `DocumentTotals` | A header table with a whole-number key, a line table whose foreign-key column points at it and a decimal, double or float amount on the line, and header columns (decimal, double or float) for the totals to keep; needs `AllowanceCharges` for the allowance and charge totals and `TaxLines` for the tax |
 | Exchange rate on a document | `RateDocuments` | A currency text column, a rate, an amount and a converted amount column on the document, and `RateTables` and `BaseCurrency` in the project |
 | Row approvals | `RowApprovals` | `ApiAuth`, a `UserTable` whose `UserRoleColumn` is a yes/no column, and a `<Table>Approval` side table with a foreign key back to the row |
 | System-versioned table | `TemporalTables` | SQL Server only; the table is not also an audit table |
