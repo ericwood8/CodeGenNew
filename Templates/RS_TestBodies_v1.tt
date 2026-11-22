@@ -53,6 +53,8 @@
             modules.Add("tax_routes");
         if (RustAllowanceTests.Applies(Database, Project))
             modules.Add("allowance_routes");
+        if (RustTotalsTests.Applies(Database, Project))
+            modules.Add("totals_routes");
         if (RustAssetTests.Applies(Database, Project))
             modules.Add("asset_routes");
         if (RustInboundTests.Applies(Database, Project))

@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Totals;
 using CodeGenNew.Core.Tenant;
 
 namespace CodeGenNew.Core;
@@ -26,7 +27,7 @@ public static class DatabaseShapeDetector
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
             foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
-                Approval(table, database, project), RateDocument(table, database, project) })
+                Approval(table, database, project), RateDocument(table, database, project), DocumentTotals(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
         }
@@ -245,6 +246,50 @@ public static class DatabaseShapeDetector
         string? problem = AllowanceChargePlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"AllowanceCharges: {table.TableName}", StringComparison.OrdinalIgnoreCase));
         string why = $"{flag.Name} says charge or allowance, and {amount.Name} can be worked out from {baseColumn.Name} and {percent.Name}";
         return new ShapeSuggestion("Allowances and charges", "AllowanceCharges", item, problem is null, problem is null ? why : $"{why}, but {problem}");
+    }
+
+    private static readonly (string Part, string[] Names)[] TotalsPartNames =
+    [
+        (DocumentTotalsWords.PartLines, ["ItemsTotal", "LinesTotal", "LineTotal", "Subtotal", "SubTotal"]),
+        (DocumentTotalsWords.PartAllowances, ["AllowanceTotal", "AllowancesTotal", "DiscountTotal"]),
+        (DocumentTotalsWords.PartCharges, ["ChargeTotal", "ChargesTotal", "SurchargeTotal"]),
+        (DocumentTotalsWords.PartTaxExclusive, ["TaxExclusive", "TaxExclusiveAmount", "NetTotal", "TotalExcludingTax"]),
+        (DocumentTotalsWords.PartTax, ["TaxTotal", "TaxAmount", "VatTotal", "VatAmount"]),
+        (DocumentTotalsWords.PartTaxInclusive, ["TaxInclusive", "TaxInclusiveAmount", "GrossTotal", "TotalIncludingTax"]),
+        (DocumentTotalsWords.PartPrepaid, ["Prepaid", "PrepaidAmount", "AmountPaid"]),
+        (DocumentTotalsWords.PartRounding, ["Rounding", "RoundingAmount", "PayableRoundingAmount"]),
+        (DocumentTotalsWords.PartPayable, ["Payable", "PayableAmount", "AmountDue", "TotalDue"]),
+    ];
+    private static readonly string[] TotalsLineAmountNames = ["LineTotal", "LineAmount", "ExtendedAmount", "ExtendedPrice", "Amount", "Total"];
+
+    /// <summary> A header whose columns are named like the totals of a document (a lines total and a payable or tax-inclusive total at least) beside a line table that points at it. </summary>
+    private static ShapeSuggestion? DocumentTotals(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (DocumentTotalsPlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        var parts = new List<(string Part, ColumnModel Column)>();
+        foreach (var (part, names) in TotalsPartNames)
+            if (table.Columns.FirstOrDefault(c => !c.IsPrimaryKey && (c.CSharpBase() is "decimal" or "double" or "float") && names.Any(n => c.Name.EqualsIgnoreCase(n)) && parts.All(p => p.Column != c)) is { } column)
+                parts.Add((part, column));
+        if (!parts.Any(p => p.Part == DocumentTotalsWords.PartLines) || !parts.Any(p => p.Part is DocumentTotalsWords.PartPayable or DocumentTotalsWords.PartTaxInclusive))
+            return null;
+        foreach (var lines in database.Tables.Where(t => !t.TableName.EqualsIgnoreCase(table.TableName) && !AllowanceChargePlan.IsListed(t.TableName, project)))
+        {
+            var key = lines.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && f.ReferencedTable.EqualsIgnoreCase(table.TableName)).Select(f => lines.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(f.ReferencingColumns[0]))).FirstOrDefault(c => c is { IsIntegerColumn: true });
+            var amount = lines.Columns.FirstOrDefault(c => c.CSharpBase() is "decimal" or "double" or "float" && TotalsLineAmountNames.Any(n => c.Name.EqualsIgnoreCase(n)));
+            if (key is null || amount is null || !lines.TableName.ContainsIgnoreCase("Line") && !lines.TableName.ContainsIgnoreCase("Item"))
+                continue;
+            var items = new List<string> { table.TableName, lines.TableName, key.Name, amount.Name };
+            items.AddRange(parts.Select(p => $"{p.Part}={p.Column.Name}"));
+            if (table.Columns.FirstOrDefault(c => c.CSharpBase() == "string" && (c.Name.EqualsIgnoreCase("Currency") || c.Name.EqualsIgnoreCase("CurrencyCode"))) is { } currency)
+                items.Add($"{DocumentTotalsWords.TokenCurrency}={currency.Name}");
+            string item = string.Join(":", items);
+            var listed = project.WithOverrides([new("DocumentTotals", string.Join(",", project.DocumentTotals.Append(item)))]);
+            string? problem = DocumentTotalsPlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"DocumentTotals: {table.TableName}", StringComparison.OrdinalIgnoreCase));
+            string why = $"{table.TableName} has the columns of a document's totals ({string.Join(", ", parts.Select(p => p.Column.Name))}) and {lines.TableName} holds its lines in {amount.Name}";
+            return new ShapeSuggestion("Document totals", "DocumentTotals", item, problem is null, problem is null ? why : $"{why}, but {problem}");
+        }
+        return null;
     }
 
     private static ShapeSuggestion? Snapshot(TableModel table, DatabaseModel database, ProjectSettings project)

@@ -120,6 +120,37 @@ public class DocumentTotalsTests
     }
 
     [TestMethod]
+    public void The_shape_detector_suggests_a_header_with_the_columns_of_a_totals_block_and_stops_once_it_is_listed()
+    {
+        var bare = ProjectSettings.FromValues(new Dictionary<string, string>
+        {
+            ["ProjectName"] = "Shop", ["TaxLines"] = "InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate",
+            ["AllowanceCharges"] = "InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId", ["AccessMode"] = "Ef",
+        });
+        var found = DatabaseShapeDetector.Of(Database(), bare).Where(d => d.Suggestion.Setting == "DocumentTotals").ToList();
+        Assert.AreEqual(1, found.Count);
+        Assert.AreEqual("Invoice", found[0].Table);
+        Assert.IsTrue(found[0].Suggestion.Fits, found[0].Suggestion.Note);
+        StringAssert.StartsWith(found[0].Suggestion.Item, "Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal");
+        Assert.AreEqual(0, DatabaseShapeDetector.Of(Database(), Project()).Count(d => d.Suggestion.Setting == "DocumentTotals"));
+    }
+
+    [TestMethod]
+    [DataRow("Python", true)]
+    [DataRow("Rust", true)]
+    [DataRow("Api", false)]
+    public void A_header_that_belongs_to_a_tenant_is_refused_for_the_python_and_rust_apis_only(string stack, bool refused)
+    {
+        var project = ProjectSettings.FromValues(new Dictionary<string, string>
+        {
+            ["ProjectName"] = "Shop", ["DocumentTotals"] = Setting, ["TaxLines"] = "InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate",
+            ["AllowanceCharges"] = "InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId", ["AccessMode"] = "Ef", ["TenantTable"] = "Invoice", ["Stacks"] = stack,
+        });
+        var problems = DocumentTotalsPlan.Problems(Database(), project);
+        Assert.AreEqual(refused, problems.Any(p => p.Contains("limited to an owner or a tenant")), string.Join(" | ", problems));
+    }
+
+    [TestMethod]
     public void The_allowance_part_needs_the_allowance_table_to_point_at_the_header()
     {
         var database = new DatabaseModel { DatabaseName = "Shop", SchemaName = "dbo", Tables = [Header(), Lines(), Categories()] };

@@ -390,6 +390,7 @@ public partial class ProjectSettings
                 if (RateTables.Length > 0) yield return "RS_TestRates";
                 if (TaxLines.Length > 0) yield return "RS_TestTax";
                 if (AllowanceCharges.Length > 0) yield return "RS_TestAllowance";
+                if (DocumentTotals.Length > 0) yield return "RS_TestTotals";
                 if (InboundTables.Length > 0) yield return "RS_TestInbound";
                 if (ApiAuth && TokenTables.Length > 0) yield return "RS_TestTokens";
                 if (ApiAuth && TenantTable is not null) yield return "RS_TestTenants";
@@ -402,6 +403,7 @@ public partial class ProjectSettings
             if (PythonTests && RateTables.Length > 0) yield return "PY_TestRates";
             if (PythonTests && TaxLines.Length > 0) yield return "PY_TestTax";
             if (PythonTests && AllowanceCharges.Length > 0) yield return "PY_TestAllowance";
+            if (PythonTests && DocumentTotals.Length > 0) yield return "PY_TestTotals";
             if (PythonTests && InboundTables.Length > 0) yield return "PY_TestInbound";
             if (PythonTests && ApiAuth && TokenTables.Length > 0) yield return "PY_TestTokens";
             if (PythonTests && ApiAuth && TenantTable is not null) yield return "PY_TestTenants";

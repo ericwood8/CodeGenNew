@@ -2,6 +2,7 @@ using System.Globalization;
 using CodeGenNew.Core.Allowance;
 using CodeGenNew.Core.Settings;
 using CodeGenNew.Core.Tax;
+using CodeGenNew.Core.Tenant;
 
 namespace CodeGenNew.Core.Totals;
 
@@ -145,6 +146,12 @@ public static class DocumentTotalsPlan
         if (project.SoftDeleteTables.Any(i => i.Split(':')[0].Trim().EqualsIgnoreCase(lines.TableName)))
         {
             problem = $"{prefix}: the line table {lines.TableName} is in SoftDeleteTables, whose deletes do not pass through a save, so the totals would keep a deleted line.";
+            return null;
+        }
+        if (project.Stacks.Any(s => s.EqualsIgnoreCase("Python") || s.EqualsIgnoreCase("Rust"))
+            && new[] { table, lines }.FirstOrDefault(t => OwnedTable.IsScoped(t, project) || TenantPlan.IsTenantTable(t, project) || TenantPlan.OwnedBy(t, project) is not null) is { } limited)
+        {
+            problem = $"{prefix}: {limited.TableName} is limited to an owner or a tenant, which only the ASP.NET API writes totals for; the Python and Rust APIs would leave the totals unwritten. Leave Python and Rust out of Stacks.";
             return null;
         }
         var lineKey = lines.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.LineKey));
