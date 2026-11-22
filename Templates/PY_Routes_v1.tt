@@ -154,30 +154,13 @@
     // TaxLines: the line carries the rate of its category (copied on create and when the category changes), the tax is worked out, and GET tax-subtotals answers a document's tax by category
     var taxPlan = log || tenantTable ? null : TableShapes.For(Model, Project).TaxLine;   // a table with its own owner or tenant column: the subtotals are limited to the caller's rows
     var taxCategoryTable = taxPlan is null ? null : PythonTable.Of(taxPlan.CategoryTable, Project);
-    var taxNames = taxPlan is null || taxCategoryTable is null ? null : new PythonTaxWriter.Names(t.Class, key, FieldOf(taxPlan.Category)!.Name, taxPlan.Category.IsNullable, FieldOf(taxPlan.Rate)!.Name, FieldOf(taxPlan.Rate)!.Annotation,
-        FieldOf(taxPlan.Taxable)!.Name, FieldOf(taxPlan.Taxable)!.Annotation, FieldOf(taxPlan.Tax)!.Name, FieldOf(taxPlan.Tax)!.Annotation, taxPlan.Tax.Scale ?? TaxWords.DefaultScale, taxCategoryTable.Class,
-        taxCategoryTable.FieldOf(taxPlan.CategoryKey).Name, taxCategoryTable.FieldOf(taxPlan.CategoryRate).Name, taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).Name,
-        taxPlan.ValidTo is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidTo).Name, taxPlan.ValidFrom is null ? null : taxCategoryTable.FieldOf(taxPlan.ValidFrom).Annotation, FieldOf(taxPlan.Day)?.Name, FieldOf(taxPlan.Day)?.Annotation,
-        FieldOf(taxPlan.Document)?.Name, taxPlan.Label is null ? null : taxCategoryTable.FieldOf(taxPlan.Label).Name);
+    var taxNames = PythonTaxWriter.NamesFor(taxPlan, t, taxCategoryTable);
     // AllowanceCharges: the amount worked out from the base and the percentage (or the percentage from the amount), stored positive, and GET allowance-charge-totals
     var allowPlan = log || tenantTable ? null : AllowanceChargePlan.For(Model, Project);   // a table with its own owner or tenant column: the totals are limited to the caller's rows
-    var allowNames = allowPlan is null || FieldOf(allowPlan.Flag) is null || FieldOf(allowPlan.Base) is null || FieldOf(allowPlan.Percent) is null || FieldOf(allowPlan.Amount) is null ? null
-        : new PythonAllowanceWriter.Names(t.Class, FieldOf(allowPlan.Flag)!.Name, FieldOf(allowPlan.Base)!.Name, FieldOf(allowPlan.Percent)!.Name, FieldOf(allowPlan.Percent)!.Annotation, FieldOf(allowPlan.Amount)!.Name,
-            FieldOf(allowPlan.Amount)!.Annotation, allowPlan.Amount.Scale ?? AllowanceChargeWords.DefaultScale, allowPlan.Percent.Scale ?? AllowanceChargeWords.DefaultScale, FieldOf(allowPlan.Document)?.Name, FieldOf(allowPlan.Line)?.Name);
+    var allowNames = PythonAllowanceWriter.NamesFor(allowPlan, t);
     // DocumentTotals: the header's totals are written from its lines, its tax and its allowance rows in the same flush, and GET document-totals-check lists the headers that differ
     var totalsPlan = log || tenantTable ? null : DocumentTotalsPlan.For(Model, Project);   // a table with its own owner or tenant column: the check route is limited to the caller's rows
-    PythonTotalsWriter.Names? totalsNames = null;
-    if (totalsPlan is not null)
-    {
-        var totalsLines = PythonTable.Of(totalsPlan.Lines, Project);
-        var totalsExtra = totalsPlan.Allowance is null ? null : PythonTable.Of(totalsPlan.Allowance.Table, Project);
-        var totalsParts = totalsPlan.Columns.Owned().Select(p => (p.Part, FieldOf(p.Column)!.Name, FieldOf(p.Column)!.Annotation, p.Column.Scale ?? DocumentTotalsWords.DefaultScale)).ToList();
-        totalsNames = new PythonTotalsWriter.Names(new PythonTotalsWriter.Table(t.Class, t.Module, key), t.Module, new PythonTotalsWriter.Table(totalsLines.Class, totalsLines.Module, totalsLines.Key.Name), totalsLines.FieldOf(totalsPlan.LineKey).Name,
-            totalsLines.FieldOf(totalsPlan.LineAmount).Name, totalsExtra is null ? null : new PythonTotalsWriter.Table(totalsExtra.Class, totalsExtra.Module, totalsExtra.Key.Name), totalsExtra?.FieldOf(totalsPlan.Allowance!.Document!).Name,
-            totalsExtra?.FieldOf(totalsPlan.Allowance!.Flag).Name, totalsExtra?.FieldOf(totalsPlan.Allowance!.Amount).Name, totalsPlan.Tax is null ? null : totalsLines.FieldOf(totalsPlan.Tax.Tax).Name,
-            totalsPlan.Columns.Prepaid is null ? null : FieldOf(totalsPlan.Columns.Prepaid)!.Name, totalsPlan.Currency is null ? null : FieldOf(totalsPlan.Currency)!.Name, totalsParts, totalsPlan.Rounds, t.Route, totalsPlan.Places,
-            totalsPlan.AllowanceTax is null || totalsExtra is null ? null : totalsExtra.FieldOf(totalsPlan.AllowanceTax).Name);
-    }
+    var totalsNames = PythonTotalsWriter.NamesFor(totalsPlan, t, Project);
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";

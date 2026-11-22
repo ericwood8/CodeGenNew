@@ -66,8 +66,6 @@ public static class AllowanceChargePlan
     }
 
     /// <summary> Whether the column holds a number a percentage can be worked out in: a decimal, double or float. </summary>
-    public static bool IsFractional(ColumnModel column) => column.CSharpBase() is "decimal" or "double" or "float";
-
     private static AllowanceChargeShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
     {
         problem = null;
@@ -84,17 +82,16 @@ public static class AllowanceChargePlan
             problem = $"{prefix} is the tenant table, which an allowance table does not serve.";
             return null;
         }
-        ColumnModel? Find(string? name) => name is null ? null : table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name));
-        var flag = Find(entry.Flag);
-        var baseColumn = Find(entry.Base);
-        var percent = Find(entry.Percent);
-        var amount = Find(entry.Amount);
+        var flag = table.FindColumn(entry.Flag);
+        var baseColumn = table.FindColumn(entry.Base);
+        var percent = table.FindColumn(entry.Percent);
+        var amount = table.FindColumn(entry.Amount);
         if (flag is not { IsBooleanColumn: true, IsNullable: false })
         {
             problem = $"{prefix} needs {entry.Flag} as a yes/no column that cannot be NULL ({syntax}).";
             return null;
         }
-        if (baseColumn is not { } || !IsFractional(baseColumn) || percent is not { } || !IsFractional(percent) || amount is not { IsNullable: false } || !IsFractional(amount))
+        if (baseColumn is not { } || !baseColumn.IsFractionalColumn || percent is not { } || !percent.IsFractionalColumn || amount is not { IsNullable: false } || !amount.IsFractionalColumn)
         {
             problem = $"{prefix} needs {entry.Base} and {entry.Percent} as decimal, double or float columns and {entry.Amount} as one that cannot be NULL ({syntax}).";
             return null;
@@ -107,7 +104,7 @@ public static class AllowanceChargePlan
         ColumnModel? document = null;
         if (entry.Document is not null)
         {
-            document = Find(entry.Document);
+            document = table.FindColumn(entry.Document);
             if (document is null)
             {
                 problem = $"{prefix}: {entry.Document} is not a column of the table ({syntax}).";
@@ -117,7 +114,7 @@ public static class AllowanceChargePlan
         ColumnModel? line = null;
         if (entry.Line is not null)
         {
-            line = Find(entry.Line);
+            line = table.FindColumn(entry.Line);
             if (document is null || line is null || line.Name.EqualsIgnoreCase(document.Name) || !line.IsIntegerColumn)
             {
                 problem = $"{prefix}: the line column {entry.Line} must be a whole-number column of the table, different from the document column, and the entry needs the document column too ({syntax}).";

@@ -104,7 +104,7 @@ public static class RatePlan
     public static DatabaseModel? Remembered(ProjectSettings project) => Known.TryGetValue(project, out var database) ? database : null;
 
     /// <summary> Whether one can be divided by the rate column: a decimal, double or float. </summary>
-    public static bool InvertibleRate(ColumnModel rate) => rate.CSharpBase() is "decimal" or "double" or "float";
+    public static bool InvertibleRate(ColumnModel rate) => rate.IsFractionalColumn;
 
     /// <summary> The C# one of the rate column's type. </summary>
     public static string One(ColumnModel rate) => rate.CSharpBase() switch { "decimal" => "1m", "float" => "1f", _ => "1.0" };
@@ -156,11 +156,10 @@ public static class RatePlan
             problem = $"{prefix} is limited to a tenant or an owner, which a rate table does not serve yet.";
             return null;
         }
-        ColumnModel? Find(string name) => table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name));
-        var from = Find(entry.From);
-        var to = Find(entry.To);
-        var rate = Find(entry.Rate);
-        var day = Find(entry.Day);
+        var from = table.FindColumn(entry.From);
+        var to = table.FindColumn(entry.To);
+        var rate = table.FindColumn(entry.Rate);
+        var day = table.FindColumn(entry.Day);
         if (from is not { IsStringColumn: true, IsNullable: false } || to is not { IsStringColumn: true, IsNullable: false })
         {
             problem = $"{prefix} needs {entry.From} and {entry.To} as text columns that cannot be NULL ({syntax}).";

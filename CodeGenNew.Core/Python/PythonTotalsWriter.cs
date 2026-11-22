@@ -15,6 +15,20 @@ public static class PythonTotalsWriter
     public sealed record Names(Table Header, string HeaderModule, Table Lines, string LineKey, string LineAmount, Table? Extra, string? ExtraDocument, string? ExtraFlag, string? ExtraAmount, string? Tax, string? Prepaid,
         string? Currency, IReadOnlyList<(string Part, string Attribute, string Annotation, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route, IReadOnlyList<DocumentTotalsPlaces>? Places = null, string? ExtraTax = null);
 
+    /// <summary> The names of a header, its lines and its allowance table, or null without a plan. </summary>
+    public static Names? NamesFor(DocumentTotalsShape? plan, PythonTable t, ProjectSettings project)
+    {
+        if (plan is null)
+            return null;
+        var lines = PythonTable.Of(plan.Lines, project);
+        var extra = plan.Allowance is null ? null : PythonTable.Of(plan.Allowance.Table, project);
+        var parts = plan.Columns.Owned().Select(p => (p.Part, t.SchemaFieldOf(p.Column)!.Name, t.SchemaFieldOf(p.Column)!.Annotation, p.Column.Scale ?? DocumentTotalsWords.DefaultScale)).ToList();
+        return new Names(new Table(t.Class, t.Module, t.Key.Name), t.Module, new Table(lines.Class, lines.Module, lines.Key.Name), lines.FieldOf(plan.LineKey).Name, lines.FieldOf(plan.LineAmount).Name,
+            extra is null ? null : new Table(extra.Class, extra.Module, extra.Key.Name), extra?.FieldOf(plan.Allowance!.Document!).Name, extra?.FieldOf(plan.Allowance!.Flag).Name,
+            extra?.FieldOf(plan.Allowance!.Amount).Name, plan.Tax is null ? null : lines.FieldOf(plan.Tax.Tax).Name, plan.Columns.Prepaid is null ? null : t.SchemaFieldOf(plan.Columns.Prepaid)!.Name,
+            plan.Currency is null ? null : t.SchemaFieldOf(plan.Currency)!.Name, parts, plan.Rounds, t.Route, plan.Places, plan.AllowanceTax is null || extra is null ? null : extra.FieldOf(plan.AllowanceTax).Name);
+    }
+
     private static string Back(string annotation, string value) => annotation == "Decimal" ? value : $"float({value})";
 
     private static string Decimal(decimal value) => "Decimal(\"" + value.ToString(CultureInfo.InvariantCulture) + "\")";
@@ -28,11 +42,12 @@ public static class PythonTotalsWriter
         void L(string text = "") => o.Append(text).Append('\n');
         L("# DocumentTotals: the totals of a document are worked out again from its rows in every flush that touches the header, its lines or its allowance rows, inside the same transaction.");
         L($"TOTALS_KEY = \"totals_{n.Header.Module}\"");
-        L($"TOTALS_ROUNDS = {{{string.Join(", ", n.Rounds.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency).Select(r => $"\"{r.Currency.ToUpperInvariant()}\": {Decimal(r.Increment)}"))}}}");
-        L($"TOTALS_ROUND_ANY = {(n.Rounds.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency) is { } any ? Decimal(any.Increment) : "None")}");
-        var places = n.Places ?? [];
-        L($"TOTALS_PLACES = {{{string.Join(", ", places.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency).Select(r => $"\"{r.Currency.ToUpperInvariant()}\": {r.Places}"))}}}");
-        L($"TOTALS_PLACES_ANY = {(places.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency) is { } anyPlaces ? anyPlaces.Places.ToString(CultureInfo.InvariantCulture) : "None")}");
+        var (specificRounds, anyRound) = DocumentTotalsCurrencyRules.Split(n.Rounds);
+        var (specificPlaces, anyPlaces) = DocumentTotalsCurrencyRules.Split(n.Places);
+        L($"TOTALS_ROUNDS = {{{string.Join(", ", specificRounds.Select(r => $"\"{r.Currency.ToUpperInvariant()}\": {Decimal(r.Increment)}"))}}}");
+        L($"TOTALS_ROUND_ANY = {(anyRound is not null ? Decimal(anyRound.Increment) : "None")}");
+        L($"TOTALS_PLACES = {{{string.Join(", ", specificPlaces.Select(r => $"\"{r.Currency.ToUpperInvariant()}\": {r.Places}"))}}}");
+        L($"TOTALS_PLACES_ANY = {(anyPlaces is not null ? anyPlaces.Places.ToString(CultureInfo.InvariantCulture) : "None")}");
         L();
         L();
         L("def money(value, scale):");

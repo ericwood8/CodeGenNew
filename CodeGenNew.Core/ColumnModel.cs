@@ -119,6 +119,9 @@ public class ColumnModel
     public bool IsMoneyColumn => _isMoneyColumn ??= SqlTypeKinds.IsMoney(SqlType);
     public bool IsStringColumn => _isStringColumn ??= SqlTypeKinds.IsString(SqlType);
     public bool IsDateColumn => _isDateColumn ??= SqlTypeKinds.IsDate(SqlType);
+    /// <summary> A decimal, double or float column (C# base type). </summary>
+    public bool IsFractionalColumn => CSharpBase() is "decimal" or "double" or "float";
+
     public bool IsBooleanColumn => _isBooleanColumn ??= SqlTypeKinds.IsBoolean(SqlType);
 
     /// <summary> A grid shows the value as Yes or No. </summary>

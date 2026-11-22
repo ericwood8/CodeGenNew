@@ -11,6 +11,15 @@ public static class PythonAllowanceWriter
 
     private static string Back(string annotation, string value) => annotation == "Decimal" ? value : $"float({value})";
 
+    /// <summary> The names of an allowance table, or null without one or when a column has no field. </summary>
+    public static Names? NamesFor(AllowanceChargeShape? plan, PythonTable t)
+    {
+        if (plan is null || t.SchemaFieldOf(plan.Flag) is not { } flag || t.SchemaFieldOf(plan.Base) is not { } baseField || t.SchemaFieldOf(plan.Percent) is not { } percent || t.SchemaFieldOf(plan.Amount) is not { } amount)
+            return null;
+        return new Names(t.Class, flag.Name, baseField.Name, percent.Name, percent.Annotation, amount.Name, amount.Annotation, plan.Amount.Scale ?? AllowanceChargeWords.DefaultScale,
+            plan.Percent.Scale ?? AllowanceChargeWords.DefaultScale, t.SchemaFieldOf(plan.Document)?.Name, t.SchemaFieldOf(plan.Line)?.Name);
+    }
+
     public static string Helper(Names n)
     {
         return TemplateText.FillAll(HelperText, ("§BASE", n.Base), ("§PCT", n.Percent), ("§AMT", n.Amount),

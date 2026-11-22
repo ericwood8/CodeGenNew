@@ -1,3 +1,4 @@
+using CodeGenNew.Core.Sql;
 using System.Globalization;
 using System.Text;
 using CodeGenNew.Core.Totals;
@@ -18,6 +19,25 @@ public static class RustTotalsWriter
     /// <summary> <c>Parts</c> are the totals the server writes: the part name, the field, the quoted column and the scale. </summary>
     public sealed record Names(Tbl Header, Field Key, string KeyColumn, Field? Prepaid, Field? Currency, Tbl Lines, string LineKeyColumn, Field LineKey, Field LineAmount, Field? Tax, Tbl? Extra, string? ExtraDocumentColumn,
         Field? ExtraDocument, Field? ExtraFlag, Field? ExtraAmount, IReadOnlyList<(string Part, Field Field, string Column, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route, IReadOnlyList<DocumentTotalsPlaces>? Places = null, Field? ExtraTax = null);
+
+    private static Tbl TableOf(RustTable x) => new(x.Struct, x.Module, x.Table, x.SelectList);
+
+    private static Field FieldOf(RustTable x, ColumnModel c) => new(x.FieldOf(c).Name, x.FieldOf(c).BaseType, x.FieldOf(c).IsOption);
+
+    /// <summary> The names of one header, its lines and its allowance table. </summary>
+    public static Names NamesFor(DocumentTotalsShape shape, ProjectSettings project, DialectInfo dialect)
+    {
+        var header = RustTable.Of(shape.Header, project);
+        var lines = RustTable.Of(shape.Lines, project);
+        var extra = shape.Allowance is null ? null : RustTable.Of(shape.Allowance.Table, project);
+        var document = shape.Allowance?.Document;
+        return new Names(TableOf(header), FieldOf(header, shape.Key), dialect.Quote(shape.Key.DbName), shape.Columns.Prepaid is null ? null : FieldOf(header, shape.Columns.Prepaid),
+            shape.Currency is null ? null : FieldOf(header, shape.Currency), TableOf(lines), dialect.Quote(shape.LineKey.DbName), FieldOf(lines, shape.LineKey), FieldOf(lines, shape.LineAmount),
+            shape.Tax is null ? null : FieldOf(lines, shape.Tax.Tax), extra is null ? null : TableOf(extra), document is null ? null : dialect.Quote(document.DbName), document is null ? null : FieldOf(extra!, document),
+            shape.Allowance is null ? null : FieldOf(extra!, shape.Allowance.Flag), shape.Allowance is null ? null : FieldOf(extra!, shape.Allowance.Amount),
+            shape.Columns.Owned().Select(p => (p.Part, FieldOf(header, p.Column), dialect.Quote(p.Column.DbName), p.Column.Scale ?? DocumentTotalsWords.DefaultScale)).ToList(), shape.Rounds, header.Route, shape.Places,
+            shape.AllowanceTax is null ? null : FieldOf(extra!, shape.AllowanceTax));
+    }
 
     private static bool Decimals(Names n) => new[] { n.LineAmount.BaseType, n.Tax?.BaseType, n.ExtraAmount?.BaseType, n.Prepaid?.BaseType }.Concat(n.Parts.Select(p => p.Field.BaseType)).Contains("Decimal");
 
@@ -109,17 +129,17 @@ public static class RustTotalsWriter
         L("}");
         L();
         L($"fn totals_step(currency: Option<&str>) -> Option<{domain}> {{");
-        foreach (var r in n.Rounds.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency))
+        var (specificRounds, any) = DocumentTotalsCurrencyRules.Split(n.Rounds);
+        foreach (var r in specificRounds)
             L($"    if currency.is_some_and(|c| c.trim().eq_ignore_ascii_case(\"{r.Currency}\")) {{\n        return Some({Literal(r.Increment, decimals)});\n    }}");
-        var any = n.Rounds.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency);
         L(any is null ? "    let _ = currency;\n    None" : $"    let _ = currency;\n    Some({Literal(any.Increment, decimals)})");
         L("}");
         L();
         L("/// The decimal places of an amount in the currency: the places of the currency, at most the scale of the column that holds the amount.");
         L("fn totals_places(currency: Option<&str>, scale: u32) -> u32 {");
-        foreach (var r in n.Places?.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency) ?? [])
+        var (specificPlaces, anyPlaces) = DocumentTotalsCurrencyRules.Split(n.Places);
+        foreach (var r in specificPlaces)
             L($"    if currency.is_some_and(|c| c.trim().eq_ignore_ascii_case(\"{r.Currency}\")) {{\n        return scale.min({r.Places});\n    }}");
-        var anyPlaces = n.Places?.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency);
         L(anyPlaces is null ? "    let _ = currency;\n    scale" : $"    let _ = currency;\n    scale.min({anyPlaces.Places})");
         L("}");
         L();

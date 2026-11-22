@@ -7,28 +7,17 @@ public sealed record OwnerParent(string Table, string Key, string Owner, string 
 
 public static class AllowanceChargeWriter
 {
-    private static string Value(ColumnModel column) => column.IsNullable ? $"(decimal)(row.{column.CSharpName()} ?? 0)" : $"(decimal)row.{column.CSharpName()}";
-
     /// <summary> <c>CheckAllowanceCharge</c>: refuses a negative value, a percentage with no base and a row with nothing to work an amount from; otherwise writes the amount (base times percent over 100) or the percentage (amount over base times 100). </summary>
     public static string Check(AllowanceChargeShape s, string entity)
     {
-        string amount = s.Amount.CSharpName(), percent = s.Percent.CSharpName();
         var o = new System.Text.StringBuilder();
         void L(string text) => o.Append(text).Append('\n');
         L("    /// <summary> The amount is worked out here: from the base and the percentage, or the percentage from the amount and the base. It is stored positive, the flag says whether it is added or taken off. </summary>");
         L($"    public static IResult? CheckAllowanceCharge({entity} row)");
         L("    {");
-        L($"        decimal baseAmount = {Value(s.Base)}, percent = {Value(s.Percent)}, amount = (decimal)row.{amount};");
-        L("        if (baseAmount < 0 || percent < 0 || amount < 0)");
-        L("            return RowShapeProblems.AllowanceInvalid(\"" + AllowanceChargeWords.Negative + "\");");
-        L("        if (percent > 0 && baseAmount <= 0)");
-        L("            return RowShapeProblems.AllowanceInvalid(\"" + AllowanceChargeWords.PercentNeedsBase + "\");");
-        L("        if (percent > 0)");
-        L($"            row.{amount} = ({s.Amount.CSharpBase()})Math.Round(baseAmount * percent / 100m, {s.Amount.Scale ?? AllowanceChargeWords.DefaultScale}, MidpointRounding.AwayFromZero);");
-        L("        else if (baseAmount > 0 && amount > 0)");
-        L($"            row.{percent} = ({s.Percent.CSharpBase()})Math.Round(amount / baseAmount * 100m, {s.Percent.Scale ?? AllowanceChargeWords.DefaultScale}, MidpointRounding.AwayFromZero);");
-        L("        else if (amount <= 0)");
-        L("            return RowShapeProblems.AllowanceInvalid(\"" + AllowanceChargeWords.NeedsAmount + "\");");
+        var names = new AllowanceChargeNames("row", "baseAmount", "percent", "amount");
+        foreach (string line in AllowanceChargeBlock.Lines(s, names, (condition, message) => [condition, $"    return RowShapeProblems.AllowanceInvalid(\"{message}\");"]))
+            L("        " + line);
         L("        return null;");
         L("    }");
         L("");

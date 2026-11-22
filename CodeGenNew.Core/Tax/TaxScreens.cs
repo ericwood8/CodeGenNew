@@ -10,9 +10,7 @@ public static class TaxScreens
     {
         if (TableShapes.For(table, project).TaxLine is not { } s)
             return "";
-        string row = table.TableName, cat = s.Category.CSharpName(), rate = s.Rate.CSharpName(), tax = s.Tax.CSharpName(), key = s.Key.CSharpName();
-        string day = s.Day?.CSharpName() ?? "";
-        bool dating = s.ValidFrom is not null;
+        string row = table.TableName, cat = s.Category.CSharpName(), rate = s.Rate.CSharpName(), tax = s.Tax.CSharpName();
         var o = new System.Text.StringBuilder();
         void L(string text) => o.Append("        ").Append(text).Append('\n');
         L("{");
@@ -27,45 +25,9 @@ public static class TaxScreens
         }
         L("    {");
         L($"        var taxCategory = entity.{cat};");
-        if (dating)
-        {
-            string catType = s.ValidFrom!.CSharpBase();
-            string dayValue = s.Day is not null ? "entity." + day : catType == "DateOnly" ? "DateOnly.FromDateTime(DateTime.Now)" : "DateTime.Today";
-            string asOf = s.Day is null || s.Day.CSharpBase() == catType ? dayValue : catType == "DateOnly" ? $"DateOnly.FromDateTime({dayValue})" : $"{dayValue}.ToDateTime(TimeOnly.MinValue)";
-            L($"        var taxAsOf = {asOf};");
-        }
-        L("        bool taxKeep = false;");
-        L("        if (_editing is not null)");
-        L("        {");
-        string sameDay = s.Day is null ? "" : s.Day.CSharpBase() == "DateOnly" ? $" && taxStored.{day} == entity.{day}" : $" && taxStored.{day}.Date == entity.{day}.Date";
-        L($"            var taxStored = await {context}.Set<{row}>().AsNoTracking().Where(x => x.{key} == entity.{key}).Select(x => new {{ x.{cat}, x.{rate}{(s.Day is null ? "" : ", x." + day)} }}).FirstOrDefaultAsync();");
-        L($"            if (taxStored is not null && taxStored.{cat} == taxCategory{sameDay})");
-        L("            {");
-        L($"                entity.{rate} = taxStored.{rate};");
-        L("                taxKeep = true;");
-        L("            }");
-        L("        }");
-        L("        if (!taxKeep)");
-        L("        {");
-        string dates = dating ? ", x." + s.ValidFrom!.CSharpName() + (s.ValidTo is null ? "" : ", x." + s.ValidTo.CSharpName()) : "";
-        L($"            var taxFound = await {context}.Set<{s.CategoryTable.TableName}>().AsNoTracking().Where(x => x.{s.CategoryKey.CSharpName()} == taxCategory).Select(x => new {{ x.{s.CategoryRate.CSharpName()}{dates} }}).FirstOrDefaultAsync();");
-        L("            if (taxFound is null)");
-        L("            {");
-        L("                ErrorMessage = $\"" + TaxWords.Unknown("{taxCategory}") + "\";");
-        L("                return false;");
-        L("            }");
-        if (dating)
-        {
-            string ended = s.ValidTo is null ? "" : $" || (taxFound.{s.ValidTo.CSharpName()} is {{ }} taxEnd && taxEnd < taxAsOf)";
-            L($"            if (taxFound.{s.ValidFrom!.CSharpName()} > taxAsOf{ended})");
-            L("            {");
-            L("                ErrorMessage = $\"" + TaxWords.NotInForce("{taxCategory}", "{taxAsOf:yyyy-MM-dd}") + "\";");
-            L("                return false;");
-            L("            }");
-        }
-        L($"            entity.{rate} = ({s.Rate.CSharpBase()})taxFound.{s.CategoryRate.CSharpName()};");
-        L("        }");
-        L($"        entity.{tax} = ({s.Tax.CSharpBase()})Math.Round((decimal)entity.{s.Taxable.CSharpName()} * (decimal)entity.{rate}, {s.Tax.Scale ?? TaxWords.DefaultScale}, MidpointRounding.AwayFromZero);");
+        var names = new TaxRateNames("entity", "taxCategory", "taxAsOf", "taxKeep", "taxStored", "taxFound", "taxEnd", "_editing is not null", context, row);
+        foreach (string line in TaxRateBlock.Lines(s, names, (condition, notInForce, message) => [condition, "{", $"    ErrorMessage = $\"{message}\";", "    return false;", "}"]))
+            L("        " + line);
         L("    }");
         L("}");
         return o.Append('\n').ToString();

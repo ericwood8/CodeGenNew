@@ -43,17 +43,17 @@ public static class PythonTenantWriter
 
         if (membership is not null && userPlan is not null)
         {
-            o.Append(FillAll(Members, ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§TEXT", textExpression), ("§ROLE", membership.Role is null ? "null()" : "members.c[MEMBER_ROLE]"), ("§ACTIVEWHERE", active is null ? "" : ".where(tenants.c[TENANT_ACTIVE].is_(True))"),
+            o.Append(FillAll(Members, ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§TEXT", textExpression), ("§ROLE", membership.Role is null ? "null()" : "members.c[MEMBER_ROLE]"), ("§ACTIVEWHERE", active is null ? "" : ".where(tenants.c[TENANT_ACTIVE] == true())"),
                 ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", Str(TenantWords.NotMember))));
             o.Append(FillAll(Attach, ("§ROLEVALUE", membership.Role is null ? "" : ", MEMBER_ROLE: ADMIN_ROLE")));
             o.Append(NewPerson(userPlan, project, membership, null));
             o.Append(TenantPlan.PeopleOf(database, project) is null ? PeoplePassThrough : PeopleScoped);
-            string signInWhere = string.Join(", ", new[] { active is null ? null : "tenants.c[TENANT_ACTIVE].is_(True)", soft is null ? null : "tenants.c[TENANT_DELETED].is_(False)" }.OfType<string>());
+            string signInWhere = string.Join(", ", new[] { active is null ? null : "tenants.c[TENANT_ACTIVE] == true()", soft is null ? null : "tenants.c[TENANT_DELETED] == false()" }.OfType<string>());
             o.Append(FillAll(Routes, ("§SIGNINPATH", TenantWords.SignInListPath), ("§TEXT", textExpression), ("§SIGNINWHERE", signInWhere.Length == 0 ? "" : $".where({signInWhere})"), ("§CURRENT", "user.tenant_id"), ("§REQUESTPARAM", host is null ? "" : ", request: Request"), ("§LISTS", PermissionTables.IsConfigured(project) ? ", held_roles, held_permissions" : ""), ("§HELD", PermissionTables.IsConfigured(project) ? HeldSwitch : ""), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n")));
         }
         else if (userOwned is not null && userPlan is not null)
         {
-            o.Append(FillAll(OwnColumn, ("§HOSTLOGIN", host is null ? "" : HostOwnLogin + "\n"), ("§HOSTCHECK", host is null ? "" : HostOwnCheck + "\n"), ("§ACTIVEWHERE", active is null ? "" : ", tenants.c[TENANT_ACTIVE].is_(True)"), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", Str(TenantWords.NotMember))));
+            o.Append(FillAll(OwnColumn, ("§HOSTLOGIN", host is null ? "" : HostOwnLogin + "\n"), ("§HOSTCHECK", host is null ? "" : HostOwnCheck + "\n"), ("§ACTIVEWHERE", active is null ? "" : ", tenants.c[TENANT_ACTIVE] == true()"), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", Str(TenantWords.NotMember))));
             o.Append("\n\ndef attach_creator(session: Session, user: CurrentUser, tenant_id: int) -> None:\n    \"\"\"The people belong to a tenant by their own row, so a new tenant has no first administrator to attach.\"\"\"\n");
             o.Append("\n\ndef attach_admin(session: Session, person_id: int | None, tenant_id: int, admin: dict[str, Any] | None = None, password: str | None = None) -> None:\n    \"\"\"The people belong to a tenant by their own row, so an onboarded tenant has no person to attach by key; a new first administrator is saved with the tenant.\"\"\"\n    if admin is not None:\n        new_person(session, admin, password, tenant_id)\n");
             o.Append(NewPerson(userPlan, project, null, userOwned));
@@ -219,7 +219,7 @@ from typing import Any, NamedTuple
 
 from fastapi import APIRouter, Depends§REQUESTIMPORT
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import String, cast, column, false, §FUNCnull, or_, select, table
+from sqlalchemy import String, cast, column, false, §FUNCnull, or_, select, table, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -321,7 +321,7 @@ def ensure_active(tenant_id: int) -> None:
         known = _known.get(tenant_id)
     if known is None or now - known[1] >= ACTIVE_SECONDS:
         with SessionLocal() as session:
-            alive = session.scalar(select(tenants.c[TENANT_KEY]).where(tenants.c[TENANT_KEY] == tenant_id, tenants.c[TENANT_ACTIVE].is_(True))) is not None
+            alive = session.scalar(select(tenants.c[TENANT_KEY]).where(tenants.c[TENANT_KEY] == tenant_id, tenants.c[TENANT_ACTIVE] == true())) is not None
         with _known_lock:
             _known[tenant_id] = known = (alive, now)
     if not known[0]:

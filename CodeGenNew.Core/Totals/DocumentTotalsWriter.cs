@@ -101,18 +101,18 @@ public static class DocumentTotalsWriter
         L("    /// <summary> The decimal places of an amount in <paramref name=\"currency\"/>: the places of the currency, at most the scale of the column that holds the amount. </summary>");
         L("    private static int Places(string? currency, int scale)");
         L("    {");
-        foreach (var r in s.Places.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency))
+        var (specificPlaces, anyPlaces) = DocumentTotalsCurrencyRules.Split(s.Places);
+        foreach (var r in specificPlaces)
             L($"        if (string.Equals(currency?.Trim(), \"{r.Currency}\", StringComparison.OrdinalIgnoreCase))\n            return Math.Min({r.Places}, scale);");
-        var anyPlaces = s.Places.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency);
         L(anyPlaces is null ? "        return scale;" : $"        return Math.Min({anyPlaces.Places}, scale);");
         L("    }");
         L();
         L("    /// <summary> The multiple the payable amount is rounded to in <paramref name=\"currency\"/>, or 0 for none. </summary>");
         L("    private static decimal Increment(string? currency)");
         L("    {");
-        foreach (var r in s.Rounds.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency))
+        var (specificRounds, any) = DocumentTotalsCurrencyRules.Split(s.Rounds);
+        foreach (var r in specificRounds)
             L($"        if (string.Equals(currency?.Trim(), \"{r.Currency}\", StringComparison.OrdinalIgnoreCase))\n            return {Decimal(r.Increment)};");
-        var any = s.Rounds.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency);
         L($"        return {(any is null ? "0m" : Decimal(any.Increment))};");
         L("    }");
         L();

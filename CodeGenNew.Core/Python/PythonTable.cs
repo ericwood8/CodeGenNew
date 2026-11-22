@@ -142,6 +142,9 @@ public sealed class PythonTable
         column.IsBooleanColumn || column.IsStringColumn ? $"bool({access})"
         : column.IsNullable ? $"({access} or 0) != 0" : $"{access} != 0";
 
+    /// <summary> The field of the column among the schema fields, or null when there is none (or no column). </summary>
+    public PythonField? SchemaFieldOf(ColumnModel? column) => column is null ? null : SchemaFields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(column.Name));
+
     /// <summary> The field of the column: its attribute in the model and the schema. </summary>
     public PythonField FieldOf(ColumnModel column) => Fields.First(f => f.Column.Name.EqualsIgnoreCase(column.Name));
 

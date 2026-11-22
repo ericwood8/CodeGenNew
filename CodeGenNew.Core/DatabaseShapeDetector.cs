@@ -67,7 +67,7 @@ public static class DatabaseShapeDetector
         if (RateDocumentPlan.IsListed(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
             return null;
         ColumnModel? Find(string[] names, Func<ColumnModel, bool> kind) => table.Columns.FirstOrDefault(c => !c.IsPrimaryKey && kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
-        bool Number(ColumnModel c) => !c.IsNullable && c.CSharpBase() is "decimal" or "double" or "float";
+        bool Number(ColumnModel c) => !c.IsNullable && c.IsFractionalColumn;
         var currency = Find(DocCurrencyNames, c => c.IsStringColumn && !c.IsNullable);
         var rate = Find(DocRateNames, Number);
         var amount = Find(DocAmountNames, Number);
@@ -190,7 +190,7 @@ public static class DatabaseShapeDetector
         if (TaxLinePlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
             return null;
         ColumnModel? Find(IEnumerable<ColumnModel> columns, string[] names, Func<ColumnModel, bool> kind) => columns.FirstOrDefault(c => kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
-        bool Number(ColumnModel c) => !c.IsNullable && c.CSharpBase() is "decimal" or "double" or "float";
+        bool Number(ColumnModel c) => !c.IsNullable && c.IsFractionalColumn;
         var rate = Find(table.Columns, TaxRateNames, Number);
         var tax = Find(table.Columns, TaxAmountNames, Number);
         var taxable = Find(table.Columns, TaxableNames, Number);
@@ -234,9 +234,9 @@ public static class DatabaseShapeDetector
             return null;
         ColumnModel? Find(string[] names, Func<ColumnModel, bool> kind) => table.Columns.FirstOrDefault(c => kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
         var flag = Find(AllowanceFlagNames, c => !c.IsNullable && c.CSharpBase() == "bool");
-        var baseColumn = Find(AllowanceBaseNames, AllowanceChargePlan.IsFractional);
-        var percent = Find(AllowancePercentNames, AllowanceChargePlan.IsFractional);
-        var amount = Find(["Amount", "ChargeAmount", "AllowanceAmount"], c => !c.IsNullable && AllowanceChargePlan.IsFractional(c));
+        var baseColumn = Find(AllowanceBaseNames, c => c.IsFractionalColumn);
+        var percent = Find(AllowancePercentNames, c => c.IsFractionalColumn);
+        var amount = Find(["Amount", "ChargeAmount", "AllowanceAmount"], c => !c.IsNullable && c.IsFractionalColumn);
         if (flag is null || baseColumn is null || percent is null || amount is null)
             return null;
         var document = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !f.ReferencedTable.EqualsIgnoreCase(table.TableName))
@@ -269,14 +269,14 @@ public static class DatabaseShapeDetector
             return null;
         var parts = new List<(string Part, ColumnModel Column)>();
         foreach (var (part, names) in TotalsPartNames)
-            if (table.Columns.FirstOrDefault(c => !c.IsPrimaryKey && (c.CSharpBase() is "decimal" or "double" or "float") && names.Any(n => c.Name.EqualsIgnoreCase(n)) && parts.All(p => p.Column != c)) is { } column)
+            if (table.Columns.FirstOrDefault(c => !c.IsPrimaryKey && c.IsFractionalColumn && names.Any(n => c.Name.EqualsIgnoreCase(n)) && parts.All(p => p.Column != c)) is { } column)
                 parts.Add((part, column));
         if (!parts.Any(p => p.Part == DocumentTotalsWords.PartLines) || !parts.Any(p => p.Part is DocumentTotalsWords.PartPayable or DocumentTotalsWords.PartTaxInclusive))
             return null;
         foreach (var lines in database.Tables.Where(t => !t.TableName.EqualsIgnoreCase(table.TableName) && !AllowanceChargePlan.IsListed(t.TableName, project)))
         {
             var key = lines.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && f.ReferencedTable.EqualsIgnoreCase(table.TableName)).Select(f => lines.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(f.ReferencingColumns[0]))).FirstOrDefault(c => c is { IsIntegerColumn: true });
-            var amount = lines.Columns.FirstOrDefault(c => c.CSharpBase() is "decimal" or "double" or "float" && TotalsLineAmountNames.Any(n => c.Name.EqualsIgnoreCase(n)));
+            var amount = lines.Columns.FirstOrDefault(c => c.IsFractionalColumn && TotalsLineAmountNames.Any(n => c.Name.EqualsIgnoreCase(n)));
             if (key is null || amount is null || !lines.TableName.ContainsIgnoreCase("Line") && !lines.TableName.ContainsIgnoreCase("Item"))
                 continue;
             var items = new List<string> { table.TableName, lines.TableName, key.Name, amount.Name };

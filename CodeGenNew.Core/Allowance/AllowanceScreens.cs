@@ -223,32 +223,12 @@ public static class AllowanceScreens
     {
         if (AllowanceChargePlan.For(table, project) is not { } s)
             return "";
-        string amount = s.Amount.CSharpName(), percent = s.Percent.CSharpName();
-        string baseValue = s.Base.IsNullable ? $"(decimal)(entity.{s.Base.CSharpName()} ?? 0)" : $"(decimal)entity.{s.Base.CSharpName()}";
-        string percentValue = s.Percent.IsNullable ? $"(decimal)(entity.{percent} ?? 0)" : $"(decimal)entity.{percent}";
         var o = new System.Text.StringBuilder();
         void L(string text) => o.Append("        ").Append(text).Append('\n');
         L("{");
-        L($"    decimal allowanceBase = {baseValue}, allowancePercent = {percentValue}, allowanceAmount = (decimal)entity.{amount};");
-        L("    if (allowanceBase < 0 || allowancePercent < 0 || allowanceAmount < 0)");
-        L("    {");
-        L("        ErrorMessage = \"" + AllowanceChargeWords.Negative + "\";");
-        L("        return false;");
-        L("    }");
-        L("    if (allowancePercent > 0 && allowanceBase <= 0)");
-        L("    {");
-        L("        ErrorMessage = \"" + AllowanceChargeWords.PercentNeedsBase + "\";");
-        L("        return false;");
-        L("    }");
-        L("    if (allowancePercent > 0)");
-        L($"        entity.{amount} = ({s.Amount.CSharpBase()})Math.Round(allowanceBase * allowancePercent / 100m, {s.Amount.Scale ?? AllowanceChargeWords.DefaultScale}, MidpointRounding.AwayFromZero);");
-        L("    else if (allowanceBase > 0 && allowanceAmount > 0)");
-        L($"        entity.{percent} = ({s.Percent.CSharpBase()})Math.Round(allowanceAmount / allowanceBase * 100m, {s.Percent.Scale ?? AllowanceChargeWords.DefaultScale}, MidpointRounding.AwayFromZero);");
-        L("    else if (allowanceAmount <= 0)");
-        L("    {");
-        L("        ErrorMessage = \"" + AllowanceChargeWords.NeedsAmount + "\";");
-        L("        return false;");
-        L("    }");
+        var names = new AllowanceChargeNames("entity", "allowanceBase", "allowancePercent", "allowanceAmount");
+        foreach (string line in AllowanceChargeBlock.Lines(s, names, (condition, message) => [condition, "{", $"    ErrorMessage = \"{message}\";", "    return false;", "}"]))
+            L("    " + line);
         L("}");
         return o.Append('\n').ToString();
     }

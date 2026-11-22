@@ -68,7 +68,7 @@ def line(client, document, total, category=None):
 
 def extra(client, document, charge, amount, category=None):
     return client.post(EXTRAS, json={"invoiceAllowanceChargeId": 0, "invoiceId": document, "isCharge": charge, "reasonCode": None, "baseAmount": None, "percentage": None, "amount": amount,
-                                     "taxCategoryId": category})
+                                     "taxCategoryId": category, "taxRate": 0, "taxAmount": 0})
 
 
 def totals(client, document):
@@ -86,7 +86,8 @@ def listing(client):
     return response.status_code, (response.json() if response.status_code == 200 else response.text)
 
 
-def exercise(stack, base, passwords, database):
+def exercise(stack, base, passwords, bump):
+    """bump(invoice key) adds 5 to the stored payable amount of the invoice behind the server's back."""
     ada, grace, boss = (signed_in(base, n, passwords[n]) for n in ("ada", "grace", "boss"))
     category = boss.post(CATEGORIES, json={"taxCategoryId": 0, "code": "T20", "name": "Owner run", "rate": 0.2, "exemptionReason": None, "validFrom": "2000-01-01", "validTo": None})
     check(stack, "a tax category is created", category.status_code == 201, (category.status_code, category.text))
@@ -97,9 +98,12 @@ def exercise(stack, base, passwords, database):
     key = made.json()["invoiceId"]
     code, row = totals(ada, key)
     check(stack, "the totals the client wrote are replaced", code == 200 and near(row, items=0, allowances=0, charges=0, exclusive=0, tax=0, payable=0), (code, row))
-    check(stack, "a taxed line of 100 is added", line(ada, key, 100, cat).status_code == 201)
-    check(stack, "a taxed allowance of 10 is added", extra(ada, key, False, 10, cat).status_code == 201)
-    check(stack, "a taxed charge of 5 is added", extra(ada, key, True, 5, cat).status_code == 201)
+    r = line(ada, key, 100, cat)
+    check(stack, "a taxed line of 100 is added", r.status_code == 201, (r.status_code, r.text))
+    r = extra(ada, key, False, 10, cat)
+    check(stack, "a taxed allowance of 10 is added", r.status_code == 201, (r.status_code, r.text))
+    r = extra(ada, key, True, 5, cat)
+    check(stack, "a taxed charge of 5 is added", r.status_code == 201, (r.status_code, r.text))
     code, row = totals(ada, key)
     check(stack, "the lines, allowances, charges and tax of the employee's invoice are worked out", code == 200 and near(row, items=100, allowances=10, charges=5, exclusive=95, tax=19, inclusive=114, payable=114), (code, row))
 
@@ -122,8 +126,7 @@ def exercise(stack, base, passwords, database):
     anonymous = httpx.get(base + f"{INVOICES}/document-totals-check", timeout=30)
     check(stack, "the check route refuses a call with no sign-in", anonymous.status_code == 401, anonymous.status_code)
 
-    with sqlite3.connect(database) as db:
-        db.execute("UPDATE Invoice SET Payable = Payable + 5 WHERE InvoiceId = ?", (key,))
+    bump(key)
     code, answer = listing(ada)
     check(stack, "a total altered under the server is listed for its owner", code == 200 and answer["differing"] == 1, (code, answer))
     code, answer = listing(grace)
@@ -160,7 +163,7 @@ def play(stack, work, database, schema, port, python):
                 failures.append((stack, "server"))
                 return
             time.sleep(2)
-            exercise(stack, f"http://localhost:{port}", passwords, database)
+            exercise(stack, f"http://localhost:{port}", passwords, lambda key: sqlite3.connect(database).execute("UPDATE Invoice SET Payable = Payable + 5 WHERE InvoiceId = ?", (key,)).connection.commit())
         finally:
             subprocess.run(["taskkill", "/PID", str(server.pid), "/T", "/F"], capture_output=True)
 

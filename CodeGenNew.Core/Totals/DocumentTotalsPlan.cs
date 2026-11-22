@@ -130,8 +130,6 @@ public static class DocumentTotalsPlan
         project.DocumentTotals.Where(i => i.Split(':')[0].Trim().EqualsIgnoreCase(table.TableName)).SelectMany(i => i.Split(':').Where(p => p.Trim().StartsWith(token + "=", StringComparison.OrdinalIgnoreCase)))
             .Select(p => p.Trim()[(token.Length + 1)..]);
 
-    private static bool IsNumber(ColumnModel? column) => column?.CSharpBase() is "decimal" or "double" or "float";
-
     private static DocumentTotalsShape? Resolve(TableModel table, ProjectSettings project, DatabaseModel database, out string? problem)
     {
         problem = null;
@@ -163,14 +161,14 @@ public static class DocumentTotalsPlan
             problem = $"{prefix}: {tenants.TableName} is the tenant table, whose rows the Python and Rust APIs do not write totals for. Leave Python and Rust out of Stacks.";
             return null;
         }
-        var lineKey = lines.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.LineKey));
+        var lineKey = lines.FindColumn(entry.LineKey);
         if (lineKey is null || lineKey.CSharpBase() != key.CSharpBase())
         {
             problem = $"{prefix}: {entry.LineKey} must be a column of {lines.TableName} of the same type as the key of {table.TableName}.";
             return null;
         }
-        var amount = lines.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.LineAmount));
-        if (!IsNumber(amount))
+        var amount = lines.FindColumn(entry.LineAmount);
+        if (amount is not { IsFractionalColumn: true })
         {
             problem = $"{prefix}: {entry.LineAmount} must be a decimal, double or float column of {lines.TableName}.";
             return null;
@@ -181,14 +179,14 @@ public static class DocumentTotalsPlan
                 problem = $"{prefix}: {name} is not a part of the totals ({syntax}).";
                 return null;
             }
-        ColumnModel? Part(string name) => entry.Parts.TryGetValue(name, out string? column) ? table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(column)) : null;
+        ColumnModel? Part(string name) => entry.Parts.TryGetValue(name, out string? column) ? table.FindColumn(column) : null;
         var columns = new DocumentTotalsColumns(Part(DocumentTotalsWords.PartLines), Part(DocumentTotalsWords.PartAllowances), Part(DocumentTotalsWords.PartCharges), Part(DocumentTotalsWords.PartTaxExclusive),
             Part(DocumentTotalsWords.PartTax), Part(DocumentTotalsWords.PartTaxInclusive), Part(DocumentTotalsWords.PartPrepaid), Part(DocumentTotalsWords.PartRounding), Part(DocumentTotalsWords.PartPayable));
         foreach (string name in PartNames)
         {
             if (!entry.Parts.ContainsKey(name))
                 continue;
-            if (Part(name) is not { } column || !IsNumber(column) || column.IsPrimaryKey)
+            if (Part(name) is not { } column || !column.IsFractionalColumn || column.IsPrimaryKey)
             {
                 problem = $"{prefix}: {name}={entry.Parts[name]} must be a decimal, double or float column of {table.TableName}.";
                 return null;
@@ -235,7 +233,7 @@ public static class DocumentTotalsPlan
         ColumnModel? allowanceTax = null;
         if (entry.Parts.TryGetValue(DocumentTotalsWords.TokenAllowanceTax, out string? allowanceTaxName))
         {
-            allowanceTax = allowance?.Table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(allowanceTaxName));
+            allowanceTax = allowance?.Table.FindColumn(allowanceTaxName);
             if (allowance is null)
             {
                 problem = $"{prefix}: AllowanceTax needs Allowances or Charges with an allowance table.";
@@ -250,7 +248,7 @@ public static class DocumentTotalsPlan
         ColumnModel? currency = null;
         if (entry.Parts.TryGetValue(DocumentTotalsWords.TokenCurrency, out string? currencyName))
         {
-            currency = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(currencyName));
+            currency = table.FindColumn(currencyName);
             if (currency is null || currency.CSharpBase() != "string")
             {
                 problem = $"{prefix}: Currency={currencyName} must be a text column of {table.TableName}.";

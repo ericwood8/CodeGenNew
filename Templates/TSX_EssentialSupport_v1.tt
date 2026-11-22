@@ -292,7 +292,7 @@ export function CurrencyInput({ id, value, onChange, label, digits = 2, currency
     return Number.isNaN(amount) ? undefined : amount;
   };
 
-  const typed = editing ? parse(text) : value;
+  const typed = editing ? parse(text) : (value ?? null);
   let problem = '';
   if (typed === undefined) problem = 'Enter an amount.';
   else if (typed !== null && min !== undefined && typed < min) problem = `The amount must be at least ${format(min)}.`;

@@ -1,3 +1,4 @@
+using CodeGenNew.Core.Sql;
 using CodeGenNew.Core.Allowance;
 
 namespace CodeGenNew.Core.Rust;
@@ -10,6 +11,20 @@ public static class RustAllowanceWriter
     /// <summary> The table as Rust fields and base types (<c>Decimal</c>, <c>f64</c> or <c>f32</c>). <c>Document</c> is the document field and <c>DocumentColumn</c>, <c>Table</c> and <c>SelectList</c> what the totals query needs. </summary>
     public sealed record Names(string Struct, string Table, string SelectList, string Flag, string Base, string BaseType, bool BaseNullable, string Percent, string PercentType, bool PercentNullable,
         string Amount, string AmountType, int AmountScale, int PercentScale, string? Document, string? DocumentColumn, string? DocumentType, bool DocumentNullable = false, string? LineField = null, string? LineColumn = null, string? LineType = null, bool LineNullable = false);
+
+    /// <summary> The names of an allowance table, or null without one. </summary>
+    public static Names? NamesFor(AllowanceChargeShape? plan, RustTable t, DialectInfo dialect)
+    {
+        if (plan is null)
+            return null;
+        RustField F(ColumnModel c) => t.FieldOf(c);
+        RustField? document = plan.Document is null ? null : F(plan.Document);
+        RustField? line = plan.Line is null ? null : F(plan.Line);
+        return new Names(t.Struct, t.Table, t.SelectList, F(plan.Flag).Name, F(plan.Base).Name, F(plan.Base).BaseType, plan.Base.IsNullable, F(plan.Percent).Name, F(plan.Percent).BaseType, plan.Percent.IsNullable,
+            F(plan.Amount).Name, F(plan.Amount).BaseType, plan.Amount.Scale ?? AllowanceChargeWords.DefaultScale, plan.Percent.Scale ?? AllowanceChargeWords.DefaultScale, document?.Name,
+            plan.Document is null ? null : dialect.Quote(plan.Document.DbName), document?.BaseType, plan.Document?.IsNullable ?? false, line?.Name, plan.Line is null ? null : dialect.Quote(plan.Line.DbName),
+            line?.BaseType, plan.Line?.IsNullable ?? false);
+    }
 
     public static string RouteLine(string route, string readLayer) => $"        .route(\"{route}/{AllowanceChargeWords.TotalsRoute}\", get(allowance_charge_totals){readLayer})\n";
 

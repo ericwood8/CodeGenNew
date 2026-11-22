@@ -14,6 +14,22 @@ public static class PythonTaxWriter
     public sealed record Names(string Class, string Key, string Category, bool CategoryNullable, string Rate, string RateAnnotation, string Taxable, string TaxableAnnotation, string Tax, string TaxAnnotation, int Scale,
         string CategoryClass, string CategoryKey, string CategoryRate, string? ValidFrom, string? ValidTo, string? ValidAnnotation, string? Day, string? DayAnnotation, string? Document, string? Label);
 
+    /// <summary> The names of a line table and its category table, or null without either. </summary>
+    public static Names? NamesFor(TaxLineShape? plan, PythonTable t, PythonTable? category)
+    {
+        if (plan is null || category is null)
+            return null;
+        var rate = t.SchemaFieldOf(plan.Rate)!;
+        var taxable = t.SchemaFieldOf(plan.Taxable)!;
+        var tax = t.SchemaFieldOf(plan.Tax)!;
+        var validFrom = plan.ValidFrom is null ? null : category.FieldOf(plan.ValidFrom);
+        var day = t.SchemaFieldOf(plan.Day);
+        return new Names(t.Class, t.Key.Name, t.SchemaFieldOf(plan.Category)!.Name, plan.Category.IsNullable, rate.Name, rate.Annotation, taxable.Name, taxable.Annotation, tax.Name, tax.Annotation,
+            plan.Tax.Scale ?? TaxWords.DefaultScale, category.Class, category.FieldOf(plan.CategoryKey).Name, category.FieldOf(plan.CategoryRate).Name, validFrom?.Name,
+            plan.ValidTo is null ? null : category.FieldOf(plan.ValidTo).Name, validFrom?.Annotation, day?.Name, day?.Annotation, t.SchemaFieldOf(plan.Document)?.Name,
+            plan.Label is null ? null : category.FieldOf(plan.Label).Name);
+    }
+
     /// <summary> The attributes the server owns, which an update must not take from the body. </summary>
     public static IEnumerable<string> Owned(Names n) => [n.Rate, n.Tax];
 

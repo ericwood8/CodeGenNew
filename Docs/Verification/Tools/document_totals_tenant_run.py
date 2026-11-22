@@ -84,7 +84,8 @@ def listing(client, **params):
     return response.status_code, (response.json() if response.status_code == 200 else response.text)
 
 
-def exercise(stack, base, password, database):
+def exercise(stack, base, password, bump):
+    """bump(invoice key) adds 5 to the stored payable amount of the invoice behind the server's back."""
     north, contoso = (signed_in(base, "ada", password, tenant) for tenant in (1, 2))
     category = north.post(CATEGORIES, json={"taxCategoryId": 0, "code": "T20", "name": "Tenant run", "rate": 0.2, "exemptionReason": None, "validFrom": "2000-01-01", "validTo": None})
     check(stack, "a tax category is created", category.status_code == 201, (category.status_code, category.text))
@@ -123,8 +124,7 @@ def exercise(stack, base, password, database):
     anonymous = httpx.get(base + f"{INVOICES}/document-totals-check", timeout=30)
     check(stack, "the check route refuses a call with no sign-in", anonymous.status_code == 401, anonymous.status_code)
 
-    with sqlite3.connect(database) as db:
-        db.execute("UPDATE Invoice SET Payable = Payable + 5 WHERE InvoiceId = ?", (key,))
+    bump(key)
     code, answer = listing(north)
     check(stack, "a total altered under the server is listed for its tenant", code == 200 and answer["differing"] == 1, (code, answer))
     code, answer = listing(contoso)
@@ -157,7 +157,7 @@ def play(stack, work, database, schema, port, python):
                 failures.append((stack, "server"))
                 return
             time.sleep(2)
-            exercise(stack, f"http://localhost:{port}", password, database)
+            exercise(stack, f"http://localhost:{port}", password, lambda key: sqlite3.connect(database).execute("UPDATE Invoice SET Payable = Payable + 5 WHERE InvoiceId = ?", (key,)).connection.commit())
         finally:
             subprocess.run(["taskkill", "/PID", str(server.pid), "/T", "/F"], capture_output=True)
 

@@ -179,7 +179,7 @@ public class TenantPlanTests
         Assert.IsTrue(pythonSuccess, string.Join(" | ", pythonErrors));
         string tenancy = python("app/routes/tenancy.py");
         Assert.Contains("@public_router.get(\"" + TenantWords.SignInListPath + "\")", tenancy);
-        Assert.Contains(".where(tenants.c[TENANT_ACTIVE].is_(True))", tenancy);
+        Assert.Contains(".where(tenants.c[TENANT_ACTIVE] == true())", tenancy);
         Assert.Contains("app.include_router(tenancy_public_router)", python("app/main.py"));
 
         var (rustSuccess, rustErrors, rust, _) = await GenerateAsync(stack: "rust");

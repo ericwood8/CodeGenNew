@@ -19,6 +19,9 @@ public class TableModel
     private Dictionary<string, ForeignKeyModel>? _foreignKeyByColumn;
     #endregion
 
+    /// <summary> The column of that name (any case), or null when the name is null or there is no such column. </summary>
+    public ColumnModel? FindColumn(string? name) => name is null ? null : Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name));
+
     public required string SchemaName { get; init; }
     /// <summary> The name generated code uses (a C# class, a file, a route). </summary>
     public required string TableName { get; init; }

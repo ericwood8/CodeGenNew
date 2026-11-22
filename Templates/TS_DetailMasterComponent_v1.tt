@@ -1336,6 +1336,9 @@
             T();
             T("  // Child grids show whatever keys the API returns; these members caption them, leave out long text, limit them to 20 and format money and dates.");
             T("  private readonly childCurrencyDigits: Record<string, number> = { " + string.Join(", ", allCurrency.Select(m => m.Name + ": " + m.Digits)) + " };");
+            var allRates = gridChildren.SelectMany(ch => ch.RateColumns).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            if (allRates.Count > 0)
+                T("  private readonly childRateDigits: Record<string, number> = { " + string.Join(", ", allRates.Select(m => m.Name + ": " + m.Digits)) + " }; // a tax rate is a fraction, shown as a percentage");
             var allCaptions = gridChildren.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
             T("  private readonly childCaptions: Record<string, string> = { " + string.Join(", ", allCaptions.Select(m => m.Name + ": '" + m.Caption.Replace("'", "\'") + "'")) + " };");
             T("  private readonly childLongTextColumns: string[] = [" + string.Join(", ", allLongText.Select(n => "'" + n + "'")) + "];");
@@ -1362,6 +1365,8 @@
             T("      const d = this.childCurrencyDigits[key];");
             T("      return value.toLocaleString(undefined, { style: 'currency', currency: '" + Project.CurrencyCode + "', minimumFractionDigits: d, maximumFractionDigits: d });");
             T("    }");
+            if (allRates.Count > 0)
+                T("    if (typeof value === 'number' && key in this.childRateDigits) return +(value * 100).toFixed(this.childRateDigits[key]) + '%';");
             T("    // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.");
             T("    return typeof value === 'string' ? value.replace(/^(\\d{4}-\\d{2}-\\d{2})T.*$/, '$1') : String(value);");
             T("  }");

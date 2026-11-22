@@ -1,3 +1,4 @@
+using CodeGenNew.Core.Sql;
 using CodeGenNew.Core.Tax;
 
 
@@ -15,6 +16,21 @@ public static class RustTaxWriter
     public sealed record Names(string Struct, string Table, string SelectList, string CategoryModule, string Category, string CategoryType, bool CategoryNullable, string Rate, string RateType, string Taxable, string TaxableType,
         string Tax, string TaxType, int Scale, string CategoryRate, string CategoryRateType, string? ValidFrom, string? ValidFromType, string? ValidTo, bool ValidToNullable, string? Day, string? DayType, string? Document,
         string? DocumentColumn, string? DocumentType, string? Label, bool DocumentNullable = false);
+
+    /// <summary> The names of a line table and its category table, or null without either. </summary>
+    public static Names? NamesFor(TaxLineShape? plan, RustTable t, RustTable? category, DialectInfo dialect)
+    {
+        if (plan is null || category is null)
+            return null;
+        RustField F(ColumnModel c) => t.FieldOf(c);
+        RustField? validFrom = plan.ValidFrom is null ? null : category.FieldOf(plan.ValidFrom);
+        RustField? day = plan.Day is null ? null : F(plan.Day);
+        RustField? document = plan.Document is null ? null : F(plan.Document);
+        return new Names(t.Struct, t.Table, t.SelectList, category.Module, F(plan.Category).Name, F(plan.Category).BaseType, plan.Category.IsNullable, F(plan.Rate).Name, F(plan.Rate).BaseType, F(plan.Taxable).Name,
+            F(plan.Taxable).BaseType, F(plan.Tax).Name, F(plan.Tax).BaseType, plan.Tax.Scale ?? TaxWords.DefaultScale, category.FieldOf(plan.CategoryRate).Name, category.FieldOf(plan.CategoryRate).BaseType,
+            validFrom?.Name, validFrom?.BaseType, plan.ValidTo is null ? null : category.FieldOf(plan.ValidTo).Name, plan.ValidTo?.IsNullable ?? false, day?.Name, day?.BaseType, document?.Name,
+            plan.Document is null ? null : dialect.Quote(plan.Document.DbName), document?.BaseType, plan.Label is null ? null : category.FieldOf(plan.Label).Name, plan.Document?.IsNullable ?? false);
+    }
 
     public static string RouteLine(string route, string readLayer) => $"        .route(\"{route}/tax-subtotals\", get(tax_subtotals){readLayer})\n";
 

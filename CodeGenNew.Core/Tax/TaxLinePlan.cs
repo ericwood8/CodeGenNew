@@ -74,8 +74,6 @@ public static class TaxLinePlan
         return problems;
     }
 
-    private static bool IsNumber(ColumnModel? column) => column?.CSharpBase() is "decimal" or "double" or "float";
-
     private static TaxLineShape? Resolve(TableModel table, ProjectSettings project, DatabaseModel database, out string? problem)
     {
         problem = null;
@@ -107,12 +105,11 @@ public static class TaxLinePlan
             problem = $"{prefix}: {categories.TableName} needs a single whole-number key.";
             return null;
         }
-        ColumnModel? Find(TableModel t, string name) => t.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name));
-        var category = Find(table, entry.Category);
-        var rate = Find(table, entry.Rate);
-        var taxable = Find(table, entry.Taxable);
-        var tax = Find(table, entry.Tax);
-        var categoryRate = Find(categories, entry.CategoryRate);
+        var category = table.FindColumn(entry.Category);
+        var rate = table.FindColumn(entry.Rate);
+        var taxable = table.FindColumn(entry.Taxable);
+        var tax = table.FindColumn(entry.Tax);
+        var categoryRate = categories.FindColumn(entry.CategoryRate);
         if (category is not { IsIntegerColumn: true } || category.CSharpBase() != categoryKey.CSharpBase())
         {
             problem = $"{prefix}: {entry.Category} must be a whole-number column of the same type as the key of {categories.TableName}.";
@@ -120,13 +117,13 @@ public static class TaxLinePlan
         }
         foreach (var (column, name) in new[] { (rate, entry.Rate), (taxable, entry.Taxable), (tax, entry.Tax) })
         {
-            if (column is not { IsNullable: false } || !IsNumber(column))
+            if (column is not { IsNullable: false } || !column.IsFractionalColumn)
             {
                 problem = $"{prefix}: {name} must be a decimal, double or float column that cannot be NULL.";
                 return null;
             }
         }
-        if (categoryRate is not { IsNullable: false } || !IsNumber(categoryRate))
+        if (categoryRate is not { IsNullable: false } || !categoryRate.IsFractionalColumn)
         {
             problem = $"{prefix}: {categories.TableName}.{entry.CategoryRate} must be a decimal, double or float column that cannot be NULL (the rate as a fraction: 0.08 for 8 percent).";
             return null;
@@ -136,11 +133,11 @@ public static class TaxLinePlan
             problem = $"{prefix}: the category, rate, taxable amount and tax amount must be four different columns.";
             return null;
         }
-        ColumnModel? validFrom = entry.ValidFrom is null ? null : Find(categories, entry.ValidFrom);
-        ColumnModel? validTo = entry.ValidTo is null ? null : Find(categories, entry.ValidTo);
-        ColumnModel? day = entry.Day is null ? null : Find(table, entry.Day);
-        ColumnModel? document = entry.Document is null ? null : Find(table, entry.Document);
-        ColumnModel? label = entry.Label is not null ? Find(categories, entry.Label) : Find(categories, "Code") ?? Find(categories, "Name");
+        ColumnModel? validFrom = entry.ValidFrom is null ? null : categories.FindColumn(entry.ValidFrom);
+        ColumnModel? validTo = entry.ValidTo is null ? null : categories.FindColumn(entry.ValidTo);
+        ColumnModel? day = entry.Day is null ? null : table.FindColumn(entry.Day);
+        ColumnModel? document = entry.Document is null ? null : table.FindColumn(entry.Document);
+        ColumnModel? label = entry.Label is not null ? categories.FindColumn(entry.Label) : categories.FindColumn("Code") ?? categories.FindColumn("Name");
         if (entry.ValidFrom is not null && validFrom is not { IsDateColumn: true, IsNullable: false })
         {
             problem = $"{prefix}: {categories.TableName}.{entry.ValidFrom} must be a date column that cannot be NULL.";
@@ -170,7 +167,7 @@ public static class TaxLinePlan
             }
             foreach (string name in entry.Groups.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
             {
-                if (Find(categories, name) is null)
+                if (categories.FindColumn(name) is null)
                 {
                     problem = $"{prefix}: {categories.TableName}.{name} is not a column.";
                     return null;
@@ -185,6 +182,6 @@ public static class TaxLinePlan
         if (label is not null && !label.IsStringColumn)
             label = null;
         return new TaxLineShape(table, key, category, rate, taxable, tax, categories, categoryKey, categoryRate, validFrom, validTo, day, document, label,
-            entry.Groups is null ? [] : entry.Groups.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(n => Find(categories, n)).OfType<ColumnModel>().ToList());
+            entry.Groups is null ? [] : entry.Groups.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(n => categories.FindColumn(n)).OfType<ColumnModel>().ToList());
     }
 }

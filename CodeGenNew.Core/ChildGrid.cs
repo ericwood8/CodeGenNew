@@ -1,4 +1,5 @@
 using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Tax;
 
 namespace CodeGenNew.Core;
 
@@ -169,6 +170,11 @@ public sealed partial class ChildGrid
 
     /// <summary> The child's amounts of money (JSON name and decimal places): the grid shows them as currency. </summary>
     public IReadOnlyList<(string Name, int Digits)> MoneyColumns => Link.ReferencingTableColumns.Where(c => c.IsMoneyAmount).Select(c => (JsonNames.Camel(c.Name), NumericClassifier.CurrencyDigits(c))).ToList();
+
+    /// <summary> The child's tax rate columns (JSON name and most decimals of the percentage): a rate is a fraction, so the grid shows 0.2 as 20%. </summary>
+    public IReadOnlyList<(string Name, int Digits)> RateColumns => Link.ReferencingTableColumns
+        .Where(c => TaxLinePlan.RateColumns(_project).Any(r => r.EqualsIgnoreCase($"{Link.ReferencingTable}.{c.Name}")))
+        .Select(c => (JsonNames.Camel(c.Name), Math.Max(2, (c.Scale ?? 2) - 2))).ToList();
 
     /// <summary> The child's long text columns by their JSON names: the grid puts them last. </summary>
     /// <summary> The JSON names of the child's stamped dates and times (created, modified): shown with the time of day. </summary>
