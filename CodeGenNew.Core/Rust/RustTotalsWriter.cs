@@ -17,7 +17,7 @@ public static class RustTotalsWriter
 
     /// <summary> <c>Parts</c> are the totals the server writes: the part name, the field, the quoted column and the scale. </summary>
     public sealed record Names(Tbl Header, Field Key, string KeyColumn, Field? Prepaid, Field? Currency, Tbl Lines, string LineKeyColumn, Field LineKey, Field LineAmount, Field? Tax, Tbl? Extra, string? ExtraDocumentColumn,
-        Field? ExtraDocument, Field? ExtraFlag, Field? ExtraAmount, IReadOnlyList<(string Part, Field Field, string Column, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route);
+        Field? ExtraDocument, Field? ExtraFlag, Field? ExtraAmount, IReadOnlyList<(string Part, Field Field, string Column, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route, IReadOnlyList<DocumentTotalsPlaces>? Places = null, Field? ExtraCategory = null, Tbl? Category = null, Field? CategoryKey = null, Field? CategoryRate = null);
 
     private static bool Decimals(Names n) => new[] { n.LineAmount.BaseType, n.Tax?.BaseType, n.ExtraAmount?.BaseType, n.Prepaid?.BaseType }.Concat(n.Parts.Select(p => p.Field.BaseType)).Contains("Decimal");
 
@@ -94,14 +94,14 @@ public static class RustTotalsWriter
     }
 
     /// <summary> What the header's route file adds: the work, the write of the totals, the saves of the header that write them, the check route. </summary>
-    public static string Header(Names n)
+    public static string Header(Names n, string userArgument = "", string? filterArguments = null)
     {
         bool decimals = Decimals(n);
         string domain = decimals ? "rust_decimal::Decimal" : "f64";
         string zero = decimals ? "rust_decimal::Decimal::ZERO" : "0.0";
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
-        string money(string value, int scale) => decimals ? $"{value}.round_dp_with_strategy({scale}, rust_decimal::RoundingStrategy::MidpointAwayFromZero)" : $"(({value}) * 10f64.powi({scale})).round() / 10f64.powi({scale})";
+        string money(string value, int scale) => decimals ? $"{value}.round_dp_with_strategy(totals_places(currency, {scale}), rust_decimal::RoundingStrategy::MidpointAwayFromZero)" : $"(({value}) * 10f64.powi(totals_places(currency, {scale}) as i32)).round() / 10f64.powi(totals_places(currency, {scale}) as i32)";
         L("/// DocumentTotals: the totals of a document, worked out from its rows.");
         L("struct WorkedTotals {");
         foreach (string field in new[] { "lines", "allowances", "charges", "exclusive", "tax", "inclusive", "rounding", "payable" })
@@ -113,6 +113,14 @@ public static class RustTotalsWriter
             L($"    if currency.is_some_and(|c| c.trim().eq_ignore_ascii_case(\"{r.Currency}\")) {{\n        return Some({Literal(r.Increment, decimals)});\n    }}");
         var any = n.Rounds.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency);
         L(any is null ? "    let _ = currency;\n    None" : $"    let _ = currency;\n    Some({Literal(any.Increment, decimals)})");
+        L("}");
+        L();
+        L("/// The decimal places of an amount in the currency: the places of the currency, at most the scale of the column that holds the amount.");
+        L("fn totals_places(currency: Option<&str>, scale: u32) -> u32 {");
+        foreach (var r in n.Places?.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency) ?? [])
+            L($"    if currency.is_some_and(|c| c.trim().eq_ignore_ascii_case(\"{r.Currency}\")) {{\n        return scale.min({r.Places});\n    }}");
+        var anyPlaces = n.Places?.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency);
+        L(anyPlaces is null ? "    let _ = currency;\n    scale" : $"    let _ = currency;\n    scale.min({anyPlaces.Places})");
         L("}");
         L();
         L($"fn work_out_totals(lines: {domain}, allowances: {domain}, charges: {domain}, tax: {domain}, prepaid: {domain}, currency: Option<&str>) -> WorkedTotals {{");
@@ -143,10 +151,11 @@ public static class RustTotalsWriter
         L("    builder.push_bind(key);");
         L($"    let lines = builder.build_query_as::<{n.Lines.Struct}>().fetch_all(&mut **tx).await?;");
         L($"    let line_total = lines.iter().fold({zero}, |sum, r| sum + {Num("r." + n.LineAmount.Name, n.LineAmount, decimals)});");
+        string mutable = n.ExtraCategory is not null && n.Category is not null && n.CategoryKey is not null && n.CategoryRate is not null && n.Extra is not null ? "mut " : "";
         if (n.Tax is not null)
-            L($"    let tax_total = lines.iter().fold({zero}, |sum, r| sum + {Num("r." + n.Tax.Name, n.Tax, decimals)});");
+            L($"    let {mutable}tax_total = lines.iter().fold({zero}, |sum, r| sum + {Num("r." + n.Tax.Name, n.Tax, decimals)});");
         else
-            L($"    let tax_total = {zero};");
+            L($"    let {mutable}tax_total = {zero};");
         if (n.Extra is not null)
         {
             L($"    let mut builder = sqlx::QueryBuilder::<Db>::new({RustTable.Raw($"SELECT {n.Extra.SelectList} FROM {n.Extra.Table} WHERE {n.ExtraDocumentColumn} = ")});");
@@ -157,6 +166,20 @@ public static class RustTotalsWriter
         }
         else
             L($"    let (allowance_total, charge_total) = ({zero}, {zero});");
+        if (mutable.Length > 0)
+        {
+            int taxScale = ScaleOf(n, DocumentTotalsWords.PartTax);
+            string rounded(string value) => decimals ? $"{value}.round_dp_with_strategy({taxScale}, rust_decimal::RoundingStrategy::MidpointAwayFromZero)" : $"(({value}) * 10f64.powi({taxScale})).round() / 10f64.powi({taxScale})";
+            L($"    let mut builder = sqlx::QueryBuilder::<Db>::new({RustTable.Raw($"SELECT {n.Category!.SelectList} FROM {n.Category.Table}")});");
+            L($"    let categories = builder.build_query_as::<{n.Category.Struct}>().fetch_all(&mut **tx).await?;");
+            L("    for r in &extras {");
+            string own = n.ExtraCategory!.Nullable ? $"r.{n.ExtraCategory.Name}" : $"Some(r.{n.ExtraCategory.Name})";
+            L($"        if let Some(c) = categories.iter().find(|c| Some(c.{n.CategoryKey!.Name}) == {own}) {{");
+            L($"            let one = {rounded("(" + Num("r." + n.ExtraAmount!.Name, n.ExtraAmount, decimals) + ") * (" + Num("c." + n.CategoryRate!.Name, n.CategoryRate, decimals) + ")")};");
+            L($"            tax_total = if r.{n.ExtraFlag!.Name} {{ tax_total + one }} else {{ tax_total - one }};");
+            L("        }");
+            L("    }");
+        }
         string prepaid = n.Prepaid is null ? zero : Num("header." + n.Prepaid.Name, n.Prepaid, decimals);
         string currency = n.Currency is null ? "None" : n.Currency.Nullable ? $"header.{n.Currency.Name}.as_deref()" : $"Some(header.{n.Currency.Name}.as_str())";
         L($"    Ok(Some(work_out_totals(line_total, allowance_total, charge_total, tax_total, {prepaid}, {currency})))");
@@ -225,10 +248,13 @@ public static class RustTotalsWriter
         L("}");
         L();
         L("/// The headers whose stored totals differ from their rows (one header when id is given).");
-        L($"async fn document_totals_check(State(pool): State<Pool>, Query(query): Query<DocumentTotalsCheckQuery>) -> ApiResult<Json<serde_json::Value>> {{");
+        L($"async fn document_totals_check(State(pool): State<Pool>{userArgument}, Query(query): Query<DocumentTotalsCheckQuery>) -> ApiResult<Json<serde_json::Value>> {{");
         if (decimals)
             L("    #[allow(unused_imports)]\n    use rust_decimal::prelude::ToPrimitive as _;");
-        L($"    let headers = match query.id {{\n        Some(id) => repo::get_by_id(&pool, id).await?.into_iter().collect::<Vec<_>>(),\n        None => repo::get_all(&pool).await?.into_iter().take({DocumentTotalsWords.CheckLimit}).collect::<Vec<_>>(),\n    }};");
+        if (filterArguments is null)
+            L($"    let headers = match query.id {{\n        Some(id) => repo::get_by_id(&pool, id).await?.into_iter().collect::<Vec<_>>(),\n        None => repo::get_all(&pool).await?.into_iter().take({DocumentTotalsWords.CheckLimit}).collect::<Vec<_>>(),\n    }};");
+        else
+            L($"    let rows = repo::get_all_scoped(&pool{filterArguments}).await?;\n    let headers = rows.into_iter().filter(|h| query.id.is_none_or(|id| h.{n.Key.Name} == id)).take({DocumentTotalsWords.CheckLimit}).collect::<Vec<_>>();");
         L("    let mut tx = pool.begin().await?;");
         L("    let mut differing = Vec::new();");
         L("    for header in &headers {");

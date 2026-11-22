@@ -138,7 +138,7 @@
     RustTotalsWriter.Names? feederNames = null;
     string totalsHeaderModule = "";
     bool feedsLines = false;
-    if (!tenantTable && !log && !scoped && !tenanted && RatePlan.Remembered(Project) is { } totalsDatabase)
+    if (!tenantTable && !log && RatePlan.Remembered(Project) is { } totalsDatabase)
     {
         RustTotalsWriter.Tbl TotalsTable(RustTable x) => new RustTotalsWriter.Tbl(x.Struct, x.Module, x.Table, x.SelectList);
         RustTotalsWriter.Field TotalsField(RustTable x, ColumnModel c) => new RustTotalsWriter.Field(x.FieldOf(c).Name, x.FieldOf(c).BaseType, x.FieldOf(c).IsOption);
@@ -152,7 +152,9 @@
                 TotalsTable(lines), quote.Quote(shape.LineKey.DbName), TotalsField(lines, shape.LineKey), TotalsField(lines, shape.LineAmount), shape.Tax is null ? null : TotalsField(lines, shape.Tax.Tax),
                 extra is null ? null : TotalsTable(extra), shape.Allowance?.Document is null ? null : quote.Quote(shape.Allowance.Document.DbName), shape.Allowance?.Document is null ? null : TotalsField(extra!, shape.Allowance.Document),
                 shape.Allowance is null ? null : TotalsField(extra!, shape.Allowance.Flag), shape.Allowance is null ? null : TotalsField(extra!, shape.Allowance.Amount),
-                shape.Columns.Owned().Select(p => (p.Part, TotalsField(header, p.Column), quote.Quote(p.Column.DbName), p.Column.Scale ?? DocumentTotalsWords.DefaultScale)).ToList(), shape.Rounds, header.Route);
+                shape.Columns.Owned().Select(p => (p.Part, TotalsField(header, p.Column), quote.Quote(p.Column.DbName), p.Column.Scale ?? DocumentTotalsWords.DefaultScale)).ToList(), shape.Rounds, header.Route, shape.Places,
+                shape.AllowanceCategory is null ? null : TotalsField(extra!, shape.AllowanceCategory), shape.Tax is null || shape.AllowanceCategory is null ? null : TotalsTable(RustTable.Of(shape.Tax.CategoryTable, Project)),
+                shape.Tax is null || shape.AllowanceCategory is null ? null : TotalsField(RustTable.Of(shape.Tax.CategoryTable, Project), shape.Tax.CategoryKey), shape.Tax is null || shape.AllowanceCategory is null ? null : TotalsField(RustTable.Of(shape.Tax.CategoryTable, Project), shape.Tax.CategoryRate));
             if (shape.Header.TableName.EqualsIgnoreCase(Model.TableName))
                 totalsNames = names;
             else if (shape.Lines.TableName.EqualsIgnoreCase(Model.TableName) || (shape.Allowance?.Table.TableName.EqualsIgnoreCase(Model.TableName) ?? false))
@@ -229,6 +231,8 @@
         Line($"use crate::models::{totalsNames.Lines.Module}::{totalsNames.Lines.Struct};");
         if (totalsNames.Extra is not null)
             Line($"use crate::models::{totalsNames.Extra.Module}::{totalsNames.Extra.Struct};");
+        if (totalsNames.Category is not null)
+            Line($"use crate::models::{totalsNames.Category.Module}::{totalsNames.Category.Struct};");
     }
     Line($"use crate::repos::{t.Module} as repo;");
     Line(log ? "use crate::support::{ApiError, ApiResult, Pool};" : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : usesDb ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
@@ -345,7 +349,7 @@
         Line(RustTaxWriter.Subtotals(taxNames));
     }
     if (totalsNames is not null)
-        Line(RustTotalsWriter.Header(totalsNames));
+        Line(RustTotalsWriter.Header(totalsNames, scoped || tenanted ? userArgument : "", scoped || tenanted ? filterArguments : null));
     if (feederNames is not null)
         Line(RustTotalsWriter.Feeder(feederNames, feedsLines ? feederNames.Lines : feederNames.Extra!, feedsLines ? feederNames.LineKey : feederNames.ExtraDocument!, t.Key.Name, keyType, textKey ? "&id" : "id", totalsHeaderModule));
     if (allowNames is not null)

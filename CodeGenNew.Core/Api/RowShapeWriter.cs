@@ -349,8 +349,9 @@ public static class RowShapeWriter
 
         if (DocumentTotalsPlan.For(table, project, database) is { } documentTotals)
         {
-            o.Append(DocumentTotalsWriter.Check(documentTotals, contextType));
-            maps.Append(Fill("        app.MapGet(\"§R/" + DocumentTotalsWords.CheckRoute + "\", ([FromServices] §CTX context, [FromQuery(Name = \"id\")] " + documentTotals.Key.CSharpBase() + "? id) => DocumentTotalsCheckAsync(context, id))§AUTH;\n"));
+            var totalsOwner = TableShapes.For(table, project).Owner;   // OwnedTables: the check lists only the headers of the owners the caller may see
+            o.Append(DocumentTotalsWriter.Check(documentTotals, contextType, totalsOwner));
+            maps.Append(Fill("        app.MapGet(\"§R/" + DocumentTotalsWords.CheckRoute + "\", ([FromServices] §CTX context" + (totalsOwner is null ? "" : ", HttpContext http") + ", [FromQuery(Name = \"id\")] " + documentTotals.Key.CSharpBase() + "? id) => DocumentTotalsCheckAsync(context" + (totalsOwner is null ? "" : ", http") + ", id))§AUTH;\n"));
         }
 
         if (save.Length > 0)

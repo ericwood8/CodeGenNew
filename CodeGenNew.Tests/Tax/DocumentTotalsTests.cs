@@ -82,6 +82,42 @@ public class DocumentTotalsTests
     }
 
     [TestMethod]
+    [DataRow("Python", true)]
+    [DataRow("Rust", true)]
+    [DataRow("Api", false)]
+    public void Tax_over_a_limited_line_table_is_refused_for_the_python_and_rust_apis_only(string stack, bool refused)
+    {
+        var project = ProjectSettings.FromValues(new Dictionary<string, string>
+        {
+            ["ProjectName"] = "Shop", ["DocumentTotals"] = "Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Tax=TaxTotal:Payable=Payable", ["TaxLines"] = "InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate",
+            ["AccessMode"] = "Ef", ["ApiAuth"] = "true", ["OwnedTables"] = "Invoice", ["Stacks"] = stack,
+        });
+        var problems = DocumentTotalsPlan.Problems(Database(), project);
+        Assert.AreEqual(refused, problems.Any(p => p.Contains("write no tax amount")), string.Join(" | ", problems));
+    }
+
+    [TestMethod]
+    public void A_decimal_places_rule_reaches_the_plan_and_all_three_writers()
+    {
+        string setting = Setting + ":Decimals=JPY/0:Decimals=*/3";
+        var shape = DocumentTotalsPlan.For(Header(), Project(setting), Database())!;
+        CollectionAssert.AreEqual(new[] { 0, 3 }, shape.Places.Select(p => p.Places).ToArray());
+        Assert.AreEqual(0, DocumentTotalsPlan.Problems(Database(), Project(setting)).Count);
+        string csharp = DocumentTotalsWriter.Context([shape], "ShopContext");
+        Assert.IsTrue(csharp.Contains("private static int Places(string? currency, int scale)") && csharp.Contains("return Math.Min(0, scale);") && csharp.Contains("Round(lines, Places(currency, 2))"));
+        var names = new PythonTotalsWriter.Names(new("Invoice", "invoice", "invoice_id"), "invoice", new("InvoiceLine", "invoice_line", "invoice_line_id"), "invoice_id", "line_total", null, null, null, null, null, "prepaid", "currency",
+            [("Lines", "items_total", "Decimal", 2)], [], "/api/invoices", shape.Places);
+        string module = PythonTotalsWriter.Module(names);
+        Assert.IsTrue(module.Contains("TOTALS_PLACES = {\"JPY\": 0}") && module.Contains("TOTALS_PLACES_ANY = 3") && module.Contains("money(lines, totals_places(currency, 2))"));
+        RustTotalsWriter.Tbl Table(string t) => new(t, t.ToLowerInvariant(), "\"" + t + "\"", "\"Id\"");
+        RustTotalsWriter.Field Field(string name, string type = "f64") => new(name, type, false);
+        var rust = new RustTotalsWriter.Names(Table("Invoice"), Field("invoice_id", "i32"), "\"InvoiceId\"", Field("prepaid"), Field("currency", "String"), Table("InvoiceLine"), "\"InvoiceId\"", Field("invoice_id", "i32"), Field("line_total"), null, null, null, null,
+            null, null, [("Lines", Field("items_total"), "\"ItemsTotal\"", 2)], [], "/api/invoices", shape.Places);
+        string header = RustTotalsWriter.Header(rust);
+        Assert.IsTrue(header.Contains("fn totals_places(currency: Option<&str>, scale: u32) -> u32") && header.Contains("scale.min(0)") && header.Contains("scale.min(3)") && header.Contains("totals_places(currency, 2)"));
+    }
+
+    [TestMethod]
     public void The_columns_the_server_writes_are_owned_and_the_prepaid_amount_is_not()
     {
         var header = Header();
@@ -105,6 +141,9 @@ public class DocumentTotalsTests
     [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal", "names no total to write")]
     [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Round=CHF/0.05", "needs Currency=Column")]
     [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Currency=Customer:Round=CHF/zero", "must read Currency/Increment")]
+    [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Decimals=JPY/0", "needs Currency=Column")]
+    [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Currency=Customer:Decimals=JPY/many", "must read Currency/Places")]
+    [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Currency=Customer:Decimals=JPY/12", "must read Currency/Places")]
     public void A_setting_that_cannot_work_is_reported(string setting, string expected)
     {
         var problems = RowShapePlan.Problems(Database(), Project(setting));
@@ -139,7 +178,7 @@ public class DocumentTotalsTests
     [DataRow("Python", true)]
     [DataRow("Rust", true)]
     [DataRow("Api", false)]
-    public void A_header_that_belongs_to_a_tenant_is_refused_for_the_python_and_rust_apis_only(string stack, bool refused)
+    public void A_header_that_is_the_tenant_table_is_refused_for_the_python_and_rust_apis_only(string stack, bool refused)
     {
         var project = ProjectSettings.FromValues(new Dictionary<string, string>
         {
@@ -147,7 +186,7 @@ public class DocumentTotalsTests
             ["AllowanceCharges"] = "InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId", ["AccessMode"] = "Ef", ["TenantTable"] = "Invoice", ["Stacks"] = stack,
         });
         var problems = DocumentTotalsPlan.Problems(Database(), project);
-        Assert.AreEqual(refused, problems.Any(p => p.Contains("limited to an owner or a tenant")), string.Join(" | ", problems));
+        Assert.AreEqual(refused, problems.Any(p => p.Contains("is the tenant table")), string.Join(" | ", problems));
     }
 
     [TestMethod]
@@ -176,7 +215,7 @@ public class DocumentTotalsTests
         string text = DocumentTotalsWriter.Context(DocumentTotalsPlan.All(Project(), Database()), "ShopContext");
         foreach (string expected in new[]
         {
-            "public static class InvoiceTotals", "Round(lines - allowances + charges, 2)", "Round(exclusive + tax, 2)", "string.Equals(currency?.Trim(), \"CHF\", StringComparison.OrdinalIgnoreCase)", "return 0.05m;",
+            "public static class InvoiceTotals", "Round(lines - allowances + charges, Places(currency, 2))", "Round(exclusive + tax, Places(currency, 2))", "string.Equals(currency?.Trim(), \"CHF\", StringComparison.OrdinalIgnoreCase)", "return 0.05m;",
             "Note(changed.Keys, line.InvoiceId)", "Select(x => x.InvoiceId).FirstOrDefaultAsync", "LockTotalsAsync(context, id, cancellationToken)", "ExecuteUpdateAsync(s => s.SetProperty(x => x.ItemsTotal, x => x.ItemsTotal)",
             ".SetProperty(x => x.Payable, (decimal)worked.Payable)", "Keys.Order()", "await entry.ReloadAsync(cancellationToken)",
         })

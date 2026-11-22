@@ -15,7 +15,7 @@ from live_party_run import TOOLS
 from rate_sqlite_run import play
 
 SETTINGS = {
-    "DocumentTotals": "Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Allowances=AllowanceTotal:Charges=ChargeTotal:TaxExclusive=TaxExclusive:Tax=TaxTotal:TaxInclusive=TaxInclusive:Prepaid=Prepaid:Rounding=Rounding:Payable=Payable:Currency=Currency:Round=CHF/0.05",
+    "DocumentTotals": "Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Allowances=AllowanceTotal:Charges=ChargeTotal:TaxExclusive=TaxExclusive:Tax=TaxTotal:TaxInclusive=TaxInclusive:Prepaid=Prepaid:Rounding=Rounding:Payable=Payable:Currency=Currency:Round=CHF/0.05:Decimals=JPY/0:AllowanceTax=TaxCategoryId",
     "TaxLines": "InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate",
     "AllowanceCharges": "InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId",
 }

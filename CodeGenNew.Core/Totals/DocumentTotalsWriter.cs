@@ -98,6 +98,15 @@ public static class DocumentTotalsWriter
         L();
         L("    private static decimal Round(decimal value, int scale) => Math.Round(value, scale, MidpointRounding.AwayFromZero);");
         L();
+        L("    /// <summary> The decimal places of an amount in <paramref name=\"currency\"/>: the places of the currency, at most the scale of the column that holds the amount. </summary>");
+        L("    private static int Places(string? currency, int scale)");
+        L("    {");
+        foreach (var r in s.Places.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency))
+            L($"        if (string.Equals(currency?.Trim(), \"{r.Currency}\", StringComparison.OrdinalIgnoreCase))\n            return Math.Min({r.Places}, scale);");
+        var anyPlaces = s.Places.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency);
+        L(anyPlaces is null ? "        return scale;" : $"        return Math.Min({anyPlaces.Places}, scale);");
+        L("    }");
+        L();
         L("    /// <summary> The multiple the payable amount is rounded to in <paramref name=\"currency\"/>, or 0 for none. </summary>");
         L("    private static decimal Increment(string? currency)");
         L("    {");
@@ -110,16 +119,16 @@ public static class DocumentTotalsWriter
         L("    /// <summary> The totals from the sums of the rows: every amount is rounded to the scale of its column, half away from zero, and the next one is worked out from the rounded ones. </summary>");
         L("    public static Worked Work(decimal lines, decimal allowances, decimal charges, decimal tax, decimal prepaid, string? currency)");
         L("    {");
-        L($"        lines = Round(lines, {Scale(c.Lines)});");
-        L($"        allowances = Round(allowances, {Scale(c.Allowances)});");
-        L($"        charges = Round(charges, {Scale(c.Charges)});");
-        L($"        decimal exclusive = Round(lines - allowances + charges, {Scale(c.TaxExclusive)});");
-        L($"        tax = Round(tax, {Scale(c.Tax)});");
-        L($"        decimal inclusive = Round(exclusive + tax, {Scale(c.TaxInclusive)});");
+        L($"        lines = Round(lines, Places(currency, {Scale(c.Lines)}));");
+        L($"        allowances = Round(allowances, Places(currency, {Scale(c.Allowances)}));");
+        L($"        charges = Round(charges, Places(currency, {Scale(c.Charges)}));");
+        L($"        decimal exclusive = Round(lines - allowances + charges, Places(currency, {Scale(c.TaxExclusive)}));");
+        L($"        tax = Round(tax, Places(currency, {Scale(c.Tax)}));");
+        L($"        decimal inclusive = Round(exclusive + tax, Places(currency, {Scale(c.TaxInclusive)}));");
         L("        decimal due = inclusive - prepaid;");
         L("        decimal step = Increment(currency);");
-        L($"        decimal rounding = step > 0 ? Round(Math.Round(due / step, 0, MidpointRounding.AwayFromZero) * step - due, {Scale(c.Rounding)}) : 0m;");
-        L($"        return new Worked(lines, allowances, charges, exclusive, tax, inclusive, prepaid, rounding, Round(due + rounding, {Scale(c.Payable)}));");
+        L($"        decimal rounding = step > 0 ? Round(Math.Round(due / step, 0, MidpointRounding.AwayFromZero) * step - due, Places(currency, {Scale(c.Rounding)})) : 0m;");
+        L($"        return new Worked(lines, allowances, charges, exclusive, tax, inclusive, prepaid, rounding, Round(due + rounding, Places(currency, {Scale(c.Payable)})));");
         L("    }");
         L();
         L("    private static void Note(HashSet<" + keyType + "> keys, object? value)");
@@ -229,7 +238,7 @@ public static class DocumentTotalsWriter
         L($"        decimal lines = ({w}context.Set<{s.Lines.TableName}>().AsNoTracking().Where(x => x.{Name(s.LineKey)} == id).Select(x => x.{Name(s.LineAmount)}).{list}).Sum(v => {Number(s.LineAmount, "v")});");
         if (s.Allowance is { Document: { } doc } allowance)
         {
-            L($"        var extras = {w}context.Set<{allowance.Table.TableName}>().AsNoTracking().Where(x => x.{Name(doc)} == id).Select(x => new {{ Charge = x.{Name(allowance.Flag)}, Amount = x.{Name(allowance.Amount)} }}).{list};");
+            L($"        var extras = {w}context.Set<{allowance.Table.TableName}>().AsNoTracking().Where(x => x.{Name(doc)} == id).Select(x => new {{ Charge = x.{Name(allowance.Flag)}, Amount = x.{Name(allowance.Amount)}{(s.AllowanceCategory is null ? "" : $", Category = x.{Name(s.AllowanceCategory)}")} }}).{list};");
             L($"        decimal allowances = extras.Where(r => !r.Charge).Sum(r => {Number(allowance.Amount, "r.Amount")});");
             L($"        decimal charges = extras.Where(r => r.Charge).Sum(r => {Number(allowance.Amount, "r.Amount")});");
         }
@@ -241,6 +250,14 @@ public static class DocumentTotalsWriter
             L($"        decimal taxes = ({w}context.Set<{s.Lines.TableName}>().AsNoTracking().Where(x => x.{Name(s.LineKey)} == id).Select(x => x.{Name(tax.Tax)}).{list}).Sum(v => {Number(tax.Tax, "v")});");
         else
             L("        decimal taxes = 0m;");
+        if (s.AllowanceCategory is not null && s.Tax is { } extraTax && s.Allowance is { } extraRows)
+        {
+            L($"        var rates = ({w}context.Set<{extraTax.CategoryTable.TableName}>().AsNoTracking().Select(x => new {{ Key = x.{Name(extraTax.CategoryKey)}, Rate = x.{Name(extraTax.CategoryRate)} }}).{list}).ToDictionary(x => x.Key, x => {Number(extraTax.CategoryRate, "x.Rate")});");
+            bool optional = s.AllowanceCategory.IsNullable;
+            L($"        foreach (var r in extras{(optional ? ".Where(r => r.Category is not null)" : "")})");
+            L($"            if (rates.TryGetValue(r.Category{(optional ? ".Value" : "")}, out decimal categoryRate))");
+            L($"                taxes += (r.Charge ? 1 : -1) * Math.Round({Number(extraRows.Amount, "r.Amount")} * categoryRate, {Scale(s.Columns.Tax)}, MidpointRounding.AwayFromZero);");
+        }
         L($"        return Work(lines, allowances, charges, taxes, {(c.Prepaid is null ? "0m" : Number(c.Prepaid, "header.Prepaid"))}, {(s.Currency is null ? "null" : "header.Currency")});");
         L("    }");
         L();
@@ -281,15 +298,23 @@ public static class DocumentTotalsWriter
     }
 
     /// <summary> The ASP.NET route of the header table: <c>GET document-totals-check?id=</c> answers the headers (one, or up to a thousand) whose stored totals differ from the worked-out ones. </summary>
-    public static string Check(DocumentTotalsShape s, string contextType)
+    public static string Check(DocumentTotalsShape s, string contextType, ColumnModel? owner = null)
     {
         string header = s.Header.TableName, key = Name(s.Key);
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
         L("    /// <summary> The headers whose stored totals differ from their rows (one header when <paramref name=\"id\"/> is given). </summary>");
-        L($"    public static async Task<IResult> DocumentTotalsCheckAsync({contextType} context, {s.Key.CSharpBase()}? id)");
+        L($"    public static async Task<IResult> DocumentTotalsCheckAsync({contextType} context, " + (owner is null ? "" : "HttpContext http, ") + $"{s.Key.CSharpBase()}? id)");
         L("    {");
         L($"        var query = context.Set<{header}>().AsNoTracking();");
+        if (owner is not null)
+        {
+            L("        if (await http.RequestServices.GetRequiredService<IOwnerScope>().VisibleOwnersAsync(http.User, http.RequestAborted) is { } owners)");
+            L("        {");
+            L("            var visible = owners.ToArray();");
+            L($"            query = query.Where(x => visible.Contains(x.{Name(owner)}));");
+            L("        }");
+        }
         L("        if (id is not null)");
         L($"            query = query.Where(x => x.{key} == id);");
         L($"        var rows = await query.OrderBy(x => x.{key}).Take({DocumentTotalsWords.CheckLimit}).ToListAsync();");

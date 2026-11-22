@@ -49,5 +49,7 @@ CREATE TABLE invoice_allowance_charge (
     base_amount DECIMAL(18, 2) NULL,
     percentage DECIMAL(9, 4) NULL,
     amount DECIMAL(18, 2) NOT NULL,
-    CONSTRAINT fk_invoice_allowance_charge_invoice FOREIGN KEY (invoice_id) REFERENCES invoice (invoice_id)
+    tax_category_id INT NULL,
+    CONSTRAINT fk_invoice_allowance_charge_invoice FOREIGN KEY (invoice_id) REFERENCES invoice (invoice_id),
+    CONSTRAINT fk_invoice_allowance_charge_category FOREIGN KEY (tax_category_id) REFERENCES tax_category (tax_category_id)
 );

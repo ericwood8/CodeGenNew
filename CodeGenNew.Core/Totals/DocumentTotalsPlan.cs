@@ -1,15 +1,15 @@
 using System.Globalization;
 using CodeGenNew.Core.Allowance;
 using CodeGenNew.Core.Settings;
-using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Tenant;
+using CodeGenNew.Core.Tax;
 
 namespace CodeGenNew.Core.Totals;
 
 /// <summary> A document header whose totals the server writes from its lines (<c>DocumentTotals=Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=LineTotal:Allowances=AllowanceTotal:Charges=ChargeTotal:TaxExclusive=...</c>).
 /// <c>Lines</c> is the line table, <c>LineKey</c> the column that points at the header and <c>LineAmount</c> the amount of a line that is added up. Each part is a header column or null (not kept). </summary>
 public sealed record DocumentTotalsShape(TableModel Header, ColumnModel Key, TableModel Lines, ColumnModel LineKey, ColumnModel LineAmount, DocumentTotalsColumns Columns, AllowanceChargeShape? Allowance, TaxLineShape? Tax,
-    ColumnModel? Currency, IReadOnlyList<DocumentTotalsRound> Rounds);
+    ColumnModel? Currency, IReadOnlyList<DocumentTotalsRound> Rounds, IReadOnlyList<DocumentTotalsPlaces> Places, ColumnModel? AllowanceCategory = null);
 
 /// <summary> The header columns of the totals, in the order they are worked out: the sum of the lines, the allowances and the charges (from the allowance table of the document), the amount before tax, the tax (the tax amounts
 /// of the lines), the amount with tax, what was paid in advance (written by the client, never by the server), the rounding and what is payable. </summary>
@@ -33,6 +33,9 @@ public sealed record DocumentTotalsColumns(ColumnModel? Lines, ColumnModel? Allo
 /// <summary> One rounding rule: the amount payable in <c>Currency</c> (<c>*</c> for every currency) is rounded to a multiple of <c>Increment</c> (0.05 for a currency with no 1 and 2 cent coins). </summary>
 public sealed record DocumentTotalsRound(string Currency, decimal Increment);
 
+/// <summary> One decimal places rule: the amounts of a document in <c>Currency</c> (<c>*</c> for every currency) are rounded to <c>Places</c> decimal places (0 for the yen), at most the places of the column. </summary>
+public sealed record DocumentTotalsPlaces(string Currency, int Places);
+
 public static class DocumentTotalsWords
 {
     public const string PartLines = "Lines";
@@ -46,10 +49,13 @@ public static class DocumentTotalsWords
     public const string PartPayable = "Payable";
     public const string TokenCurrency = "Currency";
     public const string TokenRound = "Round";
+    public const string TokenDecimals = "Decimals";
     public const string TokenAllowance = "Allowance";
+    public const string TokenAllowanceTax = "AllowanceTax";
     public const string AnyCurrency = "*";
     public const string CheckRoute = "document-totals-check";
     public const int DefaultScale = 2;
+    public const int MaxPlaces = 8;
     public const int CheckLimit = 1000;
 }
 
@@ -120,6 +126,10 @@ public static class DocumentTotalsPlan
         return problems;
     }
 
+    private static IEnumerable<string> Rules(ProjectSettings project, TableModel table, string token) =>
+        project.DocumentTotals.Where(i => i.Split(':')[0].Trim().EqualsIgnoreCase(table.TableName)).SelectMany(i => i.Split(':').Where(p => p.Trim().StartsWith(token + "=", StringComparison.OrdinalIgnoreCase)))
+            .Select(p => p.Trim()[(token.Length + 1)..]);
+
     private static bool IsNumber(ColumnModel? column) => column?.CSharpBase() is "decimal" or "double" or "float";
 
     private static DocumentTotalsShape? Resolve(TableModel table, ProjectSettings project, DatabaseModel database, out string? problem)
@@ -127,7 +137,7 @@ public static class DocumentTotalsPlan
         problem = null;
         var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
         string prefix = $"DocumentTotals: {table.TableName}";
-        string syntax = $"DocumentTotals={table.TableName}:LineTable:LineKeyColumn:LineAmountColumn:Lines=Column[:Allowances=Column][:Charges=Column][:TaxExclusive=Column][:Tax=Column][:TaxInclusive=Column][:Prepaid=Column][:Rounding=Column][:Payable=Column][:Currency=Column][:Round=CHF/0.05]";
+        string syntax = $"DocumentTotals={table.TableName}:LineTable:LineKeyColumn:LineAmountColumn:Lines=Column[:Allowances=Column][:Charges=Column][:TaxExclusive=Column][:Tax=Column][:TaxInclusive=Column][:Prepaid=Column][:Rounding=Column][:Payable=Column][:Currency=Column][:Round=CHF/0.05][:Decimals=JPY/0][:AllowanceTax=TaxCategoryColumn]";
         if (entry.Lines is null || entry.LineKey is null || entry.LineAmount is null)
         {
             problem = $"{prefix} needs the line table, the column of a line that points at the header and the amount column of a line ({syntax}).";
@@ -148,10 +158,9 @@ public static class DocumentTotalsPlan
             problem = $"{prefix}: the line table {lines.TableName} is in SoftDeleteTables, whose deletes do not pass through a save, so the totals would keep a deleted line.";
             return null;
         }
-        if (project.Stacks.Any(s => s.EqualsIgnoreCase("Python") || s.EqualsIgnoreCase("Rust"))
-            && new[] { table, lines }.FirstOrDefault(t => OwnedTable.IsScoped(t, project) || TenantPlan.IsTenantTable(t, project) || TenantPlan.OwnedBy(t, project) is not null) is { } limited)
+        if (project.Stacks.Any(s => s.EqualsIgnoreCase("Python") || s.EqualsIgnoreCase("Rust")) && new[] { table, lines }.FirstOrDefault(t => TenantPlan.IsTenantTable(t, project)) is { } tenants)
         {
-            problem = $"{prefix}: {limited.TableName} is limited to an owner or a tenant, which only the ASP.NET API writes totals for; the Python and Rust APIs would leave the totals unwritten. Leave Python and Rust out of Stacks.";
+            problem = $"{prefix}: {tenants.TableName} is the tenant table, whose rows the Python and Rust APIs do not write totals for. Leave Python and Rust out of Stacks.";
             return null;
         }
         var lineKey = lines.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(entry.LineKey));
@@ -167,7 +176,7 @@ public static class DocumentTotalsPlan
             return null;
         }
         foreach (string name in entry.Parts.Keys)
-            if (!PartNames.Contains(name, StringComparer.OrdinalIgnoreCase) && !new[] { DocumentTotalsWords.TokenCurrency, DocumentTotalsWords.TokenRound, DocumentTotalsWords.TokenAllowance }.Contains(name, StringComparer.OrdinalIgnoreCase))
+            if (!PartNames.Contains(name, StringComparer.OrdinalIgnoreCase) && !new[] { DocumentTotalsWords.TokenCurrency, DocumentTotalsWords.TokenRound, DocumentTotalsWords.TokenDecimals, DocumentTotalsWords.TokenAllowance, DocumentTotalsWords.TokenAllowanceTax }.Contains(name, StringComparer.OrdinalIgnoreCase))
             {
                 problem = $"{prefix}: {name} is not a part of the totals ({syntax}).";
                 return null;
@@ -223,6 +232,26 @@ public static class DocumentTotalsPlan
                 return null;
             }
         }
+        if (tax is not null && project.Stacks.Any(x => x.EqualsIgnoreCase("Python") || x.EqualsIgnoreCase("Rust")) && lines is var taxed && (OwnedTable.IsScoped(taxed, project) || TenantPlan.OwnedBy(taxed, project) is not null))
+        {
+            problem = $"{prefix}: {taxed.TableName} is limited to an owner or a tenant, and the Python and Rust APIs write no tax amount for such a line table (TaxLines), so the tax totals would be wrong. Leave Python and Rust out of Stacks, or leave out the tax parts and TaxLines.";
+            return null;
+        }
+        ColumnModel? allowanceCategory = null;
+        if (entry.Parts.TryGetValue(DocumentTotalsWords.TokenAllowanceTax, out string? categoryName))
+        {
+            allowanceCategory = allowance?.Table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(categoryName));
+            if (allowance is null || tax is null)
+            {
+                problem = $"{prefix}: AllowanceTax needs Allowances or Charges with an allowance table, and the line table {lines.TableName} listed in TaxLines.";
+                return null;
+            }
+            if (allowanceCategory is not { IsIntegerColumn: true } || allowanceCategory.CSharpBase() != tax.CategoryKey.CSharpBase())
+            {
+                problem = $"{prefix}: AllowanceTax={categoryName} must be a whole-number column of {allowance.Table.TableName} of the same type as the key of {tax.CategoryTable.TableName}.";
+                return null;
+            }
+        }
         ColumnModel? currency = null;
         if (entry.Parts.TryGetValue(DocumentTotalsWords.TokenCurrency, out string? currencyName))
         {
@@ -234,9 +263,8 @@ public static class DocumentTotalsPlan
             }
         }
         var rounds = new List<DocumentTotalsRound>();
-        foreach (string setting in project.DocumentTotals.Where(i => i.Split(':')[0].Trim().EqualsIgnoreCase(table.TableName)).SelectMany(i => i.Split(':').Where(p => p.Trim().StartsWith(DocumentTotalsWords.TokenRound + "=", StringComparison.OrdinalIgnoreCase))))
+        foreach (string rule in Rules(project, table, DocumentTotalsWords.TokenRound))
         {
-            string rule = setting.Trim()[(DocumentTotalsWords.TokenRound.Length + 1)..];
             string[] pair = rule.Split('/');
             if (pair.Length != 2 || pair[0].Trim().Length == 0 || !decimal.TryParse(pair[1], NumberStyles.Number, CultureInfo.InvariantCulture, out decimal increment) || increment <= 0)
             {
@@ -250,11 +278,27 @@ public static class DocumentTotalsPlan
             }
             rounds.Add(new DocumentTotalsRound(pair[0].Trim(), increment));
         }
+        var places = new List<DocumentTotalsPlaces>();
+        foreach (string rule in Rules(project, table, DocumentTotalsWords.TokenDecimals))
+        {
+            string[] pair = rule.Split('/');
+            if (pair.Length != 2 || pair[0].Trim().Length == 0 || !int.TryParse(pair[1], NumberStyles.None, CultureInfo.InvariantCulture, out int count) || count > DocumentTotalsWords.MaxPlaces)
+            {
+                problem = $"{prefix}: Decimals={rule} must read Currency/Places with 0 to {DocumentTotalsWords.MaxPlaces} places, for example Decimals=JPY/0.";
+                return null;
+            }
+            if (pair[0].Trim() != DocumentTotalsWords.AnyCurrency && currency is null)
+            {
+                problem = $"{prefix}: a decimal places rule for {pair[0].Trim()} needs Currency=Column.";
+                return null;
+            }
+            places.Add(new DocumentTotalsPlaces(pair[0].Trim(), count));
+        }
         if (rounds.Count > 0 && columns.Rounding is null && columns.Payable is null)
         {
             problem = $"{prefix}: a rounding rule needs the Rounding or the Payable column.";
             return null;
         }
-        return new DocumentTotalsShape(table, key, lines, lineKey, amount!, columns, allowance, tax, currency, rounds);
+        return new DocumentTotalsShape(table, key, lines, lineKey, amount!, columns, allowance, tax, currency, rounds, places, allowanceCategory);
     }
 }

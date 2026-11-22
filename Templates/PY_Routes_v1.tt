@@ -165,17 +165,20 @@
         : new PythonAllowanceWriter.Names(t.Class, FieldOf(allowPlan.Flag)!.Name, FieldOf(allowPlan.Base)!.Name, FieldOf(allowPlan.Percent)!.Name, FieldOf(allowPlan.Percent)!.Annotation, FieldOf(allowPlan.Amount)!.Name,
             FieldOf(allowPlan.Amount)!.Annotation, allowPlan.Amount.Scale ?? AllowanceChargeWords.DefaultScale, allowPlan.Percent.Scale ?? AllowanceChargeWords.DefaultScale, FieldOf(allowPlan.Document)?.Name, FieldOf(allowPlan.Line)?.Name);
     // DocumentTotals: the header's totals are written from its lines, its tax and its allowance rows in the same flush, and GET document-totals-check lists the headers that differ
-    var totalsPlan = log || tenantTable || scoped || tenanted ? null : DocumentTotalsPlan.For(Model, Project);
+    var totalsPlan = log || tenantTable ? null : DocumentTotalsPlan.For(Model, Project);   // a table with its own owner or tenant column: the check route is limited to the caller's rows
     PythonTotalsWriter.Names? totalsNames = null;
     if (totalsPlan is not null)
     {
         var totalsLines = PythonTable.Of(totalsPlan.Lines, Project);
         var totalsExtra = totalsPlan.Allowance is null ? null : PythonTable.Of(totalsPlan.Allowance.Table, Project);
+        var totalsCategory = totalsPlan.Tax is null || totalsPlan.AllowanceCategory is null ? null : PythonTable.Of(totalsPlan.Tax.CategoryTable, Project);
         var totalsParts = totalsPlan.Columns.Owned().Select(p => (p.Part, FieldOf(p.Column)!.Name, FieldOf(p.Column)!.Annotation, p.Column.Scale ?? DocumentTotalsWords.DefaultScale)).ToList();
         totalsNames = new PythonTotalsWriter.Names(new PythonTotalsWriter.Table(t.Class, t.Module, key), t.Module, new PythonTotalsWriter.Table(totalsLines.Class, totalsLines.Module, totalsLines.Key.Name), totalsLines.FieldOf(totalsPlan.LineKey).Name,
             totalsLines.FieldOf(totalsPlan.LineAmount).Name, totalsExtra is null ? null : new PythonTotalsWriter.Table(totalsExtra.Class, totalsExtra.Module, totalsExtra.Key.Name), totalsExtra?.FieldOf(totalsPlan.Allowance!.Document!).Name,
             totalsExtra?.FieldOf(totalsPlan.Allowance!.Flag).Name, totalsExtra?.FieldOf(totalsPlan.Allowance!.Amount).Name, totalsPlan.Tax is null ? null : totalsLines.FieldOf(totalsPlan.Tax.Tax).Name,
-            totalsPlan.Columns.Prepaid is null ? null : FieldOf(totalsPlan.Columns.Prepaid)!.Name, totalsPlan.Currency is null ? null : FieldOf(totalsPlan.Currency)!.Name, totalsParts, totalsPlan.Rounds, t.Route);
+            totalsPlan.Columns.Prepaid is null ? null : FieldOf(totalsPlan.Columns.Prepaid)!.Name, totalsPlan.Currency is null ? null : FieldOf(totalsPlan.Currency)!.Name, totalsParts, totalsPlan.Rounds, t.Route, totalsPlan.Places,
+            totalsPlan.AllowanceCategory is null || totalsExtra is null ? null : totalsExtra.FieldOf(totalsPlan.AllowanceCategory).Name, totalsPlan.Tax is null || totalsPlan.AllowanceCategory is null ? null : new PythonTotalsWriter.Table(totalsCategory!.Class, totalsCategory.Module, totalsCategory.FieldOf(totalsPlan.Tax.CategoryKey).Name),
+            totalsPlan.Tax is null || totalsPlan.AllowanceCategory is null ? null : totalsCategory!.FieldOf(totalsPlan.Tax.CategoryRate).Name);
     }
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
@@ -294,6 +297,8 @@
         Line($"from app.models.{totalsNames.Lines.Module} import {totalsNames.Lines.Class}");
         if (totalsNames.Extra is not null)
             Line($"from app.models.{totalsNames.Extra.Module} import {totalsNames.Extra.Class}");
+        if (totalsNames.Category is not null)
+            Line($"from app.models.{totalsNames.Category.Module} import {totalsNames.Category.Class}");
     }
     if (ownerLink is not null)
         Line($"from app.models.{parentModule} import {parentClass}");
@@ -562,7 +567,7 @@
     if (totalsNames is not null)
     {
         Line();
-        Line(PythonTotalsWriter.Route(totalsNames).TrimEnd((char)10));
+        Line(PythonTotalsWriter.Route(totalsNames, userParameter, (scoped ? "    statement = only_owned(statement, user)\n" : "") + (tenanted ? TenantFilter("statement") + "\n" : "")).TrimEnd((char)10));
         Line();
     }
     if (allowNames?.Document is not null)

@@ -13,7 +13,7 @@ public static class PythonTotalsWriter
 
     /// <summary> <c>Parts</c> are the owned header attributes by part name (<see cref="DocumentTotalsWords"/>), <c>Annotations</c> their Python types (<c>Decimal</c> or <c>float</c>), <c>Scales</c> their scales. </summary>
     public sealed record Names(Table Header, string HeaderModule, Table Lines, string LineKey, string LineAmount, Table? Extra, string? ExtraDocument, string? ExtraFlag, string? ExtraAmount, string? Tax, string? Prepaid,
-        string? Currency, IReadOnlyList<(string Part, string Attribute, string Annotation, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route);
+        string? Currency, IReadOnlyList<(string Part, string Attribute, string Annotation, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route, IReadOnlyList<DocumentTotalsPlaces>? Places = null, string? ExtraCategory = null, Table? Category = null, string? CategoryRate = null);
 
     private static string Back(string annotation, string value) => annotation == "Decimal" ? value : $"float({value})";
 
@@ -30,24 +30,33 @@ public static class PythonTotalsWriter
         L($"TOTALS_KEY = \"totals_{n.Header.Module}\"");
         L($"TOTALS_ROUNDS = {{{string.Join(", ", n.Rounds.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency).Select(r => $"\"{r.Currency.ToUpperInvariant()}\": {Decimal(r.Increment)}"))}}}");
         L($"TOTALS_ROUND_ANY = {(n.Rounds.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency) is { } any ? Decimal(any.Increment) : "None")}");
+        var places = n.Places ?? [];
+        L($"TOTALS_PLACES = {{{string.Join(", ", places.Where(r => r.Currency != DocumentTotalsWords.AnyCurrency).Select(r => $"\"{r.Currency.ToUpperInvariant()}\": {r.Places}"))}}}");
+        L($"TOTALS_PLACES_ANY = {(places.FirstOrDefault(r => r.Currency == DocumentTotalsWords.AnyCurrency) is { } anyPlaces ? anyPlaces.Places.ToString(CultureInfo.InvariantCulture) : "None")}");
         L();
         L();
         L("def money(value, scale):");
         L("    return Decimal(str(value)).quantize(Decimal(1).scaleb(-scale), rounding=ROUND_HALF_UP)");
         L();
         L();
+        L("def totals_places(currency, scale):");
+        L("    \"\"\"The decimal places of an amount in the currency: the places of the currency, at most the scale of the column that holds the amount.\"\"\"");
+        L("    places = TOTALS_PLACES.get((currency or \"\").strip().upper(), TOTALS_PLACES_ANY)");
+        L("    return scale if places is None else min(places, scale)");
+        L();
+        L();
         L("def work_out_totals(lines, allowances, charges, tax, prepaid, currency):");
-        L("    \"\"\"The totals from the sums of the rows: every amount is rounded half away from zero to the scale of its column and the next one is worked out from the rounded ones.\"\"\"");
-        L($"    lines = money(lines, {ScaleOf(n, DocumentTotalsWords.PartLines)})");
-        L($"    allowances = money(allowances, {ScaleOf(n, DocumentTotalsWords.PartAllowances)})");
-        L($"    charges = money(charges, {ScaleOf(n, DocumentTotalsWords.PartCharges)})");
-        L($"    exclusive = money(lines - allowances + charges, {ScaleOf(n, DocumentTotalsWords.PartTaxExclusive)})");
-        L($"    tax = money(tax, {ScaleOf(n, DocumentTotalsWords.PartTax)})");
-        L($"    inclusive = money(exclusive + tax, {ScaleOf(n, DocumentTotalsWords.PartTaxInclusive)})");
+        L("    \"\"\"The totals from the sums of the rows: every amount is rounded half away from zero to the decimal places of its currency (at most the scale of its column) and the next one is worked out from the rounded ones.\"\"\"");
+        L($"    lines = money(lines, totals_places(currency, {ScaleOf(n, DocumentTotalsWords.PartLines)}))");
+        L($"    allowances = money(allowances, totals_places(currency, {ScaleOf(n, DocumentTotalsWords.PartAllowances)}))");
+        L($"    charges = money(charges, totals_places(currency, {ScaleOf(n, DocumentTotalsWords.PartCharges)}))");
+        L($"    exclusive = money(lines - allowances + charges, totals_places(currency, {ScaleOf(n, DocumentTotalsWords.PartTaxExclusive)}))");
+        L($"    tax = money(tax, totals_places(currency, {ScaleOf(n, DocumentTotalsWords.PartTax)}))");
+        L($"    inclusive = money(exclusive + tax, totals_places(currency, {ScaleOf(n, DocumentTotalsWords.PartTaxInclusive)}))");
         L("    due = inclusive - Decimal(str(prepaid or 0))");
         L("    step = TOTALS_ROUNDS.get((currency or \"\").strip().upper(), TOTALS_ROUND_ANY)");
-        L($"    rounding = money((due / step).quantize(Decimal(1), rounding=ROUND_HALF_UP) * step - due, {ScaleOf(n, DocumentTotalsWords.PartRounding)}) if step else Decimal(0)");
-        L($"    return {{\"Lines\": lines, \"Allowances\": allowances, \"Charges\": charges, \"TaxExclusive\": exclusive, \"Tax\": tax, \"TaxInclusive\": inclusive, \"Rounding\": rounding, \"Payable\": money(due + rounding, {ScaleOf(n, DocumentTotalsWords.PartPayable)})}}");
+        L($"    rounding = money((due / step).quantize(Decimal(1), rounding=ROUND_HALF_UP) * step - due, totals_places(currency, {ScaleOf(n, DocumentTotalsWords.PartRounding)})) if step else Decimal(0)");
+        L($"    return {{\"Lines\": lines, \"Allowances\": allowances, \"Charges\": charges, \"TaxExclusive\": exclusive, \"Tax\": tax, \"TaxInclusive\": inclusive, \"Rounding\": rounding, \"Payable\": money(due + rounding, totals_places(currency, {ScaleOf(n, DocumentTotalsWords.PartPayable)}))}}");
         L();
         L();
         L("def worked_out_totals(session, key):");
@@ -70,9 +79,10 @@ public static class PythonTotalsWriter
         L($"    lines = sum((Decimal(str(v or 0)) for v in session.scalars(select({n.Lines.Class}.{n.LineAmount}).where({n.Lines.Class}.{n.LineKey} == key))), Decimal(0))");
         if (n.Extra is not null)
         {
-            L($"    extras = session.execute(select({n.Extra.Class}.{n.ExtraFlag}, {n.Extra.Class}.{n.ExtraAmount}).where({n.Extra.Class}.{n.ExtraDocument} == key)).all()");
-            L("    allowances = sum((Decimal(str(a or 0)) for flag, a in extras if not flag), Decimal(0))");
-            L("    charges = sum((Decimal(str(a or 0)) for flag, a in extras if flag), Decimal(0))");
+            string withCategory = n.ExtraCategory is null ? "" : $", {n.Extra.Class}.{n.ExtraCategory}";
+            L($"    extras = session.execute(select({n.Extra.Class}.{n.ExtraFlag}, {n.Extra.Class}.{n.ExtraAmount}{withCategory}).where({n.Extra.Class}.{n.ExtraDocument} == key)).all()");
+            L("    allowances = sum((Decimal(str(row[1] or 0)) for row in extras if not row[0]), Decimal(0))");
+            L("    charges = sum((Decimal(str(row[1] or 0)) for row in extras if row[0]), Decimal(0))");
         }
         else
             L("    allowances = charges = Decimal(0)");
@@ -80,6 +90,13 @@ public static class PythonTotalsWriter
             L($"    tax = sum((Decimal(str(v or 0)) for v in session.scalars(select({n.Lines.Class}.{n.Tax}).where({n.Lines.Class}.{n.LineKey} == key))), Decimal(0))");
         else
             L("    tax = Decimal(0)");
+        if (n.ExtraCategory is not null && n.Category is not null && n.CategoryRate is not null && n.Extra is not null)
+        {
+            L($"    rates = {{row[0]: Decimal(str(row[1] or 0)) for row in session.execute(select({n.Category.Class}.{n.Category.Key}, {n.Category.Class}.{n.CategoryRate})).all()}}");
+            L($"    for row in extras:");
+            L("        if row[2] in rates:");
+            L($"            tax += (1 if row[0] else -1) * money(Decimal(str(row[1] or 0)) * rates[row[2]], {ScaleOf(n, DocumentTotalsWords.PartTax)})");
+        }
         L("    return work_out_totals(lines, allowances, charges, tax, prepaid, currency)");
         L();
         L();
@@ -136,16 +153,17 @@ public static class PythonTotalsWriter
     }
 
     /// <summary> The check route, written before the routes with a key so that <c>document-totals-check</c> is not read as a key. </summary>
-    public static string Route(Names n)
+    public static string Route(Names n, string userParameter = "", string scopeLines = "")
     {
         string header = n.Header.Class, key = n.Header.Key;
         var owned = n.Parts.ToList();
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
         L($"@router.get(\"{n.Route}/{DocumentTotalsWords.CheckRoute}\")");
-        L($"def document_totals_check(id: int | None = Query(None), session: Session = Depends(get_session)):");
+        L($"def document_totals_check(id: int | None = Query(None), session: Session = Depends(get_session){userParameter}):");
         L("    \"\"\"The headers whose stored totals differ from their rows (one header when id is given).\"\"\"");
         L($"    statement = select({header}).order_by({header}.{key}).limit({DocumentTotalsWords.CheckLimit})");
+        o.Append(scopeLines);
         L("    if id is not None:");
         L($"        statement = statement.where({header}.{key} == id)");
         L("    differing = []");

@@ -43,5 +43,6 @@ CREATE TABLE InvoiceAllowanceCharge (
     ReasonCode VARCHAR(10) NULL,
     BaseAmount DECIMAL(18, 2) NULL,
     Percentage DECIMAL(9, 4) NULL,
-    Amount DECIMAL(18, 2) NOT NULL
+    Amount DECIMAL(18, 2) NOT NULL,
+    TaxCategoryId INTEGER NULL REFERENCES TaxCategory (TaxCategoryId)
 );

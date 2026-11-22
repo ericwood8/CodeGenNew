@@ -46,5 +46,6 @@ CREATE TABLE "InvoiceAllowanceCharge" (
     "ReasonCode" varchar(10) NULL,
     "BaseAmount" numeric(18, 2) NULL,
     "Percentage" numeric(9, 4) NULL,
-    "Amount" numeric(18, 2) NOT NULL
+    "Amount" numeric(18, 2) NOT NULL,
+    "TaxCategoryId" integer NULL REFERENCES "TaxCategory" ("TaxCategoryId")
 );
