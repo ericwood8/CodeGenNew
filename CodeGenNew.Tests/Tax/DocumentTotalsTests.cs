@@ -82,10 +82,10 @@ public class DocumentTotalsTests
     }
 
     [TestMethod]
-    [DataRow("Python", true)]
-    [DataRow("Rust", true)]
+    [DataRow("Python", false)]
+    [DataRow("Rust", false)]
     [DataRow("Api", false)]
-    public void Tax_over_a_limited_line_table_is_refused_for_the_python_and_rust_apis_only(string stack, bool refused)
+    public void Tax_over_a_limited_line_table_is_served_by_every_api(string stack, bool refused)
     {
         var project = ProjectSettings.FromValues(new Dictionary<string, string>
         {
@@ -93,7 +93,7 @@ public class DocumentTotalsTests
             ["AccessMode"] = "Ef", ["ApiAuth"] = "true", ["OwnedTables"] = "Invoice", ["Stacks"] = stack,
         });
         var problems = DocumentTotalsPlan.Problems(Database(), project);
-        Assert.AreEqual(refused, problems.Any(p => p.Contains("write no tax amount")), string.Join(" | ", problems));
+        Assert.AreEqual(refused, problems.Any(p => p.Contains("limited to an owner or a tenant")), string.Join(" | ", problems));
     }
 
     [TestMethod]
@@ -142,6 +142,8 @@ public class DocumentTotalsTests
     [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Round=CHF/0.05", "needs Currency=Column")]
     [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Currency=Customer:Round=CHF/zero", "must read Currency/Increment")]
     [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Decimals=JPY/0", "needs Currency=Column")]
+    [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Allowances=AllowanceTotal:AllowanceTax=Amount", "must be the tax amount column")]
+    [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:AllowanceTax=Amount", "AllowanceTax needs Allowances or Charges")]
     [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Currency=Customer:Decimals=JPY/many", "must read Currency/Places")]
     [DataRow("Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Currency=Customer:Decimals=JPY/12", "must read Currency/Places")]
     public void A_setting_that_cannot_work_is_reported(string setting, string expected)

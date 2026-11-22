@@ -79,9 +79,9 @@ public static class AllowanceChargePlan
             problem = $"{prefix} {never}, so it has no allowances to work out.";
             return null;
         }
-        if (TenantPlan.IsTenantTable(table, project) || OwnedTable.Through(table, project) is not null)
+        if (TenantPlan.IsTenantTable(table, project))
         {
-            problem = $"{prefix} is the tenant table or belongs to the owner of its parent row, which an allowance table does not serve (a table with its own owner column or tenant column is served).";
+            problem = $"{prefix} is the tenant table, which an allowance table does not serve.";
             return null;
         }
         ColumnModel? Find(string? name) => name is null ? null : table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name));

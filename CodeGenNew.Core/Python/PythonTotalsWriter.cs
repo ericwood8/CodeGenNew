@@ -13,7 +13,7 @@ public static class PythonTotalsWriter
 
     /// <summary> <c>Parts</c> are the owned header attributes by part name (<see cref="DocumentTotalsWords"/>), <c>Annotations</c> their Python types (<c>Decimal</c> or <c>float</c>), <c>Scales</c> their scales. </summary>
     public sealed record Names(Table Header, string HeaderModule, Table Lines, string LineKey, string LineAmount, Table? Extra, string? ExtraDocument, string? ExtraFlag, string? ExtraAmount, string? Tax, string? Prepaid,
-        string? Currency, IReadOnlyList<(string Part, string Attribute, string Annotation, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route, IReadOnlyList<DocumentTotalsPlaces>? Places = null, string? ExtraCategory = null, Table? Category = null, string? CategoryRate = null);
+        string? Currency, IReadOnlyList<(string Part, string Attribute, string Annotation, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route, IReadOnlyList<DocumentTotalsPlaces>? Places = null, string? ExtraTax = null);
 
     private static string Back(string annotation, string value) => annotation == "Decimal" ? value : $"float({value})";
 
@@ -79,7 +79,7 @@ public static class PythonTotalsWriter
         L($"    lines = sum((Decimal(str(v or 0)) for v in session.scalars(select({n.Lines.Class}.{n.LineAmount}).where({n.Lines.Class}.{n.LineKey} == key))), Decimal(0))");
         if (n.Extra is not null)
         {
-            string withCategory = n.ExtraCategory is null ? "" : $", {n.Extra.Class}.{n.ExtraCategory}";
+            string withCategory = n.ExtraTax is null ? "" : $", {n.Extra.Class}.{n.ExtraTax}";
             L($"    extras = session.execute(select({n.Extra.Class}.{n.ExtraFlag}, {n.Extra.Class}.{n.ExtraAmount}{withCategory}).where({n.Extra.Class}.{n.ExtraDocument} == key)).all()");
             L("    allowances = sum((Decimal(str(row[1] or 0)) for row in extras if not row[0]), Decimal(0))");
             L("    charges = sum((Decimal(str(row[1] or 0)) for row in extras if row[0]), Decimal(0))");
@@ -90,13 +90,8 @@ public static class PythonTotalsWriter
             L($"    tax = sum((Decimal(str(v or 0)) for v in session.scalars(select({n.Lines.Class}.{n.Tax}).where({n.Lines.Class}.{n.LineKey} == key))), Decimal(0))");
         else
             L("    tax = Decimal(0)");
-        if (n.ExtraCategory is not null && n.Category is not null && n.CategoryRate is not null && n.Extra is not null)
-        {
-            L($"    rates = {{row[0]: Decimal(str(row[1] or 0)) for row in session.execute(select({n.Category.Class}.{n.Category.Key}, {n.Category.Class}.{n.CategoryRate})).all()}}");
-            L($"    for row in extras:");
-            L("        if row[2] in rates:");
-            L($"            tax += (1 if row[0] else -1) * money(Decimal(str(row[1] or 0)) * rates[row[2]], {ScaleOf(n, DocumentTotalsWords.PartTax)})");
-        }
+        if (n.ExtraTax is not null && n.Extra is not null)
+            L("    tax += sum(((1 if row[0] else -1) * Decimal(str(row[2] or 0)) for row in extras), Decimal(0))");
         L("    return work_out_totals(lines, allowances, charges, tax, prepaid, currency)");
         L();
         L();

@@ -328,24 +328,32 @@ public static class RowShapeWriter
             save.Append("        if (await ConvertCurrencyAsync(context, row, isNew) is { } conversionProblem)\n            return conversionProblem;\n");
         }
 
+        string taxSave = "";   // written after the allowance check when the table has both: the tax is worked out on the amount the allowance check sets
         if (TaxLinePlan.For(table, project, database) is { } taxLine)
         {
             o.Append(TaxLineWriter.Check(taxLine, contextType, table.TableName));
             o.Append(TaxLineWriter.Subtotals(taxLine, contextType, table.TableName));
             if (taxLine.Document is not null)
                 maps.Append(Fill("        app.MapGet(\"§R/tax-subtotals\", ([FromServices] §CTX context, [FromQuery(Name = \"document\")] " + taxLine.Document.CSharpBase() + "? document) => TaxSubtotalsAsync(context, document))§AUTH;\n"));
-            save.Append("        if (await CheckTaxAsync(context, row, isNew) is { } taxProblem)\n            return taxProblem;\n");
+            taxSave = "        if (await CheckTaxAsync(context, row, isNew) is { } taxProblem)\n            return taxProblem;\n";
         }
 
         if (AllowanceChargePlan.For(table, project) is { } allowance)
         {
             o.Append(AllowanceChargeWriter.Check(allowance, table.TableName));
             var allowanceOwner = TableShapes.For(table, project).Owner;   // OwnedTables: the totals count only the rows of the owners the caller may see
-            o.Append(AllowanceChargeWriter.Totals(allowance, contextType, table.TableName, allowanceOwner));
+            var allowanceLink = allowanceOwner is null ? TableShapes.For(table, project).OwnerThrough : null;
+            var allowanceParent = allowanceLink is not null && database.Tables.FirstOrDefault(p => p.TableName.EqualsIgnoreCase(allowanceLink.ParentTable)) is { } parentTable
+                && parentTable.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(allowanceLink.ParentKey)) is { } parentKey && parentTable.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(allowanceLink.ParentOwner)) is { } parentOwner
+                && table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(allowanceLink.ForeignKey)) is { } foreign
+                ? new OwnerParent(parentTable.TableName, parentKey.CSharpName().TrimStart('@'), parentOwner.CSharpName().TrimStart('@'), foreign.CSharpName().TrimStart('@')) : null;
+            bool allowanceScoped = allowanceOwner is not null || allowanceParent is not null;
+            o.Append(AllowanceChargeWriter.Totals(allowance, contextType, table.TableName, allowanceOwner, allowanceParent));
             if (allowance.Document is not null)
-                maps.Append(Fill("        app.MapGet(\"§R/" + AllowanceChargeWords.TotalsRoute + "\", ([FromServices] §CTX context" + (allowanceOwner is null ? "" : ", HttpContext http") + ", [FromQuery(Name = \"document\")] " + allowance.Document.CSharpBase() + "? document" + (allowance.Line is null ? "" : ", [FromQuery(Name = \"line\")] " + allowance.Line.CSharpBase() + "? line") + ") => AllowanceChargeTotalsAsync(context, " + (allowanceOwner is null ? "" : "http, ") + "document" + (allowance.Line is null ? "" : ", line") + "))§AUTH;\n"));
+                maps.Append(Fill("        app.MapGet(\"§R/" + AllowanceChargeWords.TotalsRoute + "\", ([FromServices] §CTX context" + (allowanceScoped ? ", HttpContext http" : "") + ", [FromQuery(Name = \"document\")] " + allowance.Document.CSharpBase() + "? document" + (allowance.Line is null ? "" : ", [FromQuery(Name = \"line\")] " + allowance.Line.CSharpBase() + "? line") + ") => AllowanceChargeTotalsAsync(context, " + (allowanceScoped ? "http, " : "") + "document" + (allowance.Line is null ? "" : ", line") + "))§AUTH;\n"));
             save.Append("        if (CheckAllowanceCharge(row) is { } allowanceProblem)\n            return allowanceProblem;\n");
         }
+        save.Append(taxSave);
 
         if (DocumentTotalsPlan.For(table, project, database) is { } documentTotals)
         {

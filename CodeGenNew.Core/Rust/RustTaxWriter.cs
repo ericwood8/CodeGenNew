@@ -14,7 +14,7 @@ public static class RustTaxWriter
     /// <c>Label</c> is the category's label field, <c>Document</c> the line's document field and <c>DocumentColumn</c>, <c>Table</c> and <c>SelectList</c> what the subtotals query needs. </summary>
     public sealed record Names(string Struct, string Table, string SelectList, string CategoryModule, string Category, string CategoryType, bool CategoryNullable, string Rate, string RateType, string Taxable, string TaxableType,
         string Tax, string TaxType, int Scale, string CategoryRate, string CategoryRateType, string? ValidFrom, string? ValidFromType, string? ValidTo, bool ValidToNullable, string? Day, string? DayType, string? Document,
-        string? DocumentColumn, string? DocumentType, string? Label);
+        string? DocumentColumn, string? DocumentType, string? Label, bool DocumentNullable = false);
 
     public static string RouteLine(string route, string readLayer) => $"        .route(\"{route}/tax-subtotals\", get(tax_subtotals){readLayer})\n";
 
@@ -67,7 +67,8 @@ async fn apply_tax(pool: &Pool, row: &mut §STRUCT, stored: Option<&§STRUCT>) -
 
 """";
 
-    public static string Subtotals(Names n)
+    /// <summary> <paramref name="userArgument"/> and <paramref name="filterArguments"/> are set for a line table limited to an owner or a tenant: the rows come from the repository's scoped read and the document is picked from them. </summary>
+    public static string Subtotals(Names n, string? userArgument = null, string? filterArguments = null)
     {
         if (n.Document is null)
             return "";
@@ -75,7 +76,10 @@ async fn apply_tax(pool: &Pool, row: &mut §STRUCT, stored: Option<&§STRUCT>) -
         string toDec(string value, string type) => RustRateDocumentWriter.ToDecimal(value, type);
         string some = n.CategoryNullable ? $"r.{n.Category}.clone()" : $"Some(r.{n.Category}.clone())";
         string label = n.Label is null ? "serde_json::Value::Null" : $"match &category {{\n            Some(id) => crate::repos::{n.CategoryModule}::get_by_id(&pool, id.clone()).await?.map_or(serde_json::Value::Null, |c| serde_json::json!(c.{n.Label})),\n            None => serde_json::Value::Null,\n        }}";
-        return TemplateText.FillAll(SubtotalsText, ("§STRUCT", n.Struct), ("§SELECT", RustTable.Raw($"SELECT {n.SelectList} FROM {n.Table} WHERE {n.DocumentColumn} = ")), ("§DOCTYPE", n.DocumentType ?? "i32"),
+        string fetch = filterArguments is null
+            ? $"    let mut builder = sqlx::QueryBuilder::<Db>::new({RustTable.Raw($"SELECT {n.SelectList} FROM {n.Table} WHERE {n.DocumentColumn} = ")});\n    builder.push_bind(document);\n    let rows = builder.build_query_as::<{n.Struct}>().fetch_all(&pool).await?;\n"
+            : $"    let rows = repo::get_all_scoped(&pool{filterArguments}).await?.into_iter().filter(|r| r.{n.Document} == {(n.DocumentNullable ? "Some(document)" : "document")}).collect::<Vec<_>>();\n";
+        return TemplateText.FillAll(SubtotalsText, ("§FETCH", fetch), ("§USERARG", userArgument ?? ""), ("§STRUCT", n.Struct), ("§DOCTYPE", n.DocumentType ?? "i32"),
             ("§CATTYPE", n.CategoryType), ("§RATETYPE", n.RateType == "Decimal" ? "rust_decimal::Decimal" : n.RateType), ("§SOME", some), ("§CAT", n.Category), ("§RATE", n.Rate), ("§TAXABLE", decimals ? toDec("r." + n.Taxable, n.TaxableType) : $"r.{n.Taxable} as f64"), ("§TAXVALUE", decimals ? toDec("r." + n.Tax, n.TaxType) : $"r.{n.Tax} as f64"),
             ("§SUMTYPE", decimals ? "rust_decimal::Decimal" : "f64"), ("§OUTTAXABLE", decimals ? "taxable.to_f64().unwrap_or_default()" : $"(taxable * 10f64.powi({n.Scale})).round() / 10f64.powi({n.Scale})"),
             ("§OUTTAX", decimals ? "tax.to_f64().unwrap_or_default()" : $"(tax * 10f64.powi({n.Scale})).round() / 10f64.powi({n.Scale})"),
@@ -90,14 +94,11 @@ struct TaxSubtotalsQuery {
 }
 
 /// The tax of one document by category and rate: taxable amount, tax and number of lines, worked out from its lines.
-async fn tax_subtotals(State(pool): State<Pool>, Query(query): Query<TaxSubtotalsQuery>) -> ApiResult<Json<serde_json::Value>> {
+async fn tax_subtotals(State(pool): State<Pool>, Query(query): Query<TaxSubtotalsQuery>§USERARG) -> ApiResult<Json<serde_json::Value>> {
 §DECIMALUSE    let Some(document) = query.document else {
         return Err(ApiError::BadRequest("§W_DOC".into()));
     };
-    let mut builder = sqlx::QueryBuilder::<Db>::new(§SELECT);
-    builder.push_bind(document);
-    let rows = builder.build_query_as::<§STRUCT>().fetch_all(&pool).await?;
-    let mut groups: Vec<(Option<§CATTYPE>, §RATETYPE, §SUMTYPE, §SUMTYPE, i64)> = Vec::new();
+§FETCH    let mut groups: Vec<(Option<§CATTYPE>, §RATETYPE, §SUMTYPE, §SUMTYPE, i64)> = Vec::new();
     for r in &rows {
         let category = §SOME;
         let taxable = §TAXABLE;

@@ -2,7 +2,7 @@
 
   python document_totals_owner_run.py [--stack api,python,rust] [--port 5199] [--python <python with the generated requirements>]
 
-Generates DocumentTotals (with AllowanceCharges) with ApiAuth, OwnedTables=Invoice and the Employee table as the user table, writes the
+Generates DocumentTotals (with TaxLines, AllowanceCharges and AllowanceTax) with ApiAuth, OwnedTables=Invoice and the Employee table as the user table, writes the
 password hashes of an administrator and two employees into the scratch copy (made-up passwords that only this run knows), then for each stack starts the API with a random Jwt__Key and checks that
 the totals of an employee's invoice are worked out, that another employee can neither add a line to it nor see it, and that the check route lists
 only the caller's invoices (the administrator's lists all of them)."""
@@ -26,9 +26,10 @@ from live_party_run import TOOLS
 from rate_auth_run import serve
 
 SETTINGS = [
-    "DocumentTotals=Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Allowances=AllowanceTotal:Charges=ChargeTotal:TaxExclusive=TaxExclusive:Prepaid=Prepaid:Payable=Payable",
+    "DocumentTotals=Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Allowances=AllowanceTotal:Charges=ChargeTotal:TaxExclusive=TaxExclusive:Tax=TaxTotal:TaxInclusive=TaxInclusive:Prepaid=Prepaid:Payable=Payable:AllowanceTax=TaxAmount",
+    "TaxLines=InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate,InvoiceAllowanceCharge:TaxCategoryId:TaxRate:Amount:TaxAmount:TaxCategory:Rate:ValidFrom:ValidTo",
     "AllowanceCharges=InvoiceAllowanceCharge:IsCharge:BaseAmount:Percentage:Amount:InvoiceId",
-    "ApiAuth=true", "OwnedTables=Invoice,InvoiceAllowanceCharge", "UserTable=Employee", "UserNameColumn=Login", "UserRoleColumn=IsManager", "UserAdminColumn=IsAdministrator",
+    "ApiAuth=true", "OwnedTables=Invoice", "UserTable=Employee", "UserNameColumn=Login", "UserRoleColumn=IsManager", "UserAdminColumn=IsAdministrator",
     "UserOwnerColumn=EmployeeId"]
 INVOICES, LINES, EXTRAS, CATEGORIES = "/api/invoices", "/api/invoicelines", "/api/invoiceallowancecharges", "/api/taxcategories"
 failures = []
@@ -57,7 +58,7 @@ def signed_in(base, user, password):
 
 def invoice(client, customer):
     return client.post(INVOICES, json={"invoiceId": 0, "employeeId": 0, "customer": customer, "invoiceDate": "2024-06-01", "currency": "USD", "itemsTotal": 999, "allowanceTotal": 999, "chargeTotal": 999,
-                                       "taxExclusive": 999, "taxTotal": 999, "taxInclusive": 999, "prepaid": 0, "rounding": 999, "payable": 999})
+                                       "taxExclusive": 999, "taxTotal": 999, "taxInclusive": 999, "prepaid": 0, "rounding": 0, "payable": 999})
 
 
 def line(client, document, total, category=None):
@@ -66,7 +67,7 @@ def line(client, document, total, category=None):
 
 
 def extra(client, document, charge, amount, category=None):
-    return client.post(EXTRAS, json={"invoiceAllowanceChargeId": 0, "employeeId": 0, "invoiceId": document, "isCharge": charge, "reasonCode": None, "baseAmount": None, "percentage": None, "amount": amount,
+    return client.post(EXTRAS, json={"invoiceAllowanceChargeId": 0, "invoiceId": document, "isCharge": charge, "reasonCode": None, "baseAmount": None, "percentage": None, "amount": amount,
                                      "taxCategoryId": category})
 
 
@@ -87,16 +88,20 @@ def listing(client):
 
 def exercise(stack, base, passwords, database):
     ada, grace, boss = (signed_in(base, n, passwords[n]) for n in ("ada", "grace", "boss"))
+    category = boss.post(CATEGORIES, json={"taxCategoryId": 0, "code": "T20", "name": "Owner run", "rate": 0.2, "exemptionReason": None, "validFrom": "2000-01-01", "validTo": None})
+    check(stack, "a tax category is created", category.status_code == 201, (category.status_code, category.text))
+    cat = category.json()["taxCategoryId"]
+
     made = invoice(ada, "Ada's")
     check(stack, "an employee adds an invoice", made.status_code == 201, (made.status_code, made.text))
     key = made.json()["invoiceId"]
     code, row = totals(ada, key)
-    check(stack, "the totals the client wrote are replaced", code == 200 and near(row, items=0, allowances=0, charges=0, exclusive=0, payable=0), (code, row))
-    check(stack, "a line of 100 is added", line(ada, key, 100).status_code == 201)
-    check(stack, "an allowance of 10 is added", extra(ada, key, False, 10).status_code == 201)
-    check(stack, "a charge of 5 is added", extra(ada, key, True, 5).status_code == 201)
+    check(stack, "the totals the client wrote are replaced", code == 200 and near(row, items=0, allowances=0, charges=0, exclusive=0, tax=0, payable=0), (code, row))
+    check(stack, "a taxed line of 100 is added", line(ada, key, 100, cat).status_code == 201)
+    check(stack, "a taxed allowance of 10 is added", extra(ada, key, False, 10, cat).status_code == 201)
+    check(stack, "a taxed charge of 5 is added", extra(ada, key, True, 5, cat).status_code == 201)
     code, row = totals(ada, key)
-    check(stack, "the lines, allowances and charges of the employee's invoice are worked out", code == 200 and near(row, items=100, allowances=10, charges=5, exclusive=95, payable=95), (code, row))
+    check(stack, "the lines, allowances, charges and tax of the employee's invoice are worked out", code == 200 and near(row, items=100, allowances=10, charges=5, exclusive=95, tax=19, inclusive=114, payable=114), (code, row))
 
     other = invoice(grace, "Grace's")
     other_key = other.json()["invoiceId"]
@@ -106,7 +111,7 @@ def exercise(stack, base, passwords, database):
     refused = line(grace, key, 7)
     check(stack, "she cannot add a line to the first employee's invoice", refused.status_code in (403, 404), refused.status_code)
     code, row = totals(ada, key)
-    check(stack, "and the first employee's totals are unchanged", code == 200 and near(row, items=100, payable=95), (code, row))
+    check(stack, "and the first employee's totals are unchanged", code == 200 and near(row, items=100, payable=114), (code, row))
     code, _ = totals(grace, key)
     check(stack, "the second employee cannot read the first employee's invoice", code in (403, 404), code)
 

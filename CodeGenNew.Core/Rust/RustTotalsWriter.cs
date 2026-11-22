@@ -17,7 +17,7 @@ public static class RustTotalsWriter
 
     /// <summary> <c>Parts</c> are the totals the server writes: the part name, the field, the quoted column and the scale. </summary>
     public sealed record Names(Tbl Header, Field Key, string KeyColumn, Field? Prepaid, Field? Currency, Tbl Lines, string LineKeyColumn, Field LineKey, Field LineAmount, Field? Tax, Tbl? Extra, string? ExtraDocumentColumn,
-        Field? ExtraDocument, Field? ExtraFlag, Field? ExtraAmount, IReadOnlyList<(string Part, Field Field, string Column, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route, IReadOnlyList<DocumentTotalsPlaces>? Places = null, Field? ExtraCategory = null, Tbl? Category = null, Field? CategoryKey = null, Field? CategoryRate = null);
+        Field? ExtraDocument, Field? ExtraFlag, Field? ExtraAmount, IReadOnlyList<(string Part, Field Field, string Column, int Scale)> Parts, IReadOnlyList<DocumentTotalsRound> Rounds, string Route, IReadOnlyList<DocumentTotalsPlaces>? Places = null, Field? ExtraTax = null);
 
     private static bool Decimals(Names n) => new[] { n.LineAmount.BaseType, n.Tax?.BaseType, n.ExtraAmount?.BaseType, n.Prepaid?.BaseType }.Concat(n.Parts.Select(p => p.Field.BaseType)).Contains("Decimal");
 
@@ -151,7 +151,7 @@ public static class RustTotalsWriter
         L("    builder.push_bind(key);");
         L($"    let lines = builder.build_query_as::<{n.Lines.Struct}>().fetch_all(&mut **tx).await?;");
         L($"    let line_total = lines.iter().fold({zero}, |sum, r| sum + {Num("r." + n.LineAmount.Name, n.LineAmount, decimals)});");
-        string mutable = n.ExtraCategory is not null && n.Category is not null && n.CategoryKey is not null && n.CategoryRate is not null && n.Extra is not null ? "mut " : "";
+        string mutable = n.ExtraTax is not null && n.Extra is not null ? "mut " : "";
         if (n.Tax is not null)
             L($"    let {mutable}tax_total = lines.iter().fold({zero}, |sum, r| sum + {Num("r." + n.Tax.Name, n.Tax, decimals)});");
         else
@@ -168,16 +168,9 @@ public static class RustTotalsWriter
             L($"    let (allowance_total, charge_total) = ({zero}, {zero});");
         if (mutable.Length > 0)
         {
-            int taxScale = ScaleOf(n, DocumentTotalsWords.PartTax);
-            string rounded(string value) => decimals ? $"{value}.round_dp_with_strategy({taxScale}, rust_decimal::RoundingStrategy::MidpointAwayFromZero)" : $"(({value}) * 10f64.powi({taxScale})).round() / 10f64.powi({taxScale})";
-            L($"    let mut builder = sqlx::QueryBuilder::<Db>::new({RustTable.Raw($"SELECT {n.Category!.SelectList} FROM {n.Category.Table}")});");
-            L($"    let categories = builder.build_query_as::<{n.Category.Struct}>().fetch_all(&mut **tx).await?;");
             L("    for r in &extras {");
-            string own = n.ExtraCategory!.Nullable ? $"r.{n.ExtraCategory.Name}" : $"Some(r.{n.ExtraCategory.Name})";
-            L($"        if let Some(c) = categories.iter().find(|c| Some(c.{n.CategoryKey!.Name}) == {own}) {{");
-            L($"            let one = {rounded("(" + Num("r." + n.ExtraAmount!.Name, n.ExtraAmount, decimals) + ") * (" + Num("c." + n.CategoryRate!.Name, n.CategoryRate, decimals) + ")")};");
-            L($"            tax_total = if r.{n.ExtraFlag!.Name} {{ tax_total + one }} else {{ tax_total - one }};");
-            L("        }");
+            L($"        let one = {Num("r." + n.ExtraTax!.Name, n.ExtraTax, decimals)};");
+            L($"        tax_total = if r.{n.ExtraFlag!.Name} {{ tax_total + one }} else {{ tax_total - one }};");
             L("    }");
         }
         string prepaid = n.Prepaid is null ? zero : Num("header." + n.Prepaid.Name, n.Prepaid, decimals);

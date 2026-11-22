@@ -2,7 +2,7 @@
 
 python document_totals_check.py <base url> [<sqlite file>]   (or the file in TOTALS_DB)
 
-The API is generated with DocumentTotals=Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Allowances=AllowanceTotal:Charges=ChargeTotal:TaxExclusive=TaxExclusive:Tax=TaxTotal:TaxInclusive=TaxInclusive:Prepaid=Prepaid:Rounding=Rounding:Payable=Payable:Currency=Currency:Round=CHF/0.05:Decimals=JPY/0:AllowanceTax=TaxCategoryId,
+The API is generated with DocumentTotals=Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=ItemsTotal:Allowances=AllowanceTotal:Charges=ChargeTotal:TaxExclusive=TaxExclusive:Tax=TaxTotal:TaxInclusive=TaxInclusive:Prepaid=Prepaid:Rounding=Rounding:Payable=Payable:Currency=Currency:Round=CHF/0.05:Decimals=JPY/0:AllowanceTax=TaxAmount,
 TaxLines and AllowanceCharges. Plays: totals a client writes are replaced; each line, allowance and charge added, changed or removed brings the totals to the sums of the rows; the prepaid amount (the one column a
 client writes) is subtracted; a Swiss-franc invoice is rounded to 0.05; the check route lists a header whose stored total was altered under the server (with the sqlite file given). With ApiAuth set API_USER and
 API_PASSWORD. The script adds rows and removes them again, so use a scratch database."""
@@ -58,7 +58,7 @@ def line(key, invoice, total, category=None, line_key=0):
 
 
 def extra(invoice, charge, base, percentage, amount, category=None):
-    response = client.post(EXTRAS, json={"invoiceAllowanceChargeId": 0, "invoiceId": invoice, "isCharge": charge, "reasonCode": None, "baseAmount": base, "percentage": percentage, "amount": amount, "taxCategoryId": category})
+    response = client.post(EXTRAS, json={"invoiceAllowanceChargeId": 0, "invoiceId": invoice, "isCharge": charge, "reasonCode": None, "baseAmount": base, "percentage": percentage, "amount": amount, "taxCategoryId": category, "taxRate": 0, "taxAmount": 0})
     if response.status_code == 201:
         made["extras"].append(response.json()["invoiceAllowanceChargeId"])
     return response
@@ -124,6 +124,17 @@ try:
     check("an untaxed charge of 3 is added", extra(taxed_key, True, None, None, 3).status_code == 201)
     expect("a charge with no category adds no tax", taxed_key, charges=8, exclusive=98, tax=19, inclusive=117, payable=117)
     check("the check route accepts the taxed invoice", client.get(f"{INVOICES}/document-totals-check", params={"id": taxed_key}).json().get("differing") == 0)
+
+    changed = client.put(f"{CATEGORIES}/{cat}", json={"taxCategoryId": cat, "code": "T20" + tag, "name": "Check " + tag, "rate": 0.5, "exemptionReason": None, "validFrom": "2000-01-01", "validTo": None})
+    check("the category's rate is changed", changed.status_code in (200, 204), changed.text)
+    expect("a later change of a category's rate leaves the invoice as it was", taxed_key, tax=19, inclusive=117, payable=117)
+    check("and the check route still finds nothing wrong", client.get(f"{INVOICES}/document-totals-check", params={"id": taxed_key}).json().get("differing") == 0)
+    expired = client.post(CATEGORIES, json={"taxCategoryId": 0, "code": "OLD" + tag, "name": "Check " + tag, "rate": 0.1, "exemptionReason": None, "validFrom": "2000-01-01", "validTo": "2001-01-01"})
+    expired_key = expired.json()["taxCategoryId"]
+    made["categories"].append(expired_key)
+    refused = extra(taxed_key, False, None, None, 1, expired_key)
+    check("an allowance with a category that is no longer in force is refused", refused.status_code == 400, (refused.status_code, refused.text))
+    expect("and the invoice is unchanged", taxed_key, tax=19, payable=117)
 
     other = client.post(INVOICES, json=invoice_body())
     other_key = other.json()["invoiceId"]

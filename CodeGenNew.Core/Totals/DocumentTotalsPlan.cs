@@ -9,7 +9,7 @@ namespace CodeGenNew.Core.Totals;
 /// <summary> A document header whose totals the server writes from its lines (<c>DocumentTotals=Invoice:InvoiceLine:InvoiceId:LineTotal:Lines=LineTotal:Allowances=AllowanceTotal:Charges=ChargeTotal:TaxExclusive=...</c>).
 /// <c>Lines</c> is the line table, <c>LineKey</c> the column that points at the header and <c>LineAmount</c> the amount of a line that is added up. Each part is a header column or null (not kept). </summary>
 public sealed record DocumentTotalsShape(TableModel Header, ColumnModel Key, TableModel Lines, ColumnModel LineKey, ColumnModel LineAmount, DocumentTotalsColumns Columns, AllowanceChargeShape? Allowance, TaxLineShape? Tax,
-    ColumnModel? Currency, IReadOnlyList<DocumentTotalsRound> Rounds, IReadOnlyList<DocumentTotalsPlaces> Places, ColumnModel? AllowanceCategory = null);
+    ColumnModel? Currency, IReadOnlyList<DocumentTotalsRound> Rounds, IReadOnlyList<DocumentTotalsPlaces> Places, ColumnModel? AllowanceTax = null);
 
 /// <summary> The header columns of the totals, in the order they are worked out: the sum of the lines, the allowances and the charges (from the allowance table of the document), the amount before tax, the tax (the tax amounts
 /// of the lines), the amount with tax, what was paid in advance (written by the client, never by the server), the rounding and what is payable. </summary>
@@ -137,7 +137,7 @@ public static class DocumentTotalsPlan
         problem = null;
         var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
         string prefix = $"DocumentTotals: {table.TableName}";
-        string syntax = $"DocumentTotals={table.TableName}:LineTable:LineKeyColumn:LineAmountColumn:Lines=Column[:Allowances=Column][:Charges=Column][:TaxExclusive=Column][:Tax=Column][:TaxInclusive=Column][:Prepaid=Column][:Rounding=Column][:Payable=Column][:Currency=Column][:Round=CHF/0.05][:Decimals=JPY/0][:AllowanceTax=TaxCategoryColumn]";
+        string syntax = $"DocumentTotals={table.TableName}:LineTable:LineKeyColumn:LineAmountColumn:Lines=Column[:Allowances=Column][:Charges=Column][:TaxExclusive=Column][:Tax=Column][:TaxInclusive=Column][:Prepaid=Column][:Rounding=Column][:Payable=Column][:Currency=Column][:Round=CHF/0.05][:Decimals=JPY/0][:AllowanceTax=TaxAmountColumn]";
         if (entry.Lines is null || entry.LineKey is null || entry.LineAmount is null)
         {
             problem = $"{prefix} needs the line table, the column of a line that points at the header and the amount column of a line ({syntax}).";
@@ -232,23 +232,18 @@ public static class DocumentTotalsPlan
                 return null;
             }
         }
-        if (tax is not null && project.Stacks.Any(x => x.EqualsIgnoreCase("Python") || x.EqualsIgnoreCase("Rust")) && lines is var taxed && (OwnedTable.IsScoped(taxed, project) || TenantPlan.OwnedBy(taxed, project) is not null))
+        ColumnModel? allowanceTax = null;
+        if (entry.Parts.TryGetValue(DocumentTotalsWords.TokenAllowanceTax, out string? allowanceTaxName))
         {
-            problem = $"{prefix}: {taxed.TableName} is limited to an owner or a tenant, and the Python and Rust APIs write no tax amount for such a line table (TaxLines), so the tax totals would be wrong. Leave Python and Rust out of Stacks, or leave out the tax parts and TaxLines.";
-            return null;
-        }
-        ColumnModel? allowanceCategory = null;
-        if (entry.Parts.TryGetValue(DocumentTotalsWords.TokenAllowanceTax, out string? categoryName))
-        {
-            allowanceCategory = allowance?.Table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(categoryName));
-            if (allowance is null || tax is null)
+            allowanceTax = allowance?.Table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(allowanceTaxName));
+            if (allowance is null)
             {
-                problem = $"{prefix}: AllowanceTax needs Allowances or Charges with an allowance table, and the line table {lines.TableName} listed in TaxLines.";
+                problem = $"{prefix}: AllowanceTax needs Allowances or Charges with an allowance table.";
                 return null;
             }
-            if (allowanceCategory is not { IsIntegerColumn: true } || allowanceCategory.CSharpBase() != tax.CategoryKey.CSharpBase())
+            if (allowanceTax is null || TaxLinePlan.For(allowance.Table, project, database) is not { } allowanceLine || !allowanceLine.Tax.Name.EqualsIgnoreCase(allowanceTax.Name))
             {
-                problem = $"{prefix}: AllowanceTax={categoryName} must be a whole-number column of {allowance.Table.TableName} of the same type as the key of {tax.CategoryTable.TableName}.";
+                problem = $"{prefix}: AllowanceTax={allowanceTaxName} must be the tax amount column of {allowance.Table.TableName}, which must be listed in TaxLines (the rate and the category are kept there).";
                 return null;
             }
         }
@@ -299,6 +294,6 @@ public static class DocumentTotalsPlan
             problem = $"{prefix}: a rounding rule needs the Rounding or the Payable column.";
             return null;
         }
-        return new DocumentTotalsShape(table, key, lines, lineKey, amount!, columns, allowance, tax, currency, rounds, places, allowanceCategory);
+        return new DocumentTotalsShape(table, key, lines, lineKey, amount!, columns, allowance, tax, currency, rounds, places, allowanceTax);
     }
 }

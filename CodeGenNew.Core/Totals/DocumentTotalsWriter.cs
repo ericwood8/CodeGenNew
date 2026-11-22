@@ -238,7 +238,7 @@ public static class DocumentTotalsWriter
         L($"        decimal lines = ({w}context.Set<{s.Lines.TableName}>().AsNoTracking().Where(x => x.{Name(s.LineKey)} == id).Select(x => x.{Name(s.LineAmount)}).{list}).Sum(v => {Number(s.LineAmount, "v")});");
         if (s.Allowance is { Document: { } doc } allowance)
         {
-            L($"        var extras = {w}context.Set<{allowance.Table.TableName}>().AsNoTracking().Where(x => x.{Name(doc)} == id).Select(x => new {{ Charge = x.{Name(allowance.Flag)}, Amount = x.{Name(allowance.Amount)}{(s.AllowanceCategory is null ? "" : $", Category = x.{Name(s.AllowanceCategory)}")} }}).{list};");
+            L($"        var extras = {w}context.Set<{allowance.Table.TableName}>().AsNoTracking().Where(x => x.{Name(doc)} == id).Select(x => new {{ Charge = x.{Name(allowance.Flag)}, Amount = x.{Name(allowance.Amount)}{(s.AllowanceTax is null ? "" : $", Tax = x.{Name(s.AllowanceTax)}")} }}).{list};");
             L($"        decimal allowances = extras.Where(r => !r.Charge).Sum(r => {Number(allowance.Amount, "r.Amount")});");
             L($"        decimal charges = extras.Where(r => r.Charge).Sum(r => {Number(allowance.Amount, "r.Amount")});");
         }
@@ -250,14 +250,8 @@ public static class DocumentTotalsWriter
             L($"        decimal taxes = ({w}context.Set<{s.Lines.TableName}>().AsNoTracking().Where(x => x.{Name(s.LineKey)} == id).Select(x => x.{Name(tax.Tax)}).{list}).Sum(v => {Number(tax.Tax, "v")});");
         else
             L("        decimal taxes = 0m;");
-        if (s.AllowanceCategory is not null && s.Tax is { } extraTax && s.Allowance is { } extraRows)
-        {
-            L($"        var rates = ({w}context.Set<{extraTax.CategoryTable.TableName}>().AsNoTracking().Select(x => new {{ Key = x.{Name(extraTax.CategoryKey)}, Rate = x.{Name(extraTax.CategoryRate)} }}).{list}).ToDictionary(x => x.Key, x => {Number(extraTax.CategoryRate, "x.Rate")});");
-            bool optional = s.AllowanceCategory.IsNullable;
-            L($"        foreach (var r in extras{(optional ? ".Where(r => r.Category is not null)" : "")})");
-            L($"            if (rates.TryGetValue(r.Category{(optional ? ".Value" : "")}, out decimal categoryRate))");
-            L($"                taxes += (r.Charge ? 1 : -1) * Math.Round({Number(extraRows.Amount, "r.Amount")} * categoryRate, {Scale(s.Columns.Tax)}, MidpointRounding.AwayFromZero);");
-        }
+        if (s.AllowanceTax is not null)
+            L($"        taxes += extras.Sum(r => (r.Charge ? 1 : -1) * {Number(s.AllowanceTax, "r.Tax")});");
         L($"        return Work(lines, allowances, charges, taxes, {(c.Prepaid is null ? "0m" : Number(c.Prepaid, "header.Prepaid"))}, {(s.Currency is null ? "null" : "header.Currency")});");
         L("    }");
         L();

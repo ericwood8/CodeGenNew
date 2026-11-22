@@ -44,5 +44,7 @@ CREATE TABLE InvoiceAllowanceCharge (
     BaseAmount DECIMAL(18, 2) NULL,
     Percentage DECIMAL(9, 4) NULL,
     Amount DECIMAL(18, 2) NOT NULL,
-    TaxCategoryId INTEGER NULL REFERENCES TaxCategory (TaxCategoryId)
+    TaxCategoryId INTEGER NULL REFERENCES TaxCategory (TaxCategoryId),
+    TaxRate DECIMAL(9, 4) NOT NULL DEFAULT 0,
+    TaxAmount DECIMAL(18, 2) NOT NULL DEFAULT 0
 );

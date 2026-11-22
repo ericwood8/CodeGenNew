@@ -1,5 +1,5 @@
--- SQLite. document_totals.sql with an Employee table (the user table) and an owner column on the invoice and its allowance rows (the lines are scoped through the invoice), for DocumentTotals with ApiAuth,
--- OwnedTables=Invoice and UserOwnerColumn=EmployeeId
+-- SQLite. document_totals.sql with an Employee table (the user table) and an owner column on the invoice only (its lines and allowance rows are scoped through the invoice), for DocumentTotals with
+-- TaxLines and AllowanceCharges, ApiAuth, OwnedTables=Invoice and UserOwnerColumn=EmployeeId
 CREATE TABLE Employee (
     EmployeeId INTEGER PRIMARY KEY AUTOINCREMENT,
     Login VARCHAR(30) NOT NULL,
@@ -45,12 +45,13 @@ CREATE TABLE InvoiceLine (
 );
 CREATE TABLE InvoiceAllowanceCharge (
     InvoiceAllowanceChargeId INTEGER PRIMARY KEY AUTOINCREMENT,
-    EmployeeId INTEGER NOT NULL,
     InvoiceId INTEGER NOT NULL REFERENCES Invoice (InvoiceId),
     IsCharge BOOLEAN NOT NULL,
     ReasonCode VARCHAR(10) NULL,
     BaseAmount DECIMAL(18, 2) NULL,
     Percentage DECIMAL(9, 4) NULL,
     Amount DECIMAL(18, 2) NOT NULL,
-    TaxCategoryId INTEGER NULL REFERENCES TaxCategory (TaxCategoryId)
+    TaxCategoryId INTEGER NULL REFERENCES TaxCategory (TaxCategoryId),
+    TaxRate DECIMAL(9, 4) NOT NULL DEFAULT 0,
+    TaxAmount DECIMAL(18, 2) NOT NULL DEFAULT 0
 );

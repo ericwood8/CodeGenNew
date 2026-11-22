@@ -77,7 +77,7 @@ def apply_tax(session: Session, row, stored: tuple | None) -> None:
     row.§TAX = §ROUNDED
 """";
 
-    public static string Route(Names n, string route, string readDepends, string userParameter)
+    public static string Route(Names n, string route, string readDepends, string userParameter, string scopeLines = "")
     {
         if (n.Document is null)
             return "";
@@ -85,7 +85,7 @@ def apply_tax(session: Session, row, stored: tuple | None) -> None:
         string labels = n.Label is null ? "" : $"    labels = dict(session.execute(select({n.CategoryClass}.{n.CategoryKey}, {n.CategoryClass}.{n.Label}).where({n.CategoryClass}.{n.CategoryKey}.in_([r.{n.Category} for r in rows if r.{n.Category} is not None]))).all())\n";
         string tax = Number(n.TaxAnnotation, "r." + n.Tax), taxable = Number(n.TaxableAnnotation, "r." + n.Taxable);
         return TemplateText.FillAll(RouteText, ("§ROUTE", route), ("§CLASS", n.Class), ("§CAT", n.Category), ("§RATE", n.Rate), ("§DOC", n.Document), ("§LABELS", labels), ("§LABEL", label),
-            ("§HEADER", readDepends), ("§USER", userParameter), ("§TAXVALUE", tax), ("§TAXABLEVALUE", taxable), ("§W_DOC", TaxWords.SubtotalsNeedsDocument));
+            ("§HEADER", readDepends), ("§USER", userParameter), ("§SCOPE", scopeLines), ("§TAXVALUE", tax), ("§TAXABLEVALUE", taxable), ("§W_DOC", TaxWords.SubtotalsNeedsDocument));
     }
 
     private const string RouteText = """"
@@ -94,7 +94,8 @@ def tax_subtotals(§HEADERdocument: int | None = Query(None), session: Session =
     """The tax of one document by category and rate: taxable amount, tax and number of lines, worked out from its lines."""
     if document is None:
         raise ApiError(400, "§W_DOC")
-    rows = session.scalars(select(§CLASS).where(§CLASS.§DOC == document)).all()
+    statement = select(§CLASS).where(§CLASS.§DOC == document)
+§SCOPE    rows = session.scalars(statement).all()
 §LABELS    groups: dict = {}
     for r in rows:
         group = groups.setdefault((r.§CAT, r.§RATE), {"taxable": Decimal(0), "tax": Decimal(0), "lines": 0})

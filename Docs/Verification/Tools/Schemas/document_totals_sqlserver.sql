@@ -55,6 +55,8 @@ CREATE TABLE totals.InvoiceAllowanceCharge (
     BaseAmount DECIMAL(18, 2) NULL,
     Percentage DECIMAL(9, 4) NULL,
     Amount DECIMAL(18, 2) NOT NULL,
-    TaxCategoryId INT NULL CONSTRAINT FK_totals_InvoiceAllowanceCharge_Category REFERENCES totals.TaxCategory (TaxCategoryId)
+    TaxCategoryId INT NULL CONSTRAINT FK_totals_InvoiceAllowanceCharge_Category REFERENCES totals.TaxCategory (TaxCategoryId),
+    TaxRate DECIMAL(9, 4) NOT NULL CONSTRAINT DF_totals_InvoiceAllowanceCharge_Rate DEFAULT 0,
+    TaxAmount DECIMAL(18, 2) NOT NULL CONSTRAINT DF_totals_InvoiceAllowanceCharge_Tax DEFAULT 0
 );
 GO
