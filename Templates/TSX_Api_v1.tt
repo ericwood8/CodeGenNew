@@ -188,6 +188,12 @@
             L("  // a rate table (RateTables): the rate in force for a pair of currencies on a day");
             L(RateScreens.ReactApiLine(baseName));
         }
+        if (PriceScreens.HasBox(Model, Project))
+        {
+            L();
+            L("  // a price table (PriceListTables): the price in force for an item and a quantity");
+            L(PriceScreens.ReactApiLine(baseName));
+        }
         if (TaxScreens.HasBox(Model, Project))
         {
             L();

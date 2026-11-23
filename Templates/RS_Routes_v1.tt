@@ -74,7 +74,9 @@
     if (contentPlan is not null && ContentApiWords.NotBuilt(contentPlan) is { } contentNotBuilt)
         Error(contentNotBuilt);
     // EffectiveDatedTables: the period check on create and update and GET current (not for a table limited to an owner or a tenant)
-    var effPlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).Effective : null;
+    // a table limited to an owner or a tenant by a column of its own gets the period check with that column as a group; GET current stays off it (it would list other owners' rows)
+    bool effLimited = (scoped && ownerField is not null) || (tenanted && tenantField is not null && !sharedTenant);
+    var effPlan = !log && ((!scoped && !tenanted) || (effLimited && (!scoped || ownerField is not null) && (!tenanted || (tenantField is not null && !sharedTenant)))) ? TableShapes.For(Model, Project).Effective : null;
     // DefaultRowTables: one default row per group; the save and the delete keep it, and POST {id}/make-default moves it
     var defPlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).DefaultRow : null;
     var defNames = defPlan is null ? null : new RustDefaultWriter.Names(t.Struct, t.FieldOf(defPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(defPlan.Key.DbName), keyType, t.FieldOf(defPlan.Flag).Name,
@@ -90,9 +92,12 @@
         }).ToList(),
         snapPlan.Total is null ? null : new RustSnapshotWriter.Total(t.FieldOf(snapPlan.Total.Target).Name,
             RustSnapshotWriter.Factor(t.FieldOf(snapPlan.Total.FactorA), t.FieldOf(snapPlan.Total.Target), "row"), RustSnapshotWriter.Factor(t.FieldOf(snapPlan.Total.FactorB), t.FieldOf(snapPlan.Total.Target), "row")));
+    var effBase = effPlan is null ? [] : effPlan.Groups.Select(g => new RustEffectiveWriter.Group(t.FieldOf(g).Name, t.FieldOf(g).Json, DialectInfo.For(Model.Dialect).Quote(g.DbName), t.FieldOf(g).BaseType, t.FieldOf(g).IsOption)).ToList();
+    var effGroups = effPlan is null || !effLimited ? effBase : RustEffectiveWriter.WithScope(effBase,
+        ownerField is null || !scoped ? null : new RustEffectiveWriter.Group(ownerField.Name, ownerField.Json, DialectInfo.For(Model.Dialect).Quote(ownerField.Column.DbName), ownerField.BaseType, ownerField.IsOption),
+        tenantField is null || !tenanted ? null : new RustEffectiveWriter.Group(tenantField.Name, tenantField.Json, DialectInfo.For(Model.Dialect).Quote(tenantField.Column.DbName), tenantField.BaseType, tenantField.IsOption));
     var effNames = effPlan is null ? null : new RustEffectiveWriter.Names(t.Struct, t.FieldOf(effPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.Key.DbName), keyType, t.FieldOf(effPlan.From).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.From.DbName),
-        t.FieldOf(effPlan.To).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.To.DbName), t.FieldOf(effPlan.To).IsOption, t.FieldOf(effPlan.From).BaseType,
-        effPlan.Groups.Select(g => new RustEffectiveWriter.Group(t.FieldOf(g).Name, t.FieldOf(g).Json, DialectInfo.For(Model.Dialect).Quote(g.DbName), t.FieldOf(g).BaseType, t.FieldOf(g).IsOption)).ToList(), t.Table, t.SelectList);
+        t.FieldOf(effPlan.To).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.To.DbName), t.FieldOf(effPlan.To).IsOption, t.FieldOf(effPlan.From).BaseType, effGroups, t.Table, t.SelectList, effLimited);
     string parentModule = ownerLink is null ? "" : RustNames.Snake(ownerLink.ParentTable);
     string parentOwner = ownerLink is null ? "" : RustNames.Ident(RustNames.Snake(ownerLink.ParentOwner));
     string parentKey = ownerLink is null ? "" : RustNames.Ident(RustNames.Snake(ownerLink.ParentKey));
@@ -115,6 +120,11 @@
     var rateNames = ratePlan is null ? null : new RustRateWriter.Names(t.Struct, t.Table, DialectInfo.For(Model.Dialect).Quote(ratePlan.Key.DbName), keyType, t.FieldOf(ratePlan.From).Name, DialectInfo.For(Model.Dialect).Quote(ratePlan.From.DbName),
         t.FieldOf(ratePlan.To).Name, DialectInfo.For(Model.Dialect).Quote(ratePlan.To.DbName), t.FieldOf(ratePlan.Rate).Name, RustRateWriter.ZeroOf(t.FieldOf(ratePlan.Rate).BaseType), t.FieldOf(ratePlan.Day).Name,
         DialectInfo.For(Model.Dialect).Quote(ratePlan.Day.DbName), t.FieldOf(ratePlan.Day).BaseType, t.SelectList, Project.RateInverse && RatePlan.InvertibleRate(ratePlan.Rate), RustRateWriter.OneOf(t.FieldOf(ratePlan.Rate).BaseType), t.Key.Name);
+    // PriceListTables: a price keeps a minimum quantity above zero, a price that is not negative and one row per list, item and minimum quantity, and GET price answers the price in force for an item and a quantity
+    var pricePlan = !log && !tenantTable ? PriceListPlan.For(Model, Project) : null;   // a table limited to an owner or a tenant: the lookup reads only the caller's rows
+    var priceListTable = pricePlan is not null && tenanted && !tenantTable && !people && TenantPlan.OwnedBy(pricePlan.ListTable, Project) is not null ? RustTable.Of(pricePlan.ListTable, Project) : null;   // a row limited to a tenant may name only a list of the caller's tenant
+    var priceOwnerList = pricePlan is not null && scoped && ownerField is not null && pricePlan.ListOwner is not null ? RustTable.Of(pricePlan.ListTable, Project) : null;   // a row with an owner column of its own may name only a list of the same owner
+    var priceNames = RustPriceWriter.NamesFor(pricePlan, t, pricePlan is null ? null : RustTable.Of(pricePlan.ListTable, Project), DialectInfo.For(Model.Dialect), keyType);
     // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
     // TaxLines: the line carries the rate of its category, the tax is worked out, and GET tax-subtotals answers a document's tax by category
     var taxPlan = !log && !tenantTable ? TableShapes.For(Model, Project).TaxLine : null;   // a table with its own owner or tenant column: the subtotals are limited to the caller's rows
@@ -173,14 +183,14 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || priceNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
-    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || priceNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
     Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -272,7 +282,7 @@
     }
     if (treePlan is not null)
         sb.Append(RustTreeWriter.RouteLines(t.Route, readLayer, writeLayer, roles));
-    if (effNames is not null)
+    if (effNames is not null && !effNames.CheckOnly)
         sb.Append(RustEffectiveWriter.RouteLine(t.Route, readLayer));
     if (defNames is not null)
         sb.Append(RustDefaultWriter.RouteLine(t.Route, writeLayer));
@@ -280,6 +290,8 @@
         sb.Append(RustPartyWriter.RouteLine(t.Route, readLayer));
     if (rateNames is not null)
         sb.Append(RustRateWriter.RouteLine(t.Route, readLayer));
+    if (priceNames is not null)
+        sb.Append(RustPriceWriter.RouteLine(t.Route, readLayer));
     if (taxNames?.Document is not null)
         sb.Append(RustTaxWriter.RouteLine(t.Route, readLayer));
     if (allowNames?.Document is not null)
@@ -319,6 +331,8 @@
         Line(RustPartyWriter.FindCode(partyNames));
     if (rateNames is not null)
         Line(RustRateWriter.Code(rateNames));
+    if (priceNames is not null)
+        Line(RustPriceWriter.Code(priceNames, scoped || tenanted ? userArgument : null, scoped || tenanted ? filterArguments : null));
     if (docNames is not null)
         Line(RustRateDocumentWriter.Code(docNames));
     if (taxNames is not null)
@@ -531,7 +545,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null || priceNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -600,6 +614,14 @@
         Line("    check_identifier(&pool, None, &mut row).await?;");
     if (rateNames is not null)
         Line("    check_rate(&pool, None, &mut row).await?;");
+    if (priceNames is not null)
+    {
+        if (priceOwnerList is not null)
+            Line(RustPriceWriter.OwnerLines(priceNames, priceOwnerList.Module, priceOwnerList.FieldOf(pricePlan!.ListOwner!).Name, ownerField!.Name));
+        if (priceListTable is not null)
+            Line(RustPriceWriter.ListLines(priceNames, priceListTable.Module, priceListTable.FieldOf(pricePlan!.ListKey).Name, tenancyArgument));
+        Line("    check_price(&pool, None, &mut row).await?;");
+    }
     if (docNames is not null)
         Line("    convert_currency(&pool, &mut row, None).await?;");
     if (taxNames is not null)
@@ -610,7 +632,7 @@
         Line("    fill_snapshot(&pool, &mut row, None).await?;");
     if (defNames is not null)
         Line("    let moves_default = settle_default(&pool, None, &mut row).await?;");
-    Line(idNames is not null ? RustPartyWriter.InsertLines : rateNames is not null ? RustRateWriter.InsertLines : $"    let row = {insertFn}(&pool, &row).await?;");
+    Line(idNames is not null ? RustPartyWriter.InsertLines : rateNames is not null ? RustRateWriter.InsertLines : priceNames is not null ? RustPriceWriter.InsertLines : $"    let row = {insertFn}(&pool, &row).await?;");
     if (defNames is not null)
         Line($"    let row = if moves_default {{\n        move_default(&pool, &row).await?;\n        repo::get_by_id(&pool, {(textKey ? "&" : "")}row.{t.Key.Name}).await?.ok_or(ApiError::NotFound)?\n    }} else {{\n        row\n    }};");
     if (tenantTable)
@@ -660,7 +682,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null || priceNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -707,6 +729,14 @@
         Line("    check_identifier(&pool, Some(id), &mut row).await?;");
     if (rateNames is not null)
         Line("    check_rate(&pool, Some(id), &mut row).await?;");
+    if (priceNames is not null)
+    {
+        if (priceOwnerList is not null)
+            Line(RustPriceWriter.OwnerLines(priceNames, priceOwnerList.Module, priceOwnerList.FieldOf(pricePlan!.ListOwner!).Name, ownerField!.Name));
+        if (priceListTable is not null)
+            Line(RustPriceWriter.ListLines(priceNames, priceListTable.Module, priceListTable.FieldOf(pricePlan!.ListKey).Name, tenancyArgument));
+        Line("    check_price(&pool, Some(id), &mut row).await?;");
+    }
     if (docNames is not null)
     {
         Line($"    let document_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
@@ -738,6 +768,8 @@
         Line(RustPartyWriter.UpdateLines(idArg));
     else if (rateNames is not null)
         Line(RustRateWriter.UpdateLines(idArg));
+    else if (priceNames is not null)
+        Line(RustPriceWriter.UpdateLines(idArg));
     else
     Line($"    {updateFn}(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");

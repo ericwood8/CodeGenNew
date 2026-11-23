@@ -382,8 +382,8 @@ FROM dbo.SalesOrderTotal t JOIN dbo.TaxCategory c ON c.Code = 'STD' AND c.ValidF
 WHERE t.SalesOrderId IN (@o1, @o2, @o3) AND NOT EXISTS (SELECT 1 FROM dbo.SalesOrderTaxSubtotal x WHERE x.SalesOrderId = t.SalesOrderId AND x.TaxCategoryId = c.TaxCategoryId);
 
 -- Price lists with quantity breaks
-INSERT INTO dbo.PriceList (Name, CurrencyId, CustomerGroup, ValidFrom, ValidTo)
-SELECT v.N, c.CurrencyId, v.G, v.F, v.T FROM (VALUES
+INSERT INTO dbo.PriceList (Name, CurrencyId, CurrencyCode, CustomerGroup, ValidFrom, ValidTo)
+SELECT v.N, c.CurrencyId, c.Code, v.G, v.F, v.T FROM (VALUES
     ('Retail 2027', 'USD', NULL, '2027-01-01', '2027-12-31'), ('Wholesale 2027', 'USD', 'wholesale', '2027-01-01', '2027-12-31'), ('Europe 2027', 'EUR', 'europe', '2027-01-01', NULL)) v (N, C, G, F, T)
 JOIN dbo.Currency c ON c.Code = v.C WHERE NOT EXISTS (SELECT 1 FROM dbo.PriceList x WHERE x.Name = v.N);
 

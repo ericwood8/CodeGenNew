@@ -111,6 +111,7 @@
     // PartyTables: the unique index on the scheme and the value refuses a pair two requests saved at the same moment; the answer is the rule's own; RateTables: the same for the unique index on the pair and the day of a rate
     var pairMarks = PartyPlan.PairIndexes(Project).Select(i => PartyPlan.RefusalMark(i, dialect)).ToList();
     var rateMarks = RatePlan.PairIndexes(Project).Select(i => PartyPlan.RefusalMark(i, dialect)).ToList();
+    var priceMarks = PriceListPlan.PairIndexes(Project).Select(i => PartyPlan.RefusalMark(i, dialect)).ToList();   // PriceListTables: the unique index on the list, the item and the minimum quantity
     string corsNote = proxied.Count == 0 ? $"The {callers} calls this API from its own origin, which is allowed below."
         : $"The {frontEnd} dev server proxies /api here (see {proxyFile}), so CORS only matters if the front end is served elsewhere." + (stacks.Count > proxied.Count ? $" The {callers} calls this API directly, so its origin is allowed below." : "");
 #>
@@ -417,6 +418,9 @@ public static partial class ApiProblems
 <# if (rateMarks.Count > 0) { #>
             Constraint.Unique when RepeatsRate(error) => Problem(StatusCodes.Status409Conflict, "<#= RateWords.TakenType #>", "<#= RateWords.TakenTitle #>", "<#= RateWords.Taken #>"),
 <# } #>
+<# if (priceMarks.Count > 0) { #>
+            Constraint.Unique when RepeatsPrice(error) => Problem(StatusCodes.Status409Conflict, "<#= PriceWords.TakenType #>", "<#= PriceWords.TakenTitle #>", "<#= PriceWords.Taken #>"),
+<# } #>
             Constraint.Unique => Problem(StatusCodes.Status409Conflict, "<#= ProblemTypes.DuplicateValue #>", "Duplicate value", $"A {table} with that value already exists."),
             Constraint.ForeignKey when removing => Problem(StatusCodes.Status409Conflict, "<#= ProblemTypes.InUse #>", "In use", $"The {table} cannot be removed because other rows use it."),
             Constraint.ForeignKey => Problem(StatusCodes.Status400BadRequest, "<#= ProblemTypes.RelatedRowMissing #>", "Related row missing", $"The {table} names a row that does not exist."),
@@ -456,6 +460,14 @@ public static partial class ApiProblems
 
     private static bool RepeatsRate(DbUpdateException error) =>
         error.InnerException?.Message is { } message && RateIndexes.Any(mark => message.Contains(mark, StringComparison.OrdinalIgnoreCase));
+
+<# } #>
+<# if (priceMarks.Count > 0) { #>
+    // how the database's message names the unique index on the list, the item and the minimum quantity of a price table (PriceListTables)
+    private static readonly string[] PriceIndexes = [<#= string.Join(", ", priceMarks.Select(m => "\"" + m.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"")) #>];
+
+    private static bool RepeatsPrice(DbUpdateException error) =>
+        error.InnerException?.Message is { } message && PriceIndexes.Any(mark => message.Contains(mark, StringComparison.OrdinalIgnoreCase));
 
 <# } #>
     // the table of the row that was being saved, in words: "SalesInvoiceLine" is "sales invoice line"

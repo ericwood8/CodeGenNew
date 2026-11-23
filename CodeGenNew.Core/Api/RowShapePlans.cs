@@ -2,6 +2,7 @@ using CodeGenNew.Core.Allowance;
 using CodeGenNew.Core.Totals;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Settings;
 using CodeGenNew.Core.Tax;
@@ -170,6 +171,10 @@ public static class EffectiveDatePlan
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 
+    /// <summary> Whether the rows of one group are told apart without regard to case: a text group column (a currency, a code) compares as upper case in the overlap rule and in <c>GET current</c> of every stack, so
+    /// <c>usd</c> and <c>USD</c> are one group. </summary>
+    public static bool FoldsCase(ColumnModel group) => group.IsStringColumn;
+
     public static EffectiveShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } effective ? effective : null;
 
     public static string? Problem(TableModel table, ProjectSettings project)
@@ -317,11 +322,11 @@ public static class DefaultRowPlan
 /// <summary> Whether a table has any row shape (tree, content, soft delete, effective dating) and the reasons the project's lists cannot be served. </summary>
 public static class RowShapePlan
 {
-    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.ContentTables.Length > 0 || project.AssetTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0 || project.DefaultRowTables.Length > 0 || project.PartyTables.Length > 0 || project.RateTables.Length > 0 || project.RateDocuments.Length > 0 || project.AllowanceCharges.Length > 0 || project.DocumentTotals.Length > 0 || project.TaxLines.Length > 0 || project.SnapshotColumns.Length > 0 || project.PolymorphicLinks.Length > 0;
+    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.ContentTables.Length > 0 || project.AssetTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0 || project.DefaultRowTables.Length > 0 || project.PartyTables.Length > 0 || project.RateTables.Length > 0 || project.PriceListTables.Length > 0 || project.RateDocuments.Length > 0 || project.AllowanceCharges.Length > 0 || project.DocumentTotals.Length > 0 || project.TaxLines.Length > 0 || project.SnapshotColumns.Length > 0 || project.PolymorphicLinks.Length > 0;
 
     public static bool Has(TableModel table, ProjectSettings project) =>
         TreePlan.For(table, project) is not null || ContentPlan.For(table, project) is not null || AssetPlan.For(table, project) is not null || SoftDeletePlan.For(table, project) is not null || EffectiveDatePlan.For(table, project) is not null || DefaultRowPlan.For(table, project) is not null
-        || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project) || PartyPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project) || DocumentTotalsPlan.IsListed(table.TableName, project);
+        || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project) || PartyPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || PriceListPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project) || DocumentTotalsPlan.IsListed(table.TableName, project);
 
     /// <summary> Every reason the three settings cannot be served by <paramref name="database"/>. </summary>
     public static List<string> Problems(DatabaseModel database, ProjectSettings project)
@@ -346,12 +351,13 @@ public static class RowShapePlan
         problems.AddRange(PolymorphicPlan.Problems(database, project));
         problems.AddRange(PartyPlan.Problems(database, project));
         problems.AddRange(RatePlan.Problems(database, project));
+        problems.AddRange(PriceListPlan.Problems(database, project));
         problems.AddRange(RateDocumentPlan.Problems(database, project));
         problems.AddRange(TaxLinePlan.Problems(database, project));
         problems.AddRange(AllowanceChargePlan.Problems(database, project));
         problems.AddRange(DocumentTotalsPlan.Problems(database, project));
         if (Any(project) && project.AccessModeFor(database.Dialect) != AccessMode.Ef)
-            problems.Add("TreeTables, ContentTables, AssetTables, PolymorphicLinks, DefaultRowTables, PartyTables, RateTables, RateDocuments, TaxLines, AllowanceCharges, DocumentTotals, SnapshotColumns, SoftDeleteTables and EffectiveDatedTables need AccessMode=Ef.");
+            problems.Add("TreeTables, ContentTables, AssetTables, PolymorphicLinks, DefaultRowTables, PartyTables, RateTables, PriceListTables, RateDocuments, TaxLines, AllowanceCharges, DocumentTotals, SnapshotColumns, SoftDeleteTables and EffectiveDatedTables need AccessMode=Ef.");
         return problems;
     }
 }

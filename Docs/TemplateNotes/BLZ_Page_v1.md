@@ -64,3 +64,5 @@ A child grid that shows a name from a parent with too many rows does not read th
 A whole-number or text key the person gives a new row that is also a foreign key to another table (a customer that is a row of the party table) is a drop-down of the parent's rows on the form, not a number box: it can be chosen for a new row and is disabled once the row is saved (`FormColumn.IsKeyLookupField`).
 
 `RateTables`: the page of a rate table has two currency boxes, a `Rate on` day and a `Find rate` button that ask the client's `RateOnAsync` and show the rate in force, or that there is none. With `RateInverse` the answer says when the rate was worked out from the opposite pair (the API answers such a row with no key of its own), with a generated test of it. With `RateDocuments` the form shows the rate and the converted amount of a document as text, not boxes: the server writes both.
+
+`PriceListTables`: the page of a price table has boxes for the item, the quantity, the currency and the day (and the customer group when the entry names it) and a `Find price` button that ask the client's `PriceOnAsync` and show the price in force, or that there is none (`PriceScreens`).

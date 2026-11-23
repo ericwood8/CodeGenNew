@@ -1,0 +1,8 @@
+# the price lookup in every front end (the group box is there because the entry names the customer group): python matrix_check.py Prices --settings-file Matrix/price_screens.settings --frontend
+@schema=price_lists
+@stack=api,blazor,uno,winui3,react,angular
+PriceListTables=PriceListItem:PriceListId:ItemId:MinQuantity:Price:PriceList:CurrencyCode:ValidFrom:ValidTo:CustomerGroup
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+DesktopTests=true

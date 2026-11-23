@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Tenant;
@@ -60,6 +61,12 @@ public sealed class TableShapes
 
     /// <summary> The table as a document line that carries the rate of its tax category (<c>TaxLines</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
     public TaxLineShape? TaxLine => Shape<TaxLineShape>();
+    /// <summary> The table as the price rows of a price list (<c>PriceListTables</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
+    public PriceListShape? PriceList => Shape<PriceListShape>();
+
+    /// <summary> The table as the table of price lists that a price table (<c>PriceListTables</c>) points at; null when it is not. </summary>
+    public PriceListHeadShape? PriceListHead => Shape<PriceListHeadShape>();
+
     public LogShape? Log => Shape<LogShape>();
     public NameActiveShape? NameActive => Shape<NameActiveShape>();
 
@@ -135,7 +142,7 @@ public sealed class TableShapes
     }
 
     private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(InboundShape), typeof(TokenShape), typeof(UsageShape), typeof(LogShape), typeof(TreeShape), typeof(ContentShape), typeof(AssetShape), typeof(EffectiveShape), typeof(DefaultRowShape), typeof(ExtensionShape), typeof(TaxLineShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape),
-        typeof(RateShape), typeof(SingleRowShape), typeof(TemporalShape), typeof(KeySequenceShape)];
+        typeof(RateShape), typeof(PriceListShape), typeof(PriceListHeadShape), typeof(SingleRowShape), typeof(TemporalShape), typeof(KeySequenceShape)];
     private static readonly Type[] NeedDatabase = [typeof(TenantMembershipShape), typeof(ApprovalTableShape), typeof(ApprovalSide), typeof(SnapshotShape), typeof(RateDocumentShape), typeof(PartyRootShape), typeof(PartyIdentifierShape),
         typeof(LinkShape), typeof(LinkedShape), typeof(ArchiveJob), typeof(PartitionJob), typeof(TaxCategoryShape), typeof(PermissionTableShape), typeof(FeatureTableShape), typeof(SubscriptionModel), typeof(SubscriptionPlanShape),
         typeof(PlanLimitModel)];
@@ -170,6 +177,8 @@ public sealed class TableShapes
         if (shape == typeof(EffectiveShape)) return EffectiveDatePlan.For(_table, _project);
         if (shape == typeof(DefaultRowShape)) return DefaultRowPlan.For(_table, _project);
         if (shape == typeof(ExtensionShape)) return ExtensionPlan.For(_table, _project);
+        if (shape == typeof(PriceListShape)) return _database is null ? PriceListPlan.For(_table, _project) : PriceListPlan.For(_table, _project, _database);
+        if (shape == typeof(PriceListHeadShape)) return (_database ?? RatePlan.Remembered(_project)) is { } known ? PriceListPlan.HeadOf(_table, _project, known) is { } priced ? new PriceListHeadShape(priced) : null : null;
         if (shape == typeof(TaxLineShape)) return _database is null ? TaxLinePlan.For(_table, _project) : TaxLinePlan.For(_table, _project, _database);
         if (shape == typeof(NameActiveShape)) return NameActiveShape.For(_table, _project);
         if (shape == typeof(TenantOwnedShape)) return TenantPlan.OwnedBy(_table, _project);
@@ -251,6 +260,9 @@ public sealed record PartyIdentifierShape(PartyShape Party);
 
 /// <summary> The table is the category table of the tax lines in <see cref="Line"/>. </summary>
 public sealed record TaxCategoryShape(TaxLineShape Line);
+
+/// <summary> The table of price lists that a price table points at. </summary>
+public sealed record PriceListHeadShape(PriceListShape Prices);
 
 /// <summary> The table is one of the four tables of roles and permissions; <see cref="Role"/> says which (Role, Permission, RolePermission or UserRole). </summary>
 public sealed record PermissionTableShape(PermissionTablesPlan Plan, string Role);

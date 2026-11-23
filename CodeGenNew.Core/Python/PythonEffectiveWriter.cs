@@ -17,7 +17,9 @@ public static class PythonEffectiveWriter
     public static string Helper(Names n) => Fill(Check, n);
 
     /// <summary> The groups of a row as the argument of the check: <c>{"item_id": body.item_id}</c>; <paramref name="value"/> turns an attribute into the expression that reads it. </summary>
-    public static string GroupArgument(Names n, Func<string, string> value) => "{" + string.Join(", ", n.Groups.Select(g => $"\"{g.Attribute}\": {value(g.Attribute)}")) + "}";
+    /// <summary> The groups as the Python dict <c>check_effective</c> reads. <paramref name="tenant"/> adds the tenant column and the caller's tenant for a table limited to a tenant, so two tenants' periods never overlap each other. </summary>
+    public static string GroupArgument(Names n, Func<string, string> value, (string Attribute, string Value)? tenant = null) =>
+        "{" + string.Join(", ", n.Groups.Select(g => $"\"{g.Attribute}\": {value(g.Attribute)}").Concat(tenant is { } t && !n.Groups.Any(g => g.Attribute == t.Attribute) ? [$"\"{t.Attribute}\": {t.Value}"] : [])) + "}";
 
     /// <summary> <c>GET current</c>, placed before the route of one row so the fixed path wins. </summary>
     public static string CurrentRoute(Names n, string route, string readDepends, string userParameter)
@@ -27,7 +29,9 @@ public static class PythonEffectiveWriter
         foreach (var g in n.Groups)
         {
             parameters.Append($", {g.Attribute}: {g.Annotation} | None = Query(None, alias=\"{g.Json}\")");
-            lines.Append($"    if {g.Attribute} is not None:\n        statement = statement.where({n.Class}.{g.Attribute} == {g.Attribute})\n");
+            lines.Append(g.Annotation == "str"
+                ? $"    if {g.Attribute} is not None:\n        statement = statement.where(func.upper({n.Class}.{g.Attribute}) == {g.Attribute}.upper())\n"
+                : $"    if {g.Attribute} is not None:\n        statement = statement.where({n.Class}.{g.Attribute} == {g.Attribute})\n");
         }
         string today = n.DateAnnotation == "datetime" ? "datetime.combine(date.today(), time.min)" : "date.today()";
         return Fill(CurrentText, n, ("§ROUTE", route), ("§READ", readDepends), ("§USER", userParameter), ("§PARAMETERS", parameters.ToString()), ("§GROUPLINES", lines.ToString()), ("§TODAY", today));
@@ -54,7 +58,8 @@ def check_effective(session: Session, row_id, valid_from, valid_to, groups: dict
     if row_id is not None:
         statement = statement.where(§CLASS.§KEY != row_id)
     for name, value in groups.items():
-        statement = statement.where(getattr(§CLASS, name) == value)
+        column = getattr(§CLASS, name)
+        statement = statement.where(func.upper(column) == value.upper() if isinstance(value, str) else column == value)
     if valid_to is not None:
         statement = statement.where(§CLASS.§FROM <= valid_to)
     statement = statement.where(or_(§CLASS.§TO.is_(None), §CLASS.§TO >= valid_from))

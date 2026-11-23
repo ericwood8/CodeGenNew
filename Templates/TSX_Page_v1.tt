@@ -291,6 +291,9 @@
         var rateNames = !oneRow && RateScreens.HasBox(Model, Project) ? RateScreens.Names(Model, Project) : null;   // RateTables: a lookup of the rate in force, over the REST route on the OData page too
         if (rateNames is { } rateHandlers)
             foreach (string line in RateScreens.ReactHandlers(apiVar, rateHandlers)) T(line);
+        var priceNames = !oneRow && PriceScreens.HasBox(Model, Project) ? PriceScreens.Names(Model, Project) : null;   // PriceListTables: a lookup of the price in force, over the REST route on the OData page too
+        if (priceNames is { } priceHandlers)
+            foreach (string line in PriceScreens.ReactHandlers(apiVar, priceHandlers)) T(line);
         bool taxBox = !oneRow && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate, over the REST route on the OData page too
         if (taxBox)
             foreach (string line in TaxScreens.ReactHandlers(apiVar)) T(line);
@@ -840,6 +843,8 @@
             foreach (string line in PartyScreens.ReactBox()) T(line);
         if (rateNames is not null)
             foreach (string line in RateScreens.ReactBox()) T(line);
+        if (priceNames is { } priceBox)
+            foreach (string line in PriceScreens.ReactBox(priceBox)) T(line);
         if (taxBox)
             foreach (string line in TaxScreens.ReactBox()) T(line);
         if (allowBox)
@@ -1348,6 +1353,8 @@
             foreach (string line in PartyScreens.ReactBoxTests(apiVar, pageName, nameActive ? "getAll" : odata ? "queryPage" : "getPage")) S(line);
         if (rateNames is { } rateTests)
             foreach (string line in RateScreens.ReactBoxTests(apiVar, pageName, rateTests)) S(line);
+        if (priceNames is { } priceTests)
+            foreach (string line in PriceScreens.ReactBoxTests(apiVar, pageName, priceTests)) S(line);
         if (taxBox)
             foreach (string line in TaxScreens.ReactBoxTests(apiVar, pageName)) S(line);
         if (allowBox)

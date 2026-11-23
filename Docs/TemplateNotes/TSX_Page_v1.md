@@ -163,4 +163,6 @@ A whole-number or text key the person gives a new row that is also a foreign key
 
 `RateTables`: the page of a rate table has two currency boxes, a `Rate on` day and a `Find rate` button that ask the table's `rate` route and show the rate in force (or that there is none), with a generated test of it (the currencies are asked for trimmed and the day goes along). The OData page asks the table's REST route through its OData module. With `RateInverse` the answer says when the rate was worked out from the opposite pair (the API answers such a row with no key of its own), with a generated test of it. With `RateDocuments` the form shows the rate and the converted amount of a document as text, not boxes: the server writes both.
 
+`PriceListTables`: the page of a price table has boxes for the item, the quantity, the currency and the day (and the customer group when the entry names it) and a `Find price` button that ask the table's `price` route and show the price in force (or that there is none), with a generated test of it (`PriceScreens`).
+
 - **Delete shows at once.** `remove` asks, then in a transition hides the row (`useOptimistic`, `shownRows`) and calls `deleteRow`; a refused delete shows its message and the row returns when the transition ends, a successful one drops it from the page's list and reads the page again.

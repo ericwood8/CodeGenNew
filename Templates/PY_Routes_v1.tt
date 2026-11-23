@@ -144,6 +144,14 @@
     var rateDay = FieldOf(ratePlan?.Day);
     var rateNames = ratePlan is null || FieldOf(ratePlan.From) is null || FieldOf(ratePlan.To) is null || FieldOf(ratePlan.Rate) is null || rateDay is null ? null
         : new PythonRateWriter.Names(t.Class, key, FieldOf(ratePlan.From)!.Name, FieldOf(ratePlan.To)!.Name, FieldOf(ratePlan.Rate)!.Name, rateDay.Name, rateDay.Annotation, t.Schema, Project.RateInverse && RatePlan.InvertibleRate(ratePlan.Rate));
+    // PriceListTables: a price keeps a minimum quantity above zero, a price that is not negative and one row per list, item and minimum quantity, and GET price answers the price in force for an item and a quantity
+    var pricePlan = log || tenantTable ? null : PriceListPlan.For(Model, Project);   // a table limited to an owner or a tenant: the lookup reads only the caller's rows
+    var priceListTable = pricePlan is null ? null : PythonTable.Of(pricePlan.ListTable, Project);
+    var priceNames = PythonPriceWriter.NamesFor(pricePlan, t, priceListTable);
+    // a row with an owner column of its own may name only a list of the same owner
+    var priceListOwnerField = priceNames is not null && ownerField is not null && pricePlan?.ListOwner is { } priceListOwner ? priceListTable!.SchemaFieldOf(priceListOwner) : null;
+    // a row limited to a tenant may name only a list of the caller's tenant
+    var priceListTenantField = priceNames is not null && tenantField is not null && !people && pricePlan is not null && TenantPlan.OwnedBy(pricePlan.ListTable, Project) is { } priceListTenant ? priceListTable!.SchemaFieldOf(priceListTenant.Column) : null;
     // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
     var docPlan = log || tenantTable || scoped || tenanted ? null : RateDocumentPlan.For(Model, Project);
     var docRateTable = docPlan is null ? null : PythonTable.Of(docPlan.Rates.Table, Project);
@@ -182,6 +190,10 @@
         foreach (string word in PythonRateWriter.DateWords(rateNames))
             if (!clonedDates.Contains(word))
                 clonedDates.Add(word);
+    if (priceNames is not null)
+        foreach (string word in PythonPriceWriter.DateWords(priceNames))
+            if (!clonedDates.Contains(word))
+                clonedDates.Add(word);
     if (docNames is not null)
         foreach (string word in PythonRateDocumentWriter.DateWords(docNames))
             if (!clonedDates.Contains(word))
@@ -209,7 +221,10 @@
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbCastType is not null);
     var sqlalchemy = new List<string> { "select" };
     if (effNames is not null)
+    {
         sqlalchemy.Add("or_");
+        sqlalchemy.Add("func");
+    }
     if (defNames is not null)
         sqlalchemy.Add("update as sql_update");
     if (softNames is not null || totalsNames is not null)
@@ -228,7 +243,11 @@
         sqlalchemy.Add("cast");
         sqlalchemy.Add("String");
     }
-    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
+    if (priceNames is not null)
+        foreach (string word in PythonPriceWriter.SqlAlchemyWords)
+            if (!sqlalchemy.Contains(word))
+                sqlalchemy.Add(word);
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
@@ -269,6 +288,8 @@
             Line($"from app.models.{parent.Module} import {parent.Class}");
     if (partyNames is not null && partyNames.IdentifierClass != t.Class)
         Line($"from app.models.{partyNames.IdentifierModule} import {partyNames.IdentifierClass}");
+    if (priceListTable is not null && priceNames is not null && priceListTable.Class != t.Class)
+        Line($"from app.models.{priceListTable.Module} import {priceListTable.Class}");
     if (docRateTable is not null)
         Line($"from app.routes.{docRateTable.Module} import find_rate");
     if (taxCategoryTable is not null)
@@ -463,6 +484,12 @@
         Line();
         Line(PythonRateWriter.Helper(rateNames).TrimEnd('\n'));
     }
+    if (priceNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonPriceWriter.Helper(priceNames).TrimEnd('\n'));
+    }
     if (docNames is not null)
     {
         Line();
@@ -533,6 +560,13 @@
     {
         Line();
         Line(PythonRateWriter.Route(rateNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
+        Line();
+    }
+
+    if (priceNames is not null)
+    {
+        Line();
+        Line(PythonPriceWriter.Route(priceNames, t.Route, readDepends, userParameter, (scoped ? "    statement = only_owned(statement, user)\n" : "") + (tenanted ? TenantFilter("statement") + "\n" : "")).TrimEnd('\n'));
         Line();
     }
 
@@ -739,7 +773,7 @@
     if (treePlan is not null)
         Line($"    check_tree(session, None, body.{treeNames!.Parent})");
     if (effNames is not null)
-        Line($"    check_effective(session, None, body.{effNames.From}, body.{effNames.To}, {PythonEffectiveWriter.GroupArgument(effNames, a => "body." + a)})");
+        Line($"    check_effective(session, None, body.{effNames.From}, body.{effNames.To}, {PythonEffectiveWriter.GroupArgument(effNames, a => "body." + a, tenantField is not null && !sharedTenant ? (tenantField.Name, "user.tenant_id") : null)})");
     if (userPlan is not null)
         Line("    guard_user_row(session, user, body, None)");
     if (gated)
@@ -782,6 +816,15 @@
         Line("    check_rate(session, row)");
         Line(PythonRateWriter.PairLine(rateNames));
     }
+    if (priceNames is not null)
+    {
+        if (priceListTenantField is not null)
+            Line(PythonPriceWriter.ListLines(priceNames, tenantOnly, priceListTenantField.Name));
+        if (priceListOwnerField is not null)
+            Line(PythonPriceWriter.OwnerLines(priceNames, ownerField!.Name, priceListOwnerField.Name));
+        Line("    check_price(session, row)");
+        Line(PythonPriceWriter.PairLine(priceNames));
+    }
     if (docNames is not null)
         Line("    convert_currency(session, row, None)");
     if (taxNames is not null)
@@ -801,6 +844,8 @@
         Line(PythonPartyWriter.RefusedLines("None"));
     if (rateNames is not null)
         Line(PythonRateWriter.RefusedLines("None"));
+    if (priceNames is not null)
+        Line(PythonPriceWriter.RefusedLines("None"));
     Line("        raise save_refusal(error)");
     Line("    session.refresh(row)");
     if (tenantTable)
@@ -876,7 +921,7 @@
     if (effNames is not null)
     {
         string Changed(string a) => $"body.changes().get(\"{a}\", row.{a})";
-        Line($"    check_effective(session, id, {Changed(effNames.From)}, {Changed(effNames.To)}, {PythonEffectiveWriter.GroupArgument(effNames, Changed)})");
+        Line($"    check_effective(session, id, {Changed(effNames.From)}, {Changed(effNames.To)}, {PythonEffectiveWriter.GroupArgument(effNames, Changed, tenantField is not null && !sharedTenant ? (tenantField.Name, "user.tenant_id") : null)})");
     }
     if (userPlan is not null)
         Line("    guard_user_row(session, user, body, row)");
@@ -924,6 +969,15 @@
         Line("    check_rate(session, row)");
         Line(PythonRateWriter.PairLine(rateNames));
     }
+    if (priceNames is not null)
+    {
+        if (priceListTenantField is not null)
+            Line(PythonPriceWriter.ListLines(priceNames, tenantOnly, priceListTenantField.Name));
+        if (priceListOwnerField is not null)
+            Line(PythonPriceWriter.OwnerLines(priceNames, ownerField!.Name, priceListOwnerField.Name));
+        Line("    check_price(session, row)");
+        Line(PythonPriceWriter.PairLine(priceNames));
+    }
     if (docNames is not null)
         Line("    convert_currency(session, row, stored)");
     if (taxNames is not null)
@@ -946,6 +1000,8 @@
         Line(PythonPartyWriter.RefusedLines("id"));
     if (rateNames is not null)
         Line(PythonRateWriter.RefusedLines("id"));
+    if (priceNames is not null)
+        Line(PythonPriceWriter.RefusedLines("id"));
     Line("        raise save_refusal(error)");
     Line("    session.refresh(row)");
     Line("    return row");

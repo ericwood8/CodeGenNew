@@ -673,6 +673,13 @@ CREATE TABLE dbo.PriceList (
 );
 GO
 
+-- The code of the currency as text, which PriceListTables compares (the overlap of two lists and the price in force are per currency code).
+IF COL_LENGTH('dbo.PriceList', 'CurrencyCode') IS NULL
+ALTER TABLE dbo.PriceList ADD CurrencyCode CHAR(3) NOT NULL CONSTRAINT DF_PriceList_CurrencyCode DEFAULT 'USD';
+GO
+UPDATE p SET p.CurrencyCode = c.Code FROM dbo.PriceList p JOIN dbo.Currency c ON c.CurrencyId = p.CurrencyId WHERE p.CurrencyCode <> c.Code;
+GO
+
 IF OBJECT_ID('dbo.PriceListLine', 'U') IS NULL
 CREATE TABLE dbo.PriceListLine (
     PriceListLineId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PriceListLine PRIMARY KEY,

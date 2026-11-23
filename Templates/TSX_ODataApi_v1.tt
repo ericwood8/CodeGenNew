@@ -43,6 +43,7 @@
         string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
         L($"@@@FILE {apiFolder}/{ReactNames.ODataApiFile(table.TableName)}.ts@@@");
         bool partyBox = PartyScreens.HasBox(table, Project);   // PartyTables: the page's Find by identifier box asks the table's REST route
+        bool priceBox = PriceScreens.HasBox(table, Project);   // PriceListTables: the page's price lookup asks the table's REST route
         bool rateBox = RateScreens.HasBox(table, Project);   // RateTables: the page's rate lookup asks the table's REST route
         bool taxBox = TaxScreens.HasBox(table, Project);   // TaxLines: the page's tax box asks the table's REST route
         bool allowBox = AllowanceScreens.HasBox(table, Project);   // AllowanceCharges: the page's totals box asks the table's REST route
@@ -63,6 +64,7 @@
             L($"}}, '/api/{plan.Set}'),");
             if (partyBox) L(PartyScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
             if (rateBox) L(RateScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
+            if (priceBox) L(PriceScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
             if (taxBox) L(TaxScreens.ReactODataApiLine($"/api/{plan.Set}"));
             if (allowBox) L(AllowanceScreens.ReactODataApiLine($"/api/{plan.Set}"));
             L("};");

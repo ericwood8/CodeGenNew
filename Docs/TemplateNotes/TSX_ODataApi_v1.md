@@ -7,3 +7,5 @@ It is the OData twin of `TSX_Api`: the same model (`models/<table>`), the same r
 `PartyTables`: the module of a party table also has `byIdentifier`, which asks the table's REST route (`/api/<set>/by-identifier`) for the page's Find by identifier box.
 
 `RateTables`: the module of a rate table also has `rateOn`, which asks the table's REST route (`/api/<set>/rate`) for the page's rate lookup.
+
+`PriceListTables`: the module of a price table also has `priceOn`, which asks the table's REST route (`/api/<set>/price`) for the page's price lookup.

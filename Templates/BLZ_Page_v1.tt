@@ -341,6 +341,9 @@
         var rateNames = !oneRow && !nameActive && RateScreens.HasBox(Model, Project) ? RateScreens.CsNames(Model, Project) : null;   // RateTables: a lookup of the rate in force, over the REST route on the OData page too
         if (rateNames is not null)
             foreach (string line in RateScreens.BlazorBox()) L(line);
+        var priceNames = !oneRow && !nameActive && PriceScreens.HasBox(Model, Project) ? PriceScreens.CsNames(Model, Project) : null;   // PriceListTables: a lookup of the price in force, over the REST route on the OData page too
+        if (priceNames is { } priceBox)
+            foreach (string line in PriceScreens.BlazorBox(priceBox)) L(line);
         bool taxBox = !oneRow && !nameActive && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate
         if (taxBox)
             foreach (string line in TaxScreens.BlazorBox()) L(line);
@@ -1614,6 +1617,8 @@
             foreach (string line in PartyScreens.BlazorHandlers("Client", !nameActive)) L(line);
         if (rateNames is { } rateHandlers)
             foreach (string line in RateScreens.BlazorHandlers("Client", rateHandlers)) L(line);
+        if (priceNames is { } priceHandlers)
+            foreach (string line in PriceScreens.BlazorHandlers("Client", priceHandlers)) L(line);
         if (taxBox)
             foreach (string line in TaxScreens.BlazorHandlers("Client")) L(line);
         if (allowBox)

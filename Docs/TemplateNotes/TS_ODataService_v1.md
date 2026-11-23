@@ -15,3 +15,5 @@ Every name is the JSON name the REST routes use, so the model (`models/<table>`)
 `PartyTables`: the service of a party table also has `byIdentifier`, which asks the table's REST route (`<restUrl>/by-identifier`) for the screen's Find by identifier box.
 
 `RateTables`: the service of a rate table also has `rateOn`, which asks the table's REST route (`<restUrl>/rate`) for the screen's rate lookup.
+
+`PriceListTables`: the service of a price table also has `priceOn`, which asks the table's REST route (`<restUrl>/price`) for the screen's price lookup.

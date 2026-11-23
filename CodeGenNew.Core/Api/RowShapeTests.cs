@@ -448,7 +448,7 @@ public static class RowShapeTests
             L("        ApiFixture.RequireDatabase();");
             L($"        var row = await MakeAsync(b => {{ b[\"{from}\"] = {Day("1763-01-01")}; b[\"{to}\"] = {Day("1763-06-30")}; }});");
             L($"        long key = row[\"{id}\"]!.GetValue<long>();");
-            L("        string narrow = \"\"" + string.Concat(effective.Groups.Select(g => $" + \"&{JsonNames.Camel(g.Name)}=\" + row[\"{JsonNames.Camel(g.Name)}\"]")) + ";");
+            L("        string narrow = \"\"" + string.Concat(effective.Groups.Select(g => $" + (row[\"{JsonNames.Camel(g.Name)}\"] is null ? \"\" : \"&{JsonNames.Camel(g.Name)}=\" + row[\"{JsonNames.Camel(g.Name)}\"])")) + ";");
             L("        async Task<bool> InEffect(string day)");
             L("        {");
             L("            var rows = (await ApiFixture.Client.GetFromJsonAsync<JsonArray>($\"{Route}/current?on={day}{narrow}\"))!;");

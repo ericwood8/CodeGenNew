@@ -43,7 +43,8 @@
         string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
         L($"@@@FILE {servicesFolder}/{AngularNames.ODataServiceFile(table.TableName)}.ts@@@");
         bool rateBox = RateScreens.HasBox(table, Project);   // RateTables: the screen's rate lookup asks the table's REST route
-        bool partyBox = PartyScreens.HasBox(table, Project) || rateBox;   // PartyTables: the screen's Find by identifier box asks the table's REST route
+        bool priceBox = PriceScreens.HasBox(table, Project);   // PriceListTables: the screen's price lookup asks the table's REST route
+        bool partyBox = PartyScreens.HasBox(table, Project) || rateBox || priceBox;   // PartyTables: the screen's Find by identifier box asks the table's REST route
         L("import { Injectable } from '@angular/core';");
         if (partyBox) L("import { Observable } from 'rxjs';");
         L("import { HttpClient } from '@angular/common/http';");
@@ -68,6 +69,8 @@
             foreach (string line in PartyScreens.AngularODataServiceLines(baseName)) L(line);
         if (rateBox)
             foreach (string line in RateScreens.AngularServiceLines(baseName, "restUrl")) L(line);
+        if (priceBox)
+            foreach (string line in PriceScreens.AngularServiceLines(baseName, "restUrl")) L(line);
         if (TaxScreens.HasBox(table, Project))
             foreach (string line in TaxScreens.AngularServiceLines("restUrl")) L(line);
         if (AllowanceScreens.HasBox(table, Project))

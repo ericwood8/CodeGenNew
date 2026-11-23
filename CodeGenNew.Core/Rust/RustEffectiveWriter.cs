@@ -12,9 +12,13 @@ public static class RustEffectiveWriter
 
     /// <summary> What the code needs of the table: struct, key and period fields, the date type, the group columns and the select list of the struct. </summary>
     public sealed record Names(string Struct, string KeyField, string KeyColumn, string KeyType, string FromField, string FromColumn, string ToField, string ToColumn, bool ToIsOption, string DateType,
-        IReadOnlyList<Group> Groups, string Table, string SelectList);
+        IReadOnlyList<Group> Groups, string Table, string SelectList, bool CheckOnly = false);
 
     /// <summary> The route line to add to the router. </summary>
+    /// <summary> The groups of <paramref name="groups"/> plus the owner or tenant column of a table limited to one (when it is not a group already), so two owners' or tenants' periods never overlap each other. </summary>
+    public static IReadOnlyList<Group> WithScope(IReadOnlyList<Group> groups, params Group?[] scope) =>
+        [.. groups, .. scope.OfType<Group>().Where(s => !groups.Any(g => g.Field == s.Field))];
+
     public static string RouteLine(string route, string readLayer) => $"        .route(\"{route}/current\", get(current){readLayer})\n";
 
     /// <summary> <c>check_effective</c>, the query struct and <c>current</c>. <paramref name="liveAnd"/> is the soft-delete test (<c> AND flag = false</c>) or empty. </summary>
@@ -26,15 +30,17 @@ public static class RustEffectiveWriter
         foreach (var g in n.Groups)
         {
             string column = g.Column;
+            bool fold = g.Type == "String";
+            string compare = fold ? $"UPPER({column})" : column, upper = fold ? ".to_uppercase()" : ".clone()";
             checkGroups.Append(g.IsOption
-                ? $"    match &row.{g.Field} {{\n        Some(value) => {{\n            builder.push({RustTable.Raw($" AND {column} = ")}).push_bind(value.clone());\n        }}\n        None => {{\n            builder.push({RustTable.Raw($" AND {column} IS NULL")});\n        }}\n    }}\n"
-                : $"    builder.push({RustTable.Raw($" AND {column} = ")}).push_bind(row.{g.Field}.clone());\n");
+                ? $"    match &row.{g.Field} {{\n        Some(value) => {{\n            builder.push({RustTable.Raw($" AND {compare} = ")}).push_bind(value{upper});\n        }}\n        None => {{\n            builder.push({RustTable.Raw($" AND {column} IS NULL")});\n        }}\n    }}\n"
+                : $"    builder.push({RustTable.Raw($" AND {compare} = ")}).push_bind(row.{g.Field}{upper});\n");
             queryFields.Append($"    #[serde(rename = \"{g.Json}\")]\n    {g.Field}: Option<{Qualify(g.Type)}>,\n");
-            currentGroups.Append($"    if let Some(value) = query.{g.Field} {{\n        builder.push({RustTable.Raw($" AND {column} = ")}).push_bind(value);\n    }}\n");
+            currentGroups.Append($"    if let Some(value) = query.{g.Field} {{\n        builder.push({RustTable.Raw($" AND {compare} = ")}).push_bind(value{(fold ? ".to_uppercase()" : "")});\n    }}\n");
         }
         string today = n.DateType == "NaiveDateTime" ? "chrono::Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap_or_default()" : "chrono::Local::now().date_naive()";
         string to = n.ToIsOption ? $"row.{n.ToField}" : $"Some(row.{n.ToField})";
-        return FillAll(Text, ("§STRUCT", n.Struct), ("§KEYFIELD", n.KeyField), ("§KEYCOLUMN", n.KeyColumn), ("§KT", n.KeyType), ("§FROMFIELD", n.FromField), ("§FROMCOLUMN", n.FromColumn), ("§TOFIELD", n.ToField), ("§TOCOLUMN", n.ToColumn),
+        return FillAll(n.CheckOnly ? CheckText : Text, ("§STRUCT", n.Struct), ("§KEYFIELD", n.KeyField), ("§KEYCOLUMN", n.KeyColumn), ("§KT", n.KeyType), ("§FROMFIELD", n.FromField), ("§FROMCOLUMN", n.FromColumn), ("§TOFIELD", n.ToField), ("§TOCOLUMN", n.ToColumn),
             ("§TOVALUE", to), ("§DATE", Qualify(n.DateType)), ("§TODAY", today), ("§TABLE", n.Table), ("§SELECT", n.SelectList), ("§LIVE", liveAnd), ("§CHECKGROUPS", checkGroups.ToString()), ("§QUERYFIELDS", queryFields.ToString()),
             ("§CURRENTGROUPS", currentGroups.ToString()), ("§RANGETYPE", RowShapeWords.EffectiveRangeType), ("§OVERLAPTYPE", RowShapeWords.EffectiveOverlapType),
             ("§W_RANGE", RowShapeWords.BackwardsRange), ("§W_OVERLAP", RowShapeWords.Overlap));
@@ -49,6 +55,28 @@ public static class RustEffectiveWriter
         "Decimal" => "rust_decimal::Decimal",
         _ => type
     };
+
+    private const string CheckText = """"
+/// The period must not run backwards and must not overlap another row of the same group (both ends are inclusive; an empty end is open).
+async fn check_effective(pool: &Pool, row_id: Option<§KT>, row: &§STRUCT) -> ApiResult<()> {
+    let to = §TOVALUE;
+    if to.is_some_and(|end| end < row.§FROMFIELD) {
+        return Err(ApiError::Rejected(400, "§RANGETYPE", "Not a valid period", "§W_RANGE".into()));
+    }
+    let mut builder = sqlx::QueryBuilder::<Db>::new(r#"SELECT COUNT(*) FROM §TABLE WHERE 1 = 1§LIVE"#);
+    if let Some(id) = row_id {
+        builder.push(r#" AND §KEYCOLUMN <> "#).push_bind(id);
+    }
+§CHECKGROUPS    if let Some(end) = to {
+        builder.push(r#" AND §FROMCOLUMN <= "#).push_bind(end);
+    }
+    builder.push(r#" AND (§TOCOLUMN IS NULL OR §TOCOLUMN >= "#).push_bind(row.§FROMFIELD).push(")");
+    if builder.build_query_scalar::<i64>().fetch_one(pool).await? > 0 {
+        return Err(ApiError::Rejected(409, "§OVERLAPTYPE", "Overlapping period", "§W_OVERLAP".into()));
+    }
+    Ok(())
+}
+"""";
 
     private const string Text = """"
 /// The period must not run backwards and must not overlap another row of the same group (both ends are inclusive; an empty end is open).

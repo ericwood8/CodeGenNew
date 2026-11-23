@@ -1,6 +1,7 @@
 using CodeGenNew.Core.Allowance;
 using System.Text.RegularExpressions;
 using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Totals;
@@ -26,7 +27,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
                 Approval(table, database, project), RateDocument(table, database, project), DocumentTotals(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
@@ -183,6 +184,45 @@ public static class DatabaseShapeDetector
     private static readonly string[] CategoryToNames = ["ValidTo", "EffectiveTo", "EndDate", "ExpiryDate"];
     private static readonly string[] LineDayNames = ["LineDate", "TaxPoint", "TaxDate", "InvoiceDate", "DocumentDate"];
     private static readonly string[] DocumentNames = ["InvoiceId", "DocumentId", "OrderId", "SalesInvoiceId", "SalesOrderId"];
+
+    private static readonly string[] PriceMinNames = [PriceListPlan.DefaultMinQuantity, "MinQty", "MinimumQuantity", "FromQuantity", "QuantityFrom", "BreakQuantity"];
+    private static readonly string[] PriceItemNames = [PriceListPlan.DefaultItem, "ProductId", "ProductItemId", "ProductVariantId", "SkuId"];
+    private static readonly string[] PriceNames = [PriceListPlan.DefaultPrice, "UnitPrice", "ListPrice"];
+    private static readonly string[] PriceCurrencyNames = [PriceListPlan.DefaultCurrency, "Currency", "CurrencyId"];
+    private static readonly string[] PriceGroupNames = [PriceListPlan.DefaultGroup, "CustomerGroupCode", "CustomerSegment"];
+
+    /// <summary> A price row: a key to a list table that has a currency and a period, an item, a minimum quantity and a price. </summary>
+    private static ShapeSuggestion? PriceList(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (PriceListPlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        ColumnModel? Find(IEnumerable<ColumnModel> columns, string[] names, Func<ColumnModel, bool> kind) => columns.FirstOrDefault(c => kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
+        var min = Find(table.Columns, PriceMinNames, c => !c.IsNullable && c.IsNumericColumn);
+        var price = Find(table.Columns, PriceNames, c => !c.IsNullable && c.IsFractionalColumn);
+        var item = Find(table.Columns, PriceItemNames, c => !c.IsNullable && c.IsIntegerColumn);
+        if (min is null || price is null || item is null)
+            return null;
+        foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !f.ReferencedTable.EqualsIgnoreCase(table.TableName) && !f.ReferencingColumns[0].EqualsIgnoreCase(item.Name)))
+        {
+            if (database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable)) is not { } lists)
+                continue;
+            var currency = Find(lists.Columns, PriceCurrencyNames, c => !c.IsNullable && c.IsStringColumn);
+            var from = Find(lists.Columns, [PriceListPlan.DefaultValidFrom, "StartDate", "EffectiveFrom"], c => !c.IsNullable && c.IsDateOnlyColumn);
+            var to = Find(lists.Columns, [PriceListPlan.DefaultValidTo, "EndDate", "EffectiveTo"], c => c.IsNullable && c.IsDateOnlyColumn);
+            if (currency is null || from is null || to is null)
+                continue;
+            var group = Find(lists.Columns, PriceGroupNames, c => c.IsStringColumn);
+            string list = fk.ReferencingColumns[0];
+            bool plain = list.EqualsIgnoreCase(PriceListPlan.DefaultList) && item.Name.EqualsIgnoreCase(PriceListPlan.DefaultItem) && min.Name.EqualsIgnoreCase(PriceListPlan.DefaultMinQuantity) && price.Name.EqualsIgnoreCase(PriceListPlan.DefaultPrice)
+                && lists.TableName.EqualsIgnoreCase(PriceListPlan.DefaultListTable) && currency.Name.EqualsIgnoreCase(PriceListPlan.DefaultCurrency) && from.Name.EqualsIgnoreCase(PriceListPlan.DefaultValidFrom) && to.Name.EqualsIgnoreCase(PriceListPlan.DefaultValidTo) && group is null;
+            string entry = plain ? table.TableName : $"{table.TableName}:{list}:{item.Name}:{min.Name}:{price.Name}:{lists.TableName}:{currency.Name}:{from.Name}:{to.Name}" + (group is null ? "" : ":" + group.Name);
+            var listed = project.WithOverrides([new("PriceListTables", string.Join(",", project.PriceListTables.Append(entry)))]);
+            string? problem = PriceListPlan.Problems(database, listed).FirstOrDefault(p => p.StartsWith($"PriceListTables: {table.TableName}", StringComparison.OrdinalIgnoreCase));
+            string why = $"{list} points at {lists.TableName}, which has a currency and a period, and {min.Name} with {price.Name} look like quantity breaks of a price list";
+            return new ShapeSuggestion("Price lists with quantity breaks", "PriceListTables", entry, problem is null, problem is null ? why : $"{why}, but {problem}");
+        }
+        return null;
+    }
 
     /// <summary> A document line with a key to a tax category table, a tax rate, a taxable amount and a tax amount. </summary>
     private static ShapeSuggestion? TaxLine(TableModel table, DatabaseModel database, ProjectSettings project)
