@@ -68,3 +68,5 @@ A whole-number or text key the person gives a new row that is also a foreign key
 `PriceListTables`: the page of a price table has boxes for the item, the quantity, the currency and the day (and the customer group when the entry names it) and a `Find price` button that ask the client's `PriceOnAsync` and show the price in force, or that there is none (`PriceScreens`).
 
 `InstallmentTables`: the list page of an installment table has a document box and a `Show schedule` button that answer what the installments of the document come to (`Scheduled 200 of 300, 100 left`, or `Complete: 300 of 300`) over the table's `schedule` route, also on the OData page (`PaymentScreens`).
+
+`LedgerTables`: the list page of a ledger table (a log table) has a document box and a `Show paid` button that answer what the document has been paid (`Paid 200 of 300, 100 left`, or `Paid in full: 300 of 300`) over the table's `paid` route (`PaymentScreens.Paid`).

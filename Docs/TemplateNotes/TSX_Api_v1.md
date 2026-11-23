@@ -61,3 +61,5 @@ With `ListProtocol=Search`, `getPage(pageNumber, pageSize, { search }, sort)` as
 A table with a NOT NULL `Name` and `IsActive` gets a module too: `getAll`, `getActive` (`GET <route>/active`), `getLookup`, `getById`, `create`, `update`, `delete` and `findByName`; no `getPage` or `PagedResult` (its API answers the whole list) and no `clone`. A table called `Request` takes its row parameter as `row`, so it cannot hide the `request()` helper.
 
 With `ApiAuth=true` and a `GuardedColumns` rule that names this table the module also has `getGuards()` (`GET <route>/guards`: which guarded columns the signed-in person may change); the page reads it (see `TSX_Page_v1.md`).
+
+`LedgerTables`: the api object of a ledger table has `paid(document)` over the table's `paid` route (`PaymentScreens.ReactApiLine(PaymentScreens.Paid)`).

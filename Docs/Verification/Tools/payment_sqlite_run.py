@@ -13,7 +13,7 @@ from common import cli_dir
 from live_party_run import TOOLS
 from rate_sqlite_run import play
 
-SETTINGS = ["BankAccountTables=PartyBankAccount", "InstallmentTables=PaymentInstallment:PayDocumentId:PayDocument:Total", "PaymentTermsTables=PaymentMeans:PayDocumentId:PayDocument:OrderedOn"]
+SETTINGS = ["BankAccountTables=PartyBankAccount", "InstallmentTables=PaymentInstallment:PayDocumentId:PayDocument:Total", "PaymentTermsTables=PaymentMeans:PayDocumentId:PayDocument:OrderedOn", "LedgerTables=PayTransaction:PayDocumentId:PayDocument:Total"]
 
 
 def main():

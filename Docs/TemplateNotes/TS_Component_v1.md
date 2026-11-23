@@ -133,3 +133,5 @@ A whole-number or text key the person gives a new row that is also a foreign key
 `PriceListTables`: the screen of a price table has boxes for the item, the quantity, the currency and the day (and the customer group when the entry names it) and a `Find price` button (`findPrice` asks the service's `priceOn`, which reads the table's `price` route, and shows the price in force or that there is none) and a generated spec of it (`PriceScreens`).
 
 `InstallmentTables`: the screen of an installment table has a document box, a `Show schedule` button and an answer line, and a spec of them (`PaymentScreens`).
+
+`LedgerTables`: the screen of a ledger table has a document box, a `Show paid` button and the answer, and a spec that asks for what a document has been paid over the service's `paid` call (`PaymentScreens.AngularBox`, `AngularHandlers` and `AngularBoxTest` with `PaymentScreens.Paid`).

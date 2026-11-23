@@ -7,22 +7,34 @@ namespace CodeGenNew.Core.Rust;
 /// <c>check_installment</c> or <c>check_due</c>, called before a create or an update writes the row, and <c>GET schedule</c> on an installment table. The words are <see cref="PaymentWords"/>. </summary>
 public static class RustPaymentWriter
 {
-    public enum Kind { Account, Installment, Due }
+    public enum Kind { Account, Installment, Due, Ledger }
 
     /// <summary> The Rust names one payment table needs; the fields of the tables it reads come from their <see cref="RustTable"/>. </summary>
     public sealed record Names(Kind Kind, string Struct, string Table, string SelectList, string KeyColumn, string KeyType, string? IbanField, bool IbanOption, string? AccountField, bool AccountOption, string? RoutingField, bool RoutingOption,
         string? DocField, string? DocColumn, string? SeqField, string? DueField, bool DueOption, string? DueType, string? AmountField, string? AmountType, string? DocModule, string? DocKeyType, string? DocTotalField, string? DocDateField, string? DocDateType,
-        string? TermsField, bool TermsOption, string? TermsModule, string? DaysField, string? DocDateOption, string? EarlyPercent = null, bool EarlyPercentOption = false, string? EarlyDays = null, bool EarlyDaysOption = false, string? LatePercent = null, bool LatePercentOption = false, string? TotalField = null, int Scale = 2)
+        string? TermsField, bool TermsOption, string? TermsModule, string? DaysField, string? DocDateOption, string? EarlyPercent = null, bool EarlyPercentOption = false, string? EarlyDays = null, bool EarlyDaysOption = false, string? LatePercent = null, bool LatePercentOption = false, string? TotalField = null, int Scale = 2, LedgerFields? Ledger = null)
     {
         /// <summary> Whether the router has a route of its own (<c>schedule</c> or <c>payable</c>). </summary>
-        public bool HasRoute => Kind == Kind.Installment || Kind == Kind.Due && TotalField is not null;
+        public bool HasRoute => Kind == Kind.Installment || Kind == Kind.Ledger || Kind == Kind.Due && TotalField is not null;
 
         public bool IsFloat => AmountType is "f32" or "f64";
     }
 
-    public static Names? NamesFor(BankAccountShape? bank, InstallmentShape? installment, DueDateShape? due, RustTable t, ProjectSettings project, DialectInfo dialect, string keyType)
+    /// <summary> The fields and quoted columns of a ledger row the checks and routes read, and the field stamped with the time on a row that has none. </summary>
+    public sealed record LedgerFields(string KindField, string StatusField, string AmountField, string GatewayField, string KeyField, string KindColumn, string StatusColumn, string GatewayColumn, string KeyColumn, string RowKey, string? StampField, bool StampOption, int Scale);
+
+    public static Names? NamesFor(BankAccountShape? bank, InstallmentShape? installment, DueDateShape? due, RustTable t, ProjectSettings project, DialectInfo dialect, string keyType, LedgerShape? ledger = null)
     {
         string key = dialect.Quote(t.Key.Column.DbName);
+        if (ledger is not null)
+        {
+            var documents = RustTable.Of(ledger.DocumentTable, project);
+            var stamp = t.LogStamp is { BaseType: "NaiveDateTime" or "chrono::NaiveDateTime" } logStamp ? logStamp : null;
+            return new Names(Kind.Ledger, t.Struct, t.Table, t.SelectList, key, keyType, null, false, null, false, null, false, t.FieldOf(ledger.Document).Name, dialect.Quote(ledger.Document.DbName), null, null, false, null, t.FieldOf(ledger.Amount).Name,
+                t.FieldOf(ledger.Amount).BaseType, documents.Module, documents.Key.Type, documents.FieldOf(ledger.Total).Name, null, null, null, false, null, null, null, null, false, null, false, null, false, documents.FieldOf(ledger.Total).Name, ledger.Total.Scale ?? 2,
+                new LedgerFields(t.FieldOf(ledger.Kind).Name, t.FieldOf(ledger.Status).Name, t.FieldOf(ledger.Amount).Name, t.FieldOf(ledger.GatewayId).Name, t.FieldOf(ledger.IdempotencyKey).Name, dialect.Quote(ledger.Kind.DbName), dialect.Quote(ledger.Status.DbName),
+                    dialect.Quote(ledger.GatewayId.DbName), dialect.Quote(ledger.IdempotencyKey.DbName), t.Key.Name, stamp?.Name, stamp?.IsOption ?? false, ledger.Total.Scale ?? 2));
+        }
         if (bank is not null)
             return new Names(Kind.Account, t.Struct, t.Table, t.SelectList, key, keyType, bank.Iban is null ? null : t.FieldOf(bank.Iban).Name, bank.Iban is not null && t.FieldOf(bank.Iban).IsOption,
                 bank.Account is null ? null : t.FieldOf(bank.Account).Name, bank.Account is not null && t.FieldOf(bank.Account).IsOption, bank.Routing is null ? null : t.FieldOf(bank.Routing).Name, bank.Routing is not null && t.FieldOf(bank.Routing).IsOption,
@@ -45,12 +57,13 @@ public static class RustPaymentWriter
         return null;
     }
 
-    public static string RouteLine(string route, string readLayer, Names? n = null) => n?.Kind == Kind.Due ? $"        .route(\"{route}/payable\", get(payable_on){readLayer})\n" : $"        .route(\"{route}/schedule\", get(installment_schedule){readLayer})\n";
+    public static string RouteLine(string route, string readLayer, Names? n = null) => n?.Kind == Kind.Ledger ? $"        .route(\"{route}/{LedgerPlan.PaidRoute}\", get(paid_amount){readLayer})\n        .route(\"{route}/{LedgerPlan.RecordRoute}\", post(record_transaction){readLayer})\n" : n?.Kind == Kind.Due ? $"        .route(\"{route}/payable\", get(payable_on){readLayer})\n" : $"        .route(\"{route}/schedule\", get(installment_schedule){readLayer})\n";
 
     public static string CheckLine(Names n, bool update) => n.Kind switch
     {
         Kind.Account => "    check_account(&mut row)?;",
         Kind.Installment => $"    check_installment(&pool, {(update ? "Some(id)" : "None")}, &mut row).await?;",
+        Kind.Ledger => "    check_ledger(&pool, &mut row).await?;",
         _ => "    check_due(&pool, &mut row).await?;",
     };
 
@@ -58,6 +71,7 @@ public static class RustPaymentWriter
     {
         Kind.Account => AccountCode(n),
         Kind.Installment => InstallmentCode(n),
+        Kind.Ledger => LedgerCode(n),
         _ => DueCode(n) + (n.TotalField is not null ? PayableCode(n) : ""),
     };
 
@@ -105,6 +119,22 @@ public static class RustPaymentWriter
             ("§INVALIDTYPE", PaymentWords.InvalidType), ("§INVALIDTITLE", PaymentWords.InvalidTitle), ("§OVERTYPE", PaymentWords.OverTotalType), ("§OVERTITLE", PaymentWords.OverTotalTitle),
             ("§W_DOCUMENT", PaymentWords.DocumentMissing), ("§W_SEQ", PaymentWords.SequenceNotPositive), ("§W_AMOUNT", PaymentWords.AmountNotPositive), ("§W_TAKEN", PaymentWords.SequenceTaken), ("§W_ORDER", PaymentWords.OutOfOrder),
             ("§W_OVER", PaymentWords.OverTotal), ("§W_NEEDS", PaymentWords.NeedsDocument));
+    }
+
+    private static string LedgerCode(Names n)
+    {
+        var l = n.Ledger!;
+        string stamp = l.StampField is null ? "" : l.StampOption
+            ? $"    if row.{l.StampField}.is_none() {{\n        row.{l.StampField} = Some(chrono::Local::now().naive_local());\n    }}\n"
+            : $"    if row.{l.StampField} == chrono::NaiveDateTime::default() {{\n        row.{l.StampField} = chrono::Local::now().naive_local();\n    }}\n";
+        return TemplateText.FillAll(LedgerText, ("§STRUCT", n.Struct), ("§KT", n.KeyType), ("§ROWKEY", l.RowKey), ("§DOCMODULE", n.DocModule!), ("§DOCKT", n.DocKeyType!), ("§DOC", n.DocField!), ("§KIND", l.KindField), ("§STATUS", l.StatusField),
+            ("§AMT", l.AmountField), ("§GATEWAY", l.GatewayField), ("§IDEM", l.KeyField), ("§TOTAL", n.DocTotalField!), ("§FACTOR", Math.Pow(10, l.Scale).ToString(System.Globalization.CultureInfo.InvariantCulture) + ".0"), ("§STAMP", stamp),
+            ("§COUNTGATEWAY", RustTable.Raw($"SELECT COUNT(*) FROM {n.Table} WHERE {l.GatewayColumn} = ")), ("§COUNTKEY", RustTable.Raw($"SELECT COUNT(*) FROM {n.Table} WHERE {l.KeyColumn} = ")),
+            ("§SELECTHELD", RustTable.Raw($"SELECT {n.SelectList} FROM {n.Table} WHERE {n.DocColumn} = ")), ("§ANDSUCCEEDED", RustTable.Raw($" AND {l.StatusColumn} = '{LedgerPlan.Succeeded}'")),
+            ("§ANDPAID", RustTable.Raw($" AND {l.StatusColumn} = '{LedgerPlan.Succeeded}' AND {l.KindColumn} IN ('{LedgerPlan.Capture}', '{LedgerPlan.Refund}')")),
+            ("§INVALIDTYPE", PaymentWords.InvalidType), ("§INVALIDTITLE", PaymentWords.InvalidTitle), ("§DUPTYPE", PaymentWords.LedgerDuplicateType), ("§DUPTITLE", PaymentWords.LedgerDuplicateTitle), ("§REFUNDTYPE", PaymentWords.RefundOverType), ("§REFUNDTITLE", PaymentWords.RefundOverTitle),
+            ("§W_KIND", PaymentWords.KindBad), ("§W_STATUS", PaymentWords.StatusBad), ("§W_DOCUMENT", PaymentWords.DocumentMissing), ("§W_SIGN", PaymentWords.RefundSign), ("§W_POSITIVE", PaymentWords.AmountPositive), ("§W_GATEWAYMISSING", PaymentWords.GatewayMissing),
+            ("§W_GATEWAYTAKEN", PaymentWords.GatewayTaken), ("§W_KEYTAKEN", PaymentWords.KeyTaken), ("§W_REFUNDOVER", PaymentWords.RefundOver), ("§W_NEEDS", PaymentWords.NeedsDocument));
     }
 
     private static string DueCode(Names n)
@@ -329,6 +359,108 @@ async fn check_due(pool: &Pool, row: &mut §STRUCT) -> ApiResult<()> {
             Ok(())
         }
     }
+}
+
+"""";
+
+    private const string LedgerText = """"
+fn ledger_invalid(detail: &str) -> ApiError {
+    ApiError::Rejected(400, "§INVALIDTYPE", "§INVALIDTITLE", detail.into())
+}
+
+fn ledger_number(value: impl std::fmt::Display) -> f64 {
+    format!("{}", value).parse::<f64>().unwrap_or(0.0)
+}
+
+fn ledger_round(value: f64) -> f64 {
+    (value * §FACTOR).round() / §FACTOR
+}
+
+/// The kind and status are one of the ledger's words (written in lower case), the document exists, a refund is a negative amount and any other kind a positive one, the gateway id and the idempotency key are given and not recorded yet, and a succeeded refund is no more than what has been paid so far.
+async fn check_ledger(pool: &Pool, row: &mut §STRUCT) -> ApiResult<()> {
+    row.§KIND = row.§KIND.trim().to_lowercase();
+    row.§STATUS = row.§STATUS.trim().to_lowercase();
+    row.§GATEWAY = row.§GATEWAY.trim().to_string();
+    row.§IDEM = row.§IDEM.trim().to_string();
+    if !["authorize", "capture", "refund", "void"].contains(&row.§KIND.as_str()) {
+        return Err(ledger_invalid("§W_KIND"));
+    }
+    if !["pending", "succeeded", "failed"].contains(&row.§STATUS.as_str()) {
+        return Err(ledger_invalid("§W_STATUS"));
+    }
+    if crate::repos::§DOCMODULE::get_by_id(pool, row.§DOC.clone()).await?.is_none() {
+        return Err(ledger_invalid("§W_DOCUMENT"));
+    }
+    let amount = ledger_number(row.§AMT.clone());
+    let refund = row.§KIND == "refund";
+    if (refund && amount >= 0.0) || (!refund && amount <= 0.0) {
+        return Err(ledger_invalid(if refund { "§W_SIGN" } else { "§W_POSITIVE" }));
+    }
+    if row.§GATEWAY.is_empty() || row.§IDEM.is_empty() {
+        return Err(ledger_invalid("§W_GATEWAYMISSING"));
+    }
+    let mut gateway = sqlx::QueryBuilder::<Db>::new(§COUNTGATEWAY);
+    gateway.push_bind(row.§GATEWAY.clone());
+    if gateway.build_query_scalar::<i64>().fetch_one(pool).await? > 0 {
+        return Err(ApiError::Rejected(409, "§DUPTYPE", "§DUPTITLE", "§W_GATEWAYTAKEN".into()));
+    }
+    let mut key = sqlx::QueryBuilder::<Db>::new(§COUNTKEY);
+    key.push_bind(row.§IDEM.clone());
+    if key.build_query_scalar::<i64>().fetch_one(pool).await? > 0 {
+        return Err(ApiError::Rejected(409, "§DUPTYPE", "§DUPTITLE", "§W_KEYTAKEN".into()));
+    }
+    if refund && row.§STATUS == "succeeded" {
+        let mut held = sqlx::QueryBuilder::<Db>::new(§SELECTHELD);
+        held.push_bind(row.§DOC.clone());
+        held.push(§ANDPAID);
+        let rows = held.build_query_as::<§STRUCT>().fetch_all(pool).await?;
+        let paid: f64 = rows.iter().map(|other| ledger_number(other.§AMT.clone())).sum();
+        if paid + amount < -0.000001 {
+            return Err(ApiError::Rejected(400, "§REFUNDTYPE", "§REFUNDTITLE", "§W_REFUNDOVER".into()));
+        }
+    }
+    Ok(())
+}
+
+/// Checks a row and stores it; the answer is the stored row.
+async fn record_transaction(State(pool): State<Pool>, ApiJson(mut row): ApiJson<§STRUCT>) -> ApiResult<Response> {
+    row.§ROWKEY = Default::default();
+§STAMP    check_ledger(&pool, &mut row).await?;
+    let row = repo::insert(&pool, &row).await?;
+    Ok(created(format!("record/{}", row.§ROWKEY), row))
+}
+
+#[derive(serde::Deserialize)]
+struct PaidQuery {
+    document: Option<§DOCKT>,
+}
+
+/// What a document has been paid, worked out from the succeeded rows: the captured amount, the refunded amount, what is paid (captured less refunded), what is left of the total and whether the total is paid.
+async fn paid_amount(State(pool): State<Pool>, Query(query): Query<PaidQuery>) -> ApiResult<Json<serde_json::Value>> {
+    let Some(id) = query.document else {
+        return Err(ApiError::BadRequest("§W_NEEDS".into()));
+    };
+    let Some(document) = crate::repos::§DOCMODULE::get_by_id(&pool, id.clone()).await? else {
+        return Err(ledger_invalid("§W_DOCUMENT"));
+    };
+    let mut held = sqlx::QueryBuilder::<Db>::new(§SELECTHELD);
+    held.push_bind(id.clone());
+    held.push(§ANDSUCCEEDED);
+    let rows = held.build_query_as::<§STRUCT>().fetch_all(&pool).await?;
+    let total = ledger_number(document.§TOTAL.clone());
+    let captured: f64 = rows.iter().filter(|r| r.§KIND == "capture").map(|r| ledger_number(r.§AMT.clone())).sum();
+    let refunded: f64 = -rows.iter().filter(|r| r.§KIND == "refund").map(|r| ledger_number(r.§AMT.clone())).sum::<f64>();
+    let paid = captured - refunded;
+    Ok(Json(serde_json::json!({
+        "document": id,
+        "total": ledger_round(total),
+        "captured": ledger_round(captured),
+        "refunded": ledger_round(refunded),
+        "paid": ledger_round(paid),
+        "remaining": ledger_round(total - paid),
+        "settled": paid >= total - 0.000001,
+        "transactions": rows.len(),
+    })))
 }
 
 """";

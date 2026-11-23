@@ -1,5 +1,5 @@
 -- SQLite. Payment terms, bank accounts, due dates and installments for
--- BankAccountTables=PartyBankAccount  InstallmentTables=PaymentInstallment:PayDocumentId:PayDocument:Total  PaymentTermsTables=PaymentMeans:PayDocumentId:PayDocument:OrderedOn
+-- BankAccountTables=PartyBankAccount  InstallmentTables=PaymentInstallment:PayDocumentId:PayDocument:Total  PaymentTermsTables=PaymentMeans:PayDocumentId:PayDocument:OrderedOn  LedgerTables=PayTransaction:PayDocumentId:PayDocument:Total
 CREATE TABLE PayDocument (
     PayDocumentId INTEGER PRIMARY KEY AUTOINCREMENT,
     Number VARCHAR(20) NOT NULL,
@@ -38,3 +38,15 @@ CREATE TABLE PaymentInstallment (
     Amount DECIMAL(12, 2) NOT NULL
 );
 CREATE UNIQUE INDEX UX_PaymentInstallment_Sequence ON PaymentInstallment (PayDocumentId, SequenceNo);
+CREATE TABLE PayTransaction (
+    PayTransactionId INTEGER PRIMARY KEY AUTOINCREMENT,
+    PayDocumentId INTEGER NOT NULL REFERENCES PayDocument (PayDocumentId),
+    Kind VARCHAR(12) NOT NULL,
+    Status VARCHAR(12) NOT NULL,
+    Amount DECIMAL(12, 2) NOT NULL,
+    CurrencyCode CHAR(3) NOT NULL DEFAULT 'USD',
+    GatewayId VARCHAR(100) NOT NULL UNIQUE,
+    IdempotencyKey VARCHAR(100) NOT NULL UNIQUE,
+    Payload TEXT NULL,
+    CreatedOn DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

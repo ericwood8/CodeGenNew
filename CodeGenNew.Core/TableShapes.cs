@@ -73,6 +73,7 @@ public sealed class TableShapes
 
     /// <summary> The table as payment means whose due date is worked out from payment terms (<c>PaymentTermsTables</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
     public DueDateShape? DueDate => Shape<DueDateShape>();
+    public LedgerShape? Ledger => Shape<LedgerShape>();
 
     /// <summary> The table as the table of price lists that a price table (<c>PriceListTables</c>) points at; null when it is not. </summary>
     public PriceListHeadShape? PriceListHead => Shape<PriceListHeadShape>();
@@ -190,6 +191,7 @@ public sealed class TableShapes
         if (shape == typeof(PriceListShape)) return _database is null ? PriceListPlan.For(_table, _project) : PriceListPlan.For(_table, _project, _database);
         if (shape == typeof(BankAccountShape)) return _database is null ? PaymentPlan.BankFor(_table, _project) : PaymentPlan.BankFor(_table, _project, _database);
         if (shape == typeof(InstallmentShape)) return _database is null ? PaymentPlan.InstallmentFor(_table, _project) : PaymentPlan.InstallmentFor(_table, _project, _database);
+        if (shape == typeof(LedgerShape)) return _database is null ? LedgerPlan.For(_table, _project) : LedgerPlan.For(_table, _project, _database);
         if (shape == typeof(DueDateShape)) return _database is null ? PaymentPlan.DueFor(_table, _project) : PaymentPlan.DueFor(_table, _project, _database);
         if (shape == typeof(PriceListHeadShape)) return (_database ?? RatePlan.Remembered(_project)) is { } known ? PriceListPlan.HeadOf(_table, _project, known) is { } priced ? new PriceListHeadShape(priced) : null : null;
         if (shape == typeof(TaxLineShape)) return _database is null ? TaxLinePlan.For(_table, _project) : TaxLinePlan.For(_table, _project, _database);

@@ -18,8 +18,8 @@ from common import cli_dir, cli_exe, home, run
 from live_inbound_run import KINDS, PASSWORDS, STACKS
 from live_party_run import play
 
-SETTINGS = {"BankAccountTables": "PartyBankAccount", "InstallmentTables": "PaymentInstallment:PayDocumentId:PayDocument:Total", "PaymentTermsTables": "PaymentMeans:PayDocumentId:PayDocument:OrderedOn"}
-TABLES = "PayDocument,PaymentTerms,PartyBankAccount,PaymentMeans,PaymentInstallment"
+SETTINGS = {"BankAccountTables": "PartyBankAccount", "InstallmentTables": "PaymentInstallment:PayDocumentId:PayDocument:Total", "PaymentTermsTables": "PaymentMeans:PayDocumentId:PayDocument:OrderedOn", "LedgerTables": "PayTransaction:PayDocumentId:PayDocument:Total"}
+TABLES = "PayDocument,PaymentTerms,PartyBankAccount,PaymentMeans,PaymentInstallment,PayTransaction"
 
 
 def main():
@@ -50,7 +50,7 @@ def main():
     settings = {"ProjectName": name, "Stacks": ",".join(STACKS[s] for s in stacks), "EnumTables": "none", "AccessMode": "Ef", "DatabaseProvider": KINDS[args.kind], "DatabaseName": args.db, **SETTINGS}
     if args.kind != "mssql":
         settings["DatabaseUser"] = args.user or ""
-        settings["OnlyTables"] = "pay_document,payment_terms,party_bank_account,payment_means,payment_installment" if args.kind == "mysql" else TABLES
+        settings["OnlyTables"] = "pay_document,payment_terms,party_bank_account,payment_means,payment_installment,pay_transaction" if args.kind == "mysql" else TABLES
     if args.kind == "mysql":
         settings["NamingStyle"] = "Pascal"   # payments_mysql.sql is snake case: payment_installment is PaymentInstallment in the generated code
     for item in args.set:
@@ -86,7 +86,7 @@ def main():
 
     failed = False
     for stack in stacks:
-        checks = [("payment_check.py", [])]
+        checks = [("payment_check.py", []), ("ledger_check.py", [])]
         failed = play(args, stack, work, password, checks) or failed
     print("output:", work)
     print("FAILED" if failed else "ALL OK")

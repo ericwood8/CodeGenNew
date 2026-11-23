@@ -13,3 +13,5 @@ For a table with a `GuardedColumns` rule (`ApiAuth=true`) the class also has `Ge
 `PriceListTables`: the client of a price table also has `PriceOnAsync`, which asks the table's REST route for the page's price lookup.
 
 `InstallmentTables`: the client has `ScheduleAsync(document)` over the table's REST route.
+
+`LedgerTables`: the client of a ledger table has `PaidAsync` over the table's `paid` route (`PaymentScreens.CsClientLines`).

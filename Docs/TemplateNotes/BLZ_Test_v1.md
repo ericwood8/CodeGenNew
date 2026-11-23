@@ -26,3 +26,5 @@ bUnit tests of the Blazor pages, in a test project beside the Blazor app. `Blazo
 `PriceListTables`: the page tests of a price table include a test of the price lookup (the item and the quantity go along and the price found is shown).
 
 `InstallmentTables`: a test asks for the schedule of a document and shows the answer (`PaymentScreens.BlazorBoxTest`).
+
+`LedgerTables`: a test asks for what a document has been paid and shows the answer (`PaymentScreens.BlazorBoxTest(PaymentScreens.Paid)`).

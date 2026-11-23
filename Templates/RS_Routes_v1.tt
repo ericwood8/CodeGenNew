@@ -125,7 +125,8 @@
     var priceListTable = pricePlan is not null && tenanted && !tenantTable && !people && TenantPlan.OwnedBy(pricePlan.ListTable, Project) is not null ? RustTable.Of(pricePlan.ListTable, Project) : null;   // a row limited to a tenant may name only a list of the caller's tenant
     var priceOwnerList = pricePlan is not null && scoped && ownerField is not null && pricePlan.ListOwner is not null ? RustTable.Of(pricePlan.ListTable, Project) : null;   // a row with an owner column of its own may name only a list of the same owner
     // BankAccountTables, InstallmentTables, PaymentTermsTables: a valid IBAN or account and routing number, installments that are numbered, in due order and within the total, and a due date worked out from the payment terms
-    var payNames = !log && !tenantTable ? RustPaymentWriter.NamesFor(PaymentPlan.BankFor(Model, Project), PaymentPlan.InstallmentFor(Model, Project), PaymentPlan.DueFor(Model, Project), t, Project, DialectInfo.For(Model.Dialect), keyType) : null;
+    var payNames = !tenantTable ? RustPaymentWriter.NamesFor(log ? null : PaymentPlan.BankFor(Model, Project), log ? null : PaymentPlan.InstallmentFor(Model, Project), log ? null : PaymentPlan.DueFor(Model, Project), t, Project, DialectInfo.For(Model.Dialect), keyType, log ? LedgerPlan.For(Model, Project) : null) : null;   // LedgerTables: a log table that also has POST record and GET paid
+    bool ledger = payNames?.Kind == RustPaymentWriter.Kind.Ledger;
     var priceNames = RustPriceWriter.NamesFor(pricePlan, t, pricePlan is null ? null : RustTable.Of(pricePlan.ListTable, Project), DialectInfo.For(Model.Dialect), keyType);
     // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
     // TaxLines: the line carries the rate of its category, the tax is worked out, and GET tax-subtotals answers a document's tax by category
@@ -191,9 +192,11 @@
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
+    else if (ledger)
+        Line("    response::Response,");
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
     bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
-    Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
+    Line(log ? (ledger ? "    routing::{get, post}," : "    routing::get,") : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
     Line("};");
@@ -225,7 +228,7 @@
             Line($"use crate::models::{totalsNames.Extra.Module}::{totalsNames.Extra.Struct};");
     }
     Line($"use crate::repos::{t.Module} as repo;");
-    Line(log ? "use crate::support::{ApiError, ApiResult, Pool};" : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : usesDb ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
+    Line(log ? (ledger ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiResult, Pool};") : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : usesDb ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
     if (validate && !log)
         Line($"use crate::validation::{t.Module}::validate;");
     if (gated && !log)

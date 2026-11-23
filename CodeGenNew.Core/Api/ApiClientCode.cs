@@ -210,6 +210,8 @@ public static class ApiClientCode
             foreach (string line in PriceScreens.CsClientLines(type, "{Url}")) L(line);
         if (PaymentScreens.HasBox(table, project))
             foreach (string line in PaymentScreens.CsClientLines("{Url}")) L(line);
+        if (PaymentScreens.HasPaidBox(table, project))
+            foreach (string line in PaymentScreens.CsClientLines("{Url}", PaymentScreens.Paid)) L(line);
         if (TaxScreens.HasBox(table, project))
         {
             foreach (string line in TaxScreens.CsClientLines()) L(line);

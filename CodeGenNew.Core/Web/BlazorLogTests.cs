@@ -1,3 +1,4 @@
+using CodeGenNew.Core.Payment;
 using System.Text;
 using CodeGenNew.Core.Naming;
 
@@ -6,7 +7,7 @@ namespace CodeGenNew.Core.Web;
 /// <summary> The bUnit tests of the Blazor page of a log table (LogTables): it lists rows, so they check the heading, a row, that no button adds, changes or deletes one, and that Search sends the first and last day. </summary>
 public static class BlazorLogTests
 {
-    public static string Body(string type, BlazorTestPlan plan, string title, QueueShape? queue = null, ProjectSettings? project = null, InboundShape? inbound = null)
+    public static string Body(string type, BlazorTestPlan plan, string title, QueueShape? queue = null, ProjectSettings? project = null, InboundShape? inbound = null, PaymentBox? paid = null)
     {
         var row = plan.Row;
         var o = new StringBuilder();
@@ -149,6 +150,8 @@ public static class BlazorLogTests
             L("        StringAssert.Contains(page.Markup, \"Unprocessed: 1 of 2. Oldest unprocessed: #7.\");");
             L("    }");
         }
+        if (paid is not null)
+            o.Append(PaymentScreens.BlazorBoxTest(paid).TrimEnd('\n')).Append('\n');
         L("}");
         return o.ToString();
     }

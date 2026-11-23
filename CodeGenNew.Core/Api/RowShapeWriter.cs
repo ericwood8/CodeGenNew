@@ -38,6 +38,7 @@ public static class RowShapeWriter
             .Replace("§RATE_INVALID_TITLE", RateWords.InvalidTitle).Replace("§RATE_INVALID", RateWords.InvalidType).Replace("§RATE_TAKEN_TITLE", RateWords.TakenTitle).Replace("§RATE_TAKEN", RateWords.TakenType)
             .Replace("§PRICE_INVALID_TITLE", PriceWords.InvalidTitle).Replace("§PRICE_INVALID", PriceWords.InvalidType).Replace("§PRICE_TAKEN_TITLE", PriceWords.TakenTitle).Replace("§PRICE_TAKEN", PriceWords.TakenType)
             .Replace("§PAY_INVALID_TITLE", PaymentWords.InvalidTitle).Replace("§PAY_INVALID", PaymentWords.InvalidType).Replace("§PAY_OVER_TITLE", PaymentWords.OverTotalTitle).Replace("§PAY_OVER", PaymentWords.OverTotalType)
+            .Replace("§LEDGER_DUP_TITLE", PaymentWords.LedgerDuplicateTitle).Replace("§LEDGER_DUP", PaymentWords.LedgerDuplicateType).Replace("§REFUND_OVER_TITLE", PaymentWords.RefundOverTitle).Replace("§REFUND_OVER", PaymentWords.RefundOverType)
             .Replace("§PRICE_MISSING_TITLE", PriceWords.MissingTitle).Replace("§PRICE_MISSING", PriceWords.MissingType)
             .Replace("§RATE_NEEDED_TITLE", RateWords.NeededTitle).Replace("§RATE_NEEDED", RateWords.NeededType).Replace("§RATE_MISSING_TITLE", RateWords.MissingTitle).Replace("§RATE_MISSING", RateWords.MissingType)
             .Replace("§TAX_NOTINFORCE_TITLE", TaxWords.NotInForceTitle).Replace("§TAX_NOTINFORCE", TaxWords.NotInForceType).Replace("§TAX_UNKNOWN_TITLE", TaxWords.UnknownTitle).Replace("§TAX_UNKNOWN", TaxWords.UnknownType)
@@ -341,6 +342,13 @@ public static class RowShapeWriter
             maps.Append(Fill(PaymentWriter.DueMapLine(dueDate)));
         }
 
+        if (LedgerPlan.For(table, project, database) is { } ledger)
+        {
+            o.Append(LedgerWriter.Code(ledger, contextType, TableShapes.For(table, project).Log?.Timestamp));
+            maps.Append(Fill(LedgerWriter.RecordMapLine(ledger)));
+            maps.Append(Fill(LedgerWriter.PaidMapLine(ledger)));
+        }
+
         if (RateDocumentPlan.For(table, project, database) is { } document)
         {
             var rates = document.Rates;
@@ -437,6 +445,8 @@ public static class RowShapeProblems
     public static IResult PriceMissing(string detail) => Problem(404, "§PRICE_MISSING", "§PRICE_MISSING_TITLE", detail);
     public static IResult PaymentInvalid(string detail) => Problem(400, "§PAY_INVALID", "§PAY_INVALID_TITLE", detail);
     public static IResult InstallmentOverTotal(string detail) => Problem(400, "§PAY_OVER", "§PAY_OVER_TITLE", detail);
+    public static IResult LedgerDuplicate(string detail) => Problem(409, "§LEDGER_DUP", "§LEDGER_DUP_TITLE", detail);
+    public static IResult RefundOverPaid(string detail) => Problem(400, "§REFUND_OVER", "§REFUND_OVER_TITLE", detail);
     public static IResult TaxUnknown(string detail) => Problem(400, "§TAX_UNKNOWN", "§TAX_UNKNOWN_TITLE", detail);
     public static IResult TaxNotInForce(string detail) => Problem(400, "§TAX_NOTINFORCE", "§TAX_NOTINFORCE_TITLE", detail);
     public static IResult AllowanceInvalid(string detail) => Problem(400, "§ALLOWANCE", "§ALLOWANCE_TITLE", detail);

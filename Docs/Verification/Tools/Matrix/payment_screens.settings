@@ -4,6 +4,7 @@
 BankAccountTables=PartyBankAccount
 InstallmentTables=PaymentInstallment:PayDocumentId:PayDocument:Total
 PaymentTermsTables=PaymentMeans:PayDocumentId:PayDocument:OrderedOn
+LedgerTables=PayTransaction:PayDocumentId:PayDocument:Total
 AccessMode=Ef
 ApiTests=true
 BlazorTests=true

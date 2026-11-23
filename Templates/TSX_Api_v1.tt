@@ -200,6 +200,12 @@
             L("  // an installment table (InstallmentTables): what the installments of a document come to");
             L(PaymentScreens.ReactApiLine());
         }
+        if (PaymentScreens.HasPaidBox(Model, Project))
+        {
+            L();
+            L("  // a payment ledger (LedgerTables): what a document has been paid");
+            L(PaymentScreens.ReactApiLine(PaymentScreens.Paid));
+        }
         if (TaxScreens.HasBox(Model, Project))
         {
             L();

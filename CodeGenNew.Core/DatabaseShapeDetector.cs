@@ -28,7 +28,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), BankAccount(table, database, project), Installments(table, database, project), PaymentMeans(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), BankAccount(table, database, project), Installments(table, database, project), PaymentMeans(table, database, project), Ledger(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
                 Approval(table, database, project), RateDocument(table, database, project), DocumentTotals(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
@@ -298,6 +298,32 @@ public static class DatabaseShapeDetector
         bool plain = termsColumn!.EqualsIgnoreCase(PaymentPlan.DefaultTerms) && due.Name.EqualsIgnoreCase(PaymentPlan.DefaultDue) && terms.TableName.EqualsIgnoreCase(PaymentPlan.DefaultTermsTable) && days.Name.EqualsIgnoreCase(PaymentPlan.DefaultDays);
         string entry = $"{table.TableName}:{documentColumn}:{documents.TableName}:{date.Name}" + (plain ? "" : $":{termsColumn}:{due.Name}:{terms.TableName}:{days.Name}");
         return Payment("PaymentTermsTables", "Due date from payment terms", entry, $"{termsColumn} points at {terms.TableName}, which has days to pay, and {due.Name} can be worked out from the date of {documents.TableName}", p => PaymentPlan.Problems(database, p), table.TableName, project, project.PaymentTermsTables);
+    }
+
+    /// <summary> A payment ledger: text kind and status columns, an amount, a gateway id and an idempotency key, with a key to a document that has a total. </summary>
+    private static ShapeSuggestion? Ledger(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (LedgerPlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        var kind = FindColumn(table.Columns, [LedgerPlan.DefaultKind, "TransactionKind", "TransactionType"], c => !c.IsNullable && c.IsStringColumn);
+        var status = FindColumn(table.Columns, [LedgerPlan.DefaultStatus, "TransactionStatus"], c => !c.IsNullable && c.IsStringColumn);
+        var amount = FindColumn(table.Columns, [LedgerPlan.DefaultAmount, "TransactionAmount"], c => !c.IsNullable && c.IsFractionalColumn);
+        var gateway = FindColumn(table.Columns, [LedgerPlan.DefaultGatewayId, "GatewayTransactionId", "ProviderId"], c => !c.IsNullable && c.IsStringColumn);
+        var key = FindColumn(table.Columns, [LedgerPlan.DefaultIdempotencyKey, "IdempotenceKey"], c => !c.IsNullable && c.IsStringColumn);
+        if (kind is null || status is null || amount is null || gateway is null || key is null)
+            return null;
+        foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !f.ReferencedTable.EqualsIgnoreCase(table.TableName)))
+        {
+            if (database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable)) is not { } documents)
+                continue;
+            var total = FindColumn(documents.Columns, DocumentTotalNames, c => !c.IsNullable && c.IsFractionalColumn);
+            if (total is null)
+                continue;
+            bool plain = kind.Name.EqualsIgnoreCase(LedgerPlan.DefaultKind) && status.Name.EqualsIgnoreCase(LedgerPlan.DefaultStatus) && amount.Name.EqualsIgnoreCase(LedgerPlan.DefaultAmount) && gateway.Name.EqualsIgnoreCase(LedgerPlan.DefaultGatewayId) && key.Name.EqualsIgnoreCase(LedgerPlan.DefaultIdempotencyKey);
+            string entry = $"{table.TableName}:{fk.ReferencingColumns[0]}:{documents.TableName}:{total.Name}" + (plain ? "" : $":{kind.Name}:{status.Name}:{amount.Name}:{gateway.Name}:{key.Name}");
+            return Payment("LedgerTables", "Payment transaction ledger", entry, $"{gateway.Name} and {key.Name} with {kind.Name}, {status.Name} and {amount.Name} look like a ledger of payments of {documents.TableName}", p => LedgerPlan.Problems(database, p), table.TableName, project, project.LedgerTables);
+        }
+        return null;
     }
 
     /// <summary> A document line with a key to a tax category table, a tax rate, a taxable amount and a tax amount. </summary>

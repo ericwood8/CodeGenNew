@@ -146,6 +146,12 @@
             T("  };");
             T();
         }
+        bool paidBox = PaymentScreens.HasPaidBox(Model, Project);   // LedgerTables: what a document has been paid, over the table's paid route
+        if (paidBox)
+        {
+            foreach (string line in PaymentScreens.ReactHandlers(apiVar, PaymentScreens.Paid)) T(line);
+            T();
+        }
         T("  useEffect(() => {");
         T("    load();");
         if (queue is not null)
@@ -221,6 +227,8 @@
         T("        <button type=\"button\" onClick={clearSearch}>Clear</button>");
         T("      </div>");
         T();
+        if (paidBox)
+            foreach (string line in PaymentScreens.ReactBox(PaymentScreens.Paid)) T(line);
         T("      <ColumnPicker columns={columnList} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
         T();
         T("      {error && <p role=\"alert\">{error}</p>}");
@@ -429,6 +437,8 @@
             S("    expect(screen.getByText('Unprocessed: 1 of 2. Oldest unprocessed: #7.')).toBeInTheDocument();");
             S("  });");
         }
+        if (paidBox)
+            foreach (string line in PaymentScreens.ReactBoxTests(apiVar, pageName, PaymentScreens.Paid, false)) S(line);
         S("});");
 
         Write($"@@@FILE {pagesFolder}/{pageName}.tsx@@@\n" + ts);

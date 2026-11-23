@@ -15,3 +15,5 @@ Add and Edit open `UNO_DetailScreen`'s dialog, or `UNO_DetailMasterScreen`'s for
 `PriceListTables`: the list screen of a price table has boxes for the item, the quantity, the currency and the day (and the customer group when the entry names it) and a `Find price` button in the top bar (the view model's `FindPriceAsync` asks the API client's `PriceOnAsync`) that show the price in force, or that there is none (`PriceScreens`).
 
 `InstallmentTables`: the bar of an installment table has a document box and a `Show schedule` button that ask the API client (`ScheduleAsync`); the answer is shown beside the button.
+
+`LedgerTables`: the bar of a ledger table has a document box and a `Show paid` button that answer what the document has been paid over the client's `PaidAsync` (`PaymentScreens.DesktopBox`, `DesktopHandlers`, `DesktopMembers` and `UnoRead` with `PaymentScreens.Paid`).

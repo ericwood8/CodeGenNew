@@ -53,3 +53,17 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_pay_PaymentInstallment_Sequence' AND object_id = OBJECT_ID('pay.PaymentInstallment'))
     CREATE UNIQUE INDEX UX_pay_PaymentInstallment_Sequence ON pay.PaymentInstallment (PayDocumentId, SequenceNo);
 GO
+IF OBJECT_ID('pay.PayTransaction', 'U') IS NULL
+CREATE TABLE pay.PayTransaction (
+    PayTransactionId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_pay_PayTransaction PRIMARY KEY,
+    PayDocumentId INT NOT NULL CONSTRAINT FK_pay_PayTransaction_Document REFERENCES pay.PayDocument (PayDocumentId),
+    Kind VARCHAR(12) NOT NULL,
+    Status VARCHAR(12) NOT NULL,
+    Amount DECIMAL(12, 2) NOT NULL,
+    CurrencyCode CHAR(3) NOT NULL CONSTRAINT DF_pay_PayTransaction_Currency DEFAULT 'USD',
+    GatewayId VARCHAR(100) NOT NULL CONSTRAINT UQ_pay_PayTransaction_Gateway UNIQUE,
+    IdempotencyKey VARCHAR(100) NOT NULL CONSTRAINT UQ_pay_PayTransaction_Key UNIQUE,
+    Payload VARCHAR(4000) NULL,
+    CreatedOn DATETIME NOT NULL CONSTRAINT DF_pay_PayTransaction_CreatedOn DEFAULT GETDATE()
+);
+GO

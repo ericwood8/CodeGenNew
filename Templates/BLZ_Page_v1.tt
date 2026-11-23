@@ -347,6 +347,9 @@
         bool paymentBox = !oneRow && !nameActive && PaymentScreens.HasBox(Model, Project);   // InstallmentTables: what the installments of a document come to, over the REST route on the OData page too
         if (paymentBox)
             foreach (string line in PaymentScreens.BlazorBox()) L(line);
+        bool paidBox = !oneRow && !nameActive && PaymentScreens.HasPaidBox(Model, Project);   // LedgerTables: what a document has been paid, over the table's paid route
+        if (paidBox)
+            foreach (string line in PaymentScreens.BlazorBox(PaymentScreens.Paid)) L(line);
         bool taxBox = !oneRow && !nameActive && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate
         if (taxBox)
             foreach (string line in TaxScreens.BlazorBox()) L(line);
@@ -1624,6 +1627,8 @@
             foreach (string line in PriceScreens.BlazorHandlers("Client", priceHandlers)) L(line);
         if (paymentBox)
             foreach (string line in PaymentScreens.BlazorHandlers("Client")) L(line);
+        if (paidBox)
+            foreach (string line in PaymentScreens.BlazorHandlers("Client", PaymentScreens.Paid)) L(line);
         if (taxBox)
             foreach (string line in TaxScreens.BlazorHandlers("Client")) L(line);
         if (allowBox)

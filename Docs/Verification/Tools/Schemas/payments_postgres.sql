@@ -39,3 +39,15 @@ CREATE TABLE IF NOT EXISTS pay."PaymentInstallment" (
     "Amount" numeric(12, 2) NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "UX_PaymentInstallment_Sequence" ON pay."PaymentInstallment" ("PayDocumentId", "SequenceNo");
+CREATE TABLE IF NOT EXISTS pay."PayTransaction" (
+    "PayTransactionId" integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    "PayDocumentId" integer NOT NULL REFERENCES pay."PayDocument" ("PayDocumentId"),
+    "Kind" varchar(12) NOT NULL,
+    "Status" varchar(12) NOT NULL,
+    "Amount" numeric(12, 2) NOT NULL,
+    "CurrencyCode" char(3) NOT NULL DEFAULT 'USD',
+    "GatewayId" varchar(100) NOT NULL UNIQUE,
+    "IdempotencyKey" varchar(100) NOT NULL UNIQUE,
+    "Payload" text NULL,
+    "CreatedOn" timestamp NOT NULL DEFAULT now()
+);

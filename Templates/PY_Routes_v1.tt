@@ -170,7 +170,7 @@
     var totalsPlan = log || tenantTable ? null : DocumentTotalsPlan.For(Model, Project);   // a table with its own owner or tenant column: the check route is limited to the caller's rows
     var totalsNames = PythonTotalsWriter.NamesFor(totalsPlan, t, Project);
     // BankAccountTables, InstallmentTables, PaymentTermsTables: a valid IBAN or account and routing number, installments that are numbered, in due order and within the total, and a due date worked out from the payment terms
-    var payNames = log || tenantTable ? null : PythonPaymentWriter.NamesFor(PaymentPlan.BankFor(Model, Project), PaymentPlan.InstallmentFor(Model, Project), PaymentPlan.DueFor(Model, Project), t, Project);
+    var payNames = tenantTable ? null : PythonPaymentWriter.NamesFor(log ? null : PaymentPlan.BankFor(Model, Project), log ? null : PaymentPlan.InstallmentFor(Model, Project), log ? null : PaymentPlan.DueFor(Model, Project), t, Project, log ? LedgerPlan.For(Model, Project) : null);   // LedgerTables: a log table that also has POST record and GET paid
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -257,7 +257,7 @@
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
-    if (!log)
+    if (!log || payNames?.Kind == PythonPaymentWriter.Kind.Ledger)
         Line("from sqlalchemy.exc import IntegrityError");
     Line(softNames is not null ? "from sqlalchemy.orm import Session, with_loader_criteria" : "from sqlalchemy.orm import Session");
     Line();
@@ -581,7 +581,7 @@
     if (payNames?.HasRoute == true)
     {
         Line();
-        Line(PythonPaymentWriter.Route(payNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
+        Line(PythonPaymentWriter.Route(payNames, t.Route, readDepends, userParameter, t.Schema, writeDepends).TrimEnd('\n'));
         Line();
     }
 

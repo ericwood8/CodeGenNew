@@ -34,6 +34,19 @@ public static class PaymentWords
 
     public const string TermsMissing = "The payment terms do not exist.";
     public const string DueBeforeDocument = "The due date cannot be before the date of the document.";
+
+    public const string LedgerDuplicateType = ProblemTypes.Prefix + "ledger-duplicate";
+    public const string LedgerDuplicateTitle = "Already recorded";
+    public const string RefundOverType = ProblemTypes.Prefix + "refund-over-paid";
+    public const string RefundOverTitle = "Refund over the amount paid";
+    public const string KindBad = "The kind must be authorize, capture, refund or void.";
+    public const string StatusBad = "The status must be pending, succeeded or failed.";
+    public const string RefundSign = "A refund is a negative amount.";
+    public const string AmountPositive = "The amount of an authorize, capture or void must be greater than zero.";
+    public const string GatewayMissing = "Give the gateway id and the idempotency key.";
+    public const string GatewayTaken = "A transaction with that gateway id is already recorded.";
+    public const string KeyTaken = "A transaction with that idempotency key is already recorded.";
+    public const string RefundOver = "The refund is more than the amount paid so far.";
 }
 
 /// <summary> <c>BankAccountTables=Table[:IbanColumn[:AccountColumn[:RoutingColumn]]]</c>: a save is refused unless the row holds a valid IBAN or an account number with a valid routing number. </summary>
@@ -153,7 +166,7 @@ public static partial class PaymentPlan
         return missing;
     }
 
-    private static string? CardProblem(TableModel table, string setting) =>
+    internal static string? CardProblem(TableModel table, string setting) =>
         table.Columns.FirstOrDefault(c => CardColumn().IsMatch(c.Name)) is { } card
             ? $"{setting}: {table.TableName}.{card.Name} looks like a card number, security code or expiry. A card is never stored; keep a reference from the payment gateway instead."
             : null;

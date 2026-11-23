@@ -41,3 +41,18 @@ CREATE TABLE IF NOT EXISTS payment_installment (
     CONSTRAINT fk_payment_installment_document FOREIGN KEY (pay_document_id) REFERENCES pay_document (pay_document_id),
     UNIQUE KEY ux_payment_installment_sequence (pay_document_id, sequence_no)
 );
+CREATE TABLE IF NOT EXISTS pay_transaction (
+    pay_transaction_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    pay_document_id INT NOT NULL,
+    kind VARCHAR(12) NOT NULL,
+    status VARCHAR(12) NOT NULL,
+    amount DECIMAL(12, 2) NOT NULL,
+    currency_code CHAR(3) NOT NULL DEFAULT 'USD',
+    gateway_id VARCHAR(100) NOT NULL,
+    idempotency_key VARCHAR(100) NOT NULL,
+    payload TEXT NULL,
+    created_on DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_pay_transaction_document FOREIGN KEY (pay_document_id) REFERENCES pay_document (pay_document_id),
+    UNIQUE KEY ux_pay_transaction_gateway (gateway_id),
+    UNIQUE KEY ux_pay_transaction_key (idempotency_key)
+);

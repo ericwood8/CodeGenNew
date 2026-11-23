@@ -6,23 +6,34 @@ namespace CodeGenNew.Core.Python;
 /// <c>check_installment</c> or <c>check_due</c>, called before a create or an update commits, and <c>GET schedule</c> on an installment table. The words are <see cref="PaymentWords"/>. </summary>
 public static class PythonPaymentWriter
 {
-    public enum Kind { Account, Installment, Due }
+    public enum Kind { Account, Installment, Due, Ledger }
 
     /// <summary> The Python names one payment table needs. <paramref name="Related"/> are the tables whose model the helper reads (the document, the terms). </summary>
     public sealed record Names(Kind Kind, string Class, string Key, string? Iban, bool IbanNullable, string? Account, bool AccountNullable, string? Routing, bool RoutingNullable, string? Document, string? Sequence, string? Due,
-        string? DueAnnotation, string? Amount, string? Terms, PythonTable? DocumentTable, string? DocumentKey, string? DocumentValue, string? DocumentAnnotation, PythonTable? TermsTable, string? DaysName, string? KeyAnnotation = null, string? EarlyPercent = null, string? EarlyDays = null, string? LatePercent = null, string? TotalName = null, string? TotalUnit = null)
+        string? DueAnnotation, string? Amount, string? Terms, PythonTable? DocumentTable, string? DocumentKey, string? DocumentValue, string? DocumentAnnotation, PythonTable? TermsTable, string? DaysName, string? KeyAnnotation = null, string? EarlyPercent = null, string? EarlyDays = null, string? LatePercent = null, string? TotalName = null, string? TotalUnit = null, LedgerFields? Ledger = null)
     {
         /// <summary> Whether the router has a route of its own (<c>schedule</c> or <c>payable</c>). </summary>
-        public bool HasRoute => Kind == Kind.Installment || Kind == Kind.Due && TotalName is not null;
+        public bool HasRoute => Kind == Kind.Installment || Kind == Kind.Ledger || Kind == Kind.Due && TotalName is not null;
 
         /// <summary> Whether the helper or the route uses <c>Decimal</c>. </summary>
-        public bool UsesDecimal => Kind == Kind.Installment || Kind == Kind.Due && TotalName is not null;
+        public bool UsesDecimal => Kind == Kind.Installment || Kind == Kind.Ledger || Kind == Kind.Due && TotalName is not null;
 
         public IEnumerable<PythonTable> Related => new[] { DocumentTable, TermsTable }.OfType<PythonTable>().DistinctBy(t => t.Class).Where(t => t.Class != Class);
     }
 
-    public static Names? NamesFor(BankAccountShape? bank, InstallmentShape? installment, DueDateShape? due, PythonTable t, ProjectSettings project)
+    /// <summary> The fields of a ledger row the helper and the routes read: the kind, the status, the amount, the gateway id, the idempotency key, and the time stamped on a row that has none. </summary>
+    public sealed record LedgerFields(string KindName, string StatusName, string AmountName, string GatewayName, string KeyName, string? StampName, string? StampNow);
+
+    public static Names? NamesFor(BankAccountShape? bank, InstallmentShape? installment, DueDateShape? due, PythonTable t, ProjectSettings project, LedgerShape? ledger = null)
     {
+        if (ledger is not null)
+        {
+            var documents = PythonTable.Of(ledger.DocumentTable, project);
+            var stamp = t.LogStamp;
+            return new Names(Kind.Ledger, t.Class, t.Key.Name, null, false, null, false, null, false, t.FieldOf(ledger.Document).Name, null, null, null, t.FieldOf(ledger.Amount).Name, null, documents, documents.FieldOf(ledger.DocumentKey).Name,
+                documents.FieldOf(ledger.Total).Name, t.FieldOf(ledger.Document).Annotation, null, null, t.Key.Annotation, null, null, null, documents.FieldOf(ledger.Total).Name, null,
+                new LedgerFields(t.FieldOf(ledger.Kind).Name, t.FieldOf(ledger.Status).Name, t.FieldOf(ledger.Amount).Name, t.FieldOf(ledger.GatewayId).Name, t.FieldOf(ledger.IdempotencyKey).Name, stamp?.Name, stamp is null ? null : PythonTable.Now(stamp)));
+        }
         if (bank is not null)
         {
             var iban = bank.Iban is null ? null : t.FieldOf(bank.Iban);
@@ -49,13 +60,14 @@ public static class PythonPaymentWriter
     }
 
     /// <summary> The Python words the helper needs from <c>datetime</c>. </summary>
-    public static string[] DateWords(Names n) => n.Kind == Kind.Due ? ["date", "datetime", "time", "timedelta"] : [];
+    public static string[] DateWords(Names n) => n.Kind == Kind.Due ? ["date", "datetime", "time", "timedelta"] : n.Kind == Kind.Ledger && n.Ledger?.StampNow is { } now ? [now.StartsWith("date.") ? "date" : "datetime"] : [];
 
     /// <summary> The helper and the check of the table, written before its routes. </summary>
     public static string Helper(Names n) => n.Kind switch
     {
         Kind.Account => AccountHelper(n),
         Kind.Installment => Fill(InstallmentHelper, n),
+        Kind.Ledger => LedgerHelper(n),
         _ => Fill(DueHelper, n),
     };
 
@@ -63,12 +75,13 @@ public static class PythonPaymentWriter
     {
         Kind.Account => "    check_account(row)",
         Kind.Installment => "    check_installment(session, row)",
+        Kind.Ledger => "    check_ledger(session, row)",
         _ => "    check_due(session, row)",
     };
 
     /// <summary> <c>GET schedule</c> of an installment table. </summary>
-    public static string Route(Names n, string route, string readDepends, string userParameter) =>
-        n.Kind == Kind.Due ? PayableRoute(n, route, readDepends, userParameter) : Fill(RouteText, n, ("§ROUTE", route), ("§READ", readDepends), ("§USER", userParameter));
+    public static string Route(Names n, string route, string readDepends, string userParameter, string schema = "", string writeDepends = "") =>
+        n.Kind == Kind.Ledger ? LedgerRoutes(n, route, readDepends, userParameter, schema, writeDepends) : n.Kind == Kind.Due ? PayableRoute(n, route, readDepends, userParameter) : Fill(RouteText, n, ("§ROUTE", route), ("§READ", readDepends), ("§USER", userParameter));
 
     private static string PayableRoute(Names n, string route, string readDepends, string userParameter)
     {
@@ -86,6 +99,19 @@ public static class PythonPaymentWriter
 """, ("§ELIF", n.EarlyPercent is null ? "if" : "elif"), ("§LPCT", n.LatePercent), ("§DUE", n.Due!), ("§RULELATE", PaymentWords.RuleLate));
         return Fill(PayableText, n, ("§ROUTE", route), ("§READ", readDepends), ("§USER", userParameter), ("§KEYTYPE", n.KeyAnnotation ?? "int"), ("§UNIT", n.TotalUnit ?? "0.01"), ("§EARLYBLOCK", early + late),
             ("§W_NEEDSPAY", PaymentWords.NeedsPayment), ("§W_PAYMISSING", PaymentWords.PaymentMissing), ("§RULEONTIME", PaymentWords.RuleOnTime), ("§TOTALNAME", n.TotalName!));
+    }
+
+    private static string LedgerHelper(Names n) => Fill(LedgerHelperText, n, ("§KIND", n.Ledger!.KindName), ("§STATUS", n.Ledger.StatusName), ("§AMT", n.Ledger.AmountName), ("§GATEWAY", n.Ledger.GatewayName), ("§IDEM", n.Ledger.KeyName),
+        ("§DUPTITLE", PaymentWords.LedgerDuplicateTitle), ("§DUPTYPE", PaymentWords.LedgerDuplicateType), ("§REFUNDTITLE", PaymentWords.RefundOverTitle), ("§REFUNDTYPE", PaymentWords.RefundOverType),
+        ("§W_KIND", PaymentWords.KindBad), ("§W_STATUS", PaymentWords.StatusBad), ("§W_SIGN", PaymentWords.RefundSign), ("§W_POSITIVE", PaymentWords.AmountPositive), ("§W_GATEWAYMISSING", PaymentWords.GatewayMissing),
+        ("§W_GATEWAYTAKEN", PaymentWords.GatewayTaken), ("§W_KEYTAKEN", PaymentWords.KeyTaken), ("§W_REFUNDOVER", PaymentWords.RefundOver));
+
+    private static string LedgerRoutes(Names n, string route, string readDepends, string userParameter, string schema, string writeDepends)
+    {
+        string stamp = n.Ledger!.StampName is null ? "" : $"    if row.{n.Ledger.StampName} is None:\n        row.{n.Ledger.StampName} = {n.Ledger.StampNow}\n";
+        return Fill(LedgerRouteText, n, ("§ROUTE", route), ("§READ", readDepends), ("§USER", userParameter), ("§SCHEMA", schema), ("§WRITE", writeDepends), ("§STAMP", stamp), ("§KIND", n.Ledger.KindName), ("§STATUS", n.Ledger.StatusName), ("§AMT", n.Ledger.AmountName),
+            ("§DUPTITLE", PaymentWords.LedgerDuplicateTitle), ("§DUPTYPE", PaymentWords.LedgerDuplicateType), ("§W_GATEWAYTAKEN", PaymentWords.GatewayTaken), ("§RECORD", LedgerPlan.RecordRoute), ("§PAID", LedgerPlan.PaidRoute),
+            ("§STATUSOK", LedgerPlan.Succeeded), ("§CAPTURE", LedgerPlan.Capture), ("§REFUND", LedgerPlan.Refund), ("§UNIT", "0.01"));
     }
 
     private static string Store(bool nullable, string expression) => nullable ? expression : expression + " or \"\"";
@@ -241,5 +267,75 @@ def installment_schedule(document: §DOCTYPE | None = Query(None), session: Sess
     total = Decimal(str(held.§DOCVALUE))
     scheduled = sum((Decimal(str(amount)) for amount in amounts), Decimal(0))
     return {"document": document, "total": float(total), "scheduled": float(scheduled), "remaining": float(total - scheduled), "complete": scheduled == total, "installments": len(amounts)}
+"""";
+
+    private const string LedgerHelperText = """"
+LEDGER_KINDS = ("authorize", "capture", "refund", "void")
+LEDGER_STATUSES = ("pending", "succeeded", "failed")
+
+
+def ledger_invalid(detail: str) -> ApiError:
+    return ApiError(400, "§INVALIDTITLE", problem_type="§INVALIDTYPE", detail=detail)
+
+
+def check_ledger(session: Session, row) -> None:
+    """The kind and status are one of the ledger's words (written in lower case), the document exists, a refund is a negative amount and any other kind a positive one, the gateway id and the idempotency key are given and not recorded yet, and a succeeded refund is no more than what has been paid so far."""
+    row.§KIND = (row.§KIND or "").strip().lower()
+    row.§STATUS = (row.§STATUS or "").strip().lower()
+    row.§GATEWAY = (row.§GATEWAY or "").strip()
+    row.§IDEM = (row.§IDEM or "").strip()
+    if row.§KIND not in LEDGER_KINDS:
+        raise ledger_invalid("§W_KIND")
+    if row.§STATUS not in LEDGER_STATUSES:
+        raise ledger_invalid("§W_STATUS")
+    with session.no_autoflush:
+        if session.get(§DOCCLASS, row.§DOC) is None:
+            raise ledger_invalid("§W_DOCUMENT")
+        amount = Decimal(str(row.§AMT))
+        if (amount >= 0) if row.§KIND == "refund" else (amount <= 0):
+            raise ledger_invalid("§W_SIGN" if row.§KIND == "refund" else "§W_POSITIVE")
+        if not row.§GATEWAY or not row.§IDEM:
+            raise ledger_invalid("§W_GATEWAYMISSING")
+        if session.scalar(select(§CLASS.§KEY).where(§CLASS.§GATEWAY == row.§GATEWAY)) is not None:
+            raise ApiError(409, "§DUPTITLE", problem_type="§DUPTYPE", detail="§W_GATEWAYTAKEN")
+        if session.scalar(select(§CLASS.§KEY).where(§CLASS.§IDEM == row.§IDEM)) is not None:
+            raise ApiError(409, "§DUPTITLE", problem_type="§DUPTYPE", detail="§W_KEYTAKEN")
+        if row.§KIND == "refund" and row.§STATUS == "succeeded":
+            held = session.scalars(select(§CLASS.§AMT).where(§CLASS.§DOC == row.§DOC, §CLASS.§STATUS == "succeeded", §CLASS.§KIND.in_(("capture", "refund")))).all()
+            if sum((Decimal(str(value)) for value in held), Decimal(0)) + amount < 0:
+                raise ApiError(400, "§REFUNDTITLE", problem_type="§REFUNDTYPE", detail="§W_REFUNDOVER")
+"""";
+
+    private const string LedgerRouteText = """"
+@router.post("§ROUTE/§RECORD", response_model=§SCHEMA, status_code=201§WRITE)
+def record_transaction(body: §SCHEMA, session: Session = Depends(get_session)§USER):
+    """Checks a row and stores it; the answer is the stored row."""
+    row = §CLASS(**body.columns())
+    row.§KEY = None
+§STAMP    check_ledger(session, row)
+    session.add(row)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise ApiError(409, "§DUPTITLE", problem_type="§DUPTYPE", detail="§W_GATEWAYTAKEN")
+    session.refresh(row)
+    return row
+
+
+@router.get("§ROUTE/§PAID"§READ)
+def paid_amount(document: §DOCTYPE | None = Query(None), session: Session = Depends(get_session)§USER):
+    """What a document has been paid, worked out from the succeeded rows: the captured amount, the refunded amount, what is paid (captured less refunded), what is left of the total and whether the total is paid."""
+    if document is None:
+        raise ApiError(400, "§W_NEEDS")
+    held = session.get(§DOCCLASS, document)
+    if held is None:
+        raise ApiError(400, "§INVALIDTITLE", problem_type="§INVALIDTYPE", detail="§W_DOCUMENT")
+    rows = session.execute(select(§CLASS.§KIND, §CLASS.§AMT).where(§CLASS.§DOC == document, §CLASS.§STATUS == "§STATUSOK")).all()
+    total = Decimal(str(held.§DOCVALUE))
+    captured = sum((Decimal(str(amount)) for kind, amount in rows if kind == "§CAPTURE"), Decimal(0))
+    refunded = -sum((Decimal(str(amount)) for kind, amount in rows if kind == "§REFUND"), Decimal(0))
+    paid = captured - refunded
+    return {"document": document, "total": float(total), "captured": float(captured), "refunded": float(refunded), "paid": float(paid), "remaining": float(total - paid), "settled": paid >= total, "transactions": len(rows)}
 """";
 }
