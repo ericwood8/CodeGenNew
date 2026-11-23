@@ -13,8 +13,17 @@ public enum AngularTestRunner { Karma, Vitest }
 /// <param name="BuildPackage"> The package that holds the builders: <c>@angular-devkit/build-angular</c> before Angular 20, <c>@angular/build</c> after. </param>
 public sealed record AngularPackages(int Version, string ZoneJs, string TypeScript, AngularTestRunner Runner, bool AnimationsPackage, bool GlobalErrorListeners, string BuildPackage)
 {
-    public string Material => $"^{Version}.0.0";
-    public string Cdk => $"^{Version}.0.0";
+    /// <summary> The lowest release of the major version the generated apps ask for: Angular 22 starts at 22.3, the rest at their first release. </summary>
+    public string Floor => Version == 22 ? "22.3.0" : $"{Version}.0.0";
+
+    /// <summary> The range of every <c>@angular</c> package (the framework, the CLI, the builders, Material and the CDK all share one version number). </summary>
+    public string Range => $"^{Floor}";
+
+    public string Material => Range;
+    public string Cdk => Range;
+
+    /// <summary> TypeScript's <c>strict</c> and the template type checking (<c>strictTemplates</c>), which <c>ng new</c> writes; the generated screens compile clean with both from Angular 20 on. </summary>
+    public bool StrictChecks => Version >= 20;
 
     /// <summary> The ngx-toastr range: 19 draws with <c>@angular/animations</c> and takes any Angular from 16; 20 does not, but names Angular 21 as its peer, which npm <c>overrides</c> relax for 22. </summary>
     public string Toastr => Version >= 21 ? "^20.0.5" : "^19.1.0";
@@ -23,6 +32,10 @@ public sealed record AngularPackages(int Version, string ZoneJs, string TypeScri
     /// <summary> The builder of <c>ng test</c> in angular.json. </summary>
     public string TestBuilder => Runner == AngularTestRunner.Vitest ? "@angular/build:unit-test" : Version >= 20 ? "@angular/build:karma" : "@angular-devkit/build-angular:karma";
     public string ApplicationBuilder => $"{BuildPackage}:application";
+    public string ExtractI18nBuilder => $"{BuildPackage}:extract-i18n";
+
+    /// <summary> <c>ng generate</c> writes <c>foo.ts</c> from Angular 20 (no type in the file name); the generated files keep <c>foo.component.ts</c>, so angular.json tells the schematics to keep the type. </summary>
+    public bool TypeInFileName => Version >= 20;
     public string DevServerBuilder => $"{BuildPackage}:dev-server";
 
     /// <summary> The application builder of Angular 18 (and 19) refuses an angular.json with no <c>outputPath</c> and no <c>index</c>; the <c>@angular/build</c> package of 20 made both optional. </summary>

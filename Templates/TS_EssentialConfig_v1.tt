@@ -42,7 +42,7 @@ export const appConfig: ApplicationConfig = {
     provideAnimations(),
 <# } #>
 <# if (toasts) { #>
-    provideToastr(),
+    provideToastr({ timeOut: 3000, positionClass: 'toast-top-right', preventDuplicates: true }),
 <# } #>
     provideRouter(routes)
   ]

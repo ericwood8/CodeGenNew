@@ -20,27 +20,27 @@
 
     var dependencies = new List<string>
     {
-        $"\"@angular/common\": \"^{version}.0.0\"",
-        $"\"@angular/compiler\": \"^{version}.0.0\"",
-        $"\"@angular/core\": \"^{version}.0.0\"",
-        $"\"@angular/forms\": \"^{version}.0.0\"",
-        $"\"@angular/platform-browser\": \"^{version}.0.0\"",
-        $"\"@angular/router\": \"^{version}.0.0\"",
+        $"\"@angular/common\": \"{ng.Range}\"",
+        $"\"@angular/compiler\": \"{ng.Range}\"",
+        $"\"@angular/core\": \"{ng.Range}\"",
+        $"\"@angular/forms\": \"{ng.Range}\"",
+        $"\"@angular/platform-browser\": \"{ng.Range}\"",
+        $"\"@angular/router\": \"{ng.Range}\"",
         "\"rxjs\": \"~7.8.0\"",
         "\"tslib\": \"^2.3.0\"",
         $"\"zone.js\": \"{ng.ZoneJs}\"",
         $"\"@angular/material\": \"{ng.Material}\"",
         $"\"@angular/cdk\": \"{ng.Cdk}\""
     };
-    if (ng.AnimationsPackage) dependencies.Add($"\"@angular/animations\": \"^{version}.0.0\"");
-    if (ng.PlatformBrowserDynamic) dependencies.Add($"\"@angular/platform-browser-dynamic\": \"^{version}.0.0\"");
+    if (ng.AnimationsPackage) dependencies.Add($"\"@angular/animations\": \"{ng.Range}\"");
+    if (ng.PlatformBrowserDynamic) dependencies.Add($"\"@angular/platform-browser-dynamic\": \"{ng.Range}\"");
     if (toasts) dependencies.Add($"\"ngx-toastr\": \"{ng.Toastr}\"");
 
     var devDependencies = new List<string>
     {
-        $"\"{ng.BuildPackage}\": \"^{version}.0.0\"",
-        $"\"@angular/cli\": \"^{version}.0.0\"",
-        $"\"@angular/compiler-cli\": \"^{version}.0.0\"",
+        $"\"{ng.BuildPackage}\": \"{ng.Range}\"",
+        $"\"@angular/cli\": \"{ng.Range}\"",
+        $"\"@angular/compiler-cli\": \"{ng.Range}\"",
         $"\"typescript\": \"{ng.TypeScript}\""
     };
     if (karma)
@@ -58,6 +58,10 @@
     string moduleOptions = ng.ModulePreserve ? "\"module\": \"preserve\"" : "\"module\": \"ES2022\",\n    \"moduleResolution\": \"bundler\"";
     string specTypes = karma ? "jasmine" : "vitest/globals";
     string outputPath = ng.OutputPathRequired ? "            \"outputPath\": \"dist/frontend\",\n            \"index\": \"src/index.html\",\n" : "";   // Angular 18 asks for both
+    // ng generate names a file foo.ts from Angular 20; the generated screens are foo.component.ts, foo.service.ts and so on, so ng generate is told to keep the type in the name
+    string schematics = ng.TypeInFileName
+        ? ",\n  \"schematics\": {\n    \"@schematics/angular:component\": {\n      \"type\": \"component\"\n    },\n    \"@schematics/angular:directive\": {\n      \"type\": \"directive\"\n    },\n    \"@schematics/angular:service\": {\n      \"type\": \"service\"\n    },\n    \"@schematics/angular:guard\": {\n      \"typeSeparator\": \".\"\n    },\n    \"@schematics/angular:interceptor\": {\n      \"typeSeparator\": \".\"\n    },\n    \"@schematics/angular:module\": {\n      \"typeSeparator\": \".\"\n    },\n    \"@schematics/angular:pipe\": {\n      \"typeSeparator\": \".\"\n    },\n    \"@schematics/angular:resolver\": {\n      \"typeSeparator\": \".\"\n    }\n  }"
+        : "";
     string toastStyle = toasts ? "              \"node_modules/ngx-toastr/toastr.css\",\n" : "";
 #>
 @@@FILE package.json@@@
@@ -119,8 +123,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumWarning": "1MB",
+                  "maximumError": "2MB"
                 },
                 {
                   "type": "anyComponentStyle",
@@ -150,12 +154,18 @@
           },
           "defaultConfiguration": "development"
         },
+        "extract-i18n": {
+          "builder": "<#= ng.ExtractI18nBuilder #>",
+          "options": {
+            "buildTarget": "frontend:build"
+          }
+        },
         "test": {
           <#= testBlock #>
         }
       }
     }
-  }
+  }<#= schematics #>
 }
 @@@FILE .browserslistrc@@@
 # The browsers the app is built for: the current and the previous version of each (ES2022 is the floor, as in tsconfig.json).
@@ -169,6 +179,9 @@ last 2 Safari versions
 {
   "compileOnSave": false,
   "compilerOptions": {
+<# if (ng.StrictChecks) { #>
+    "strict": true,
+<# } #>
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
@@ -181,6 +194,9 @@ last 2 Safari versions
     <#= moduleOptions #>
   },
   "angularCompilerOptions": {
+<# if (ng.StrictChecks) { #>
+    "strictTemplates": true,
+<# } #>
     "enableI18nLegacyMessageIdFormat": false,
     "strictInjectionParameters": true,
     "strictInputAccessModifiers": true

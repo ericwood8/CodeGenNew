@@ -138,6 +138,33 @@ public class AngularPackageTableTests
     }
 
     [TestMethod]
+    public async Task Angular_22_asks_for_22_3_and_the_strict_checks_that_ng_new_writes()
+    {
+        var files = await Run("TS_EssentialBuild_v1.tt", ("Toasts", "ngx-toastr"));
+        using var json = System.Text.Json.JsonDocument.Parse(files["package.json"]);
+        var dependencies = json.RootElement.GetProperty("dependencies");
+        foreach (string name in new[] { "@angular/common", "@angular/compiler", "@angular/core", "@angular/forms", "@angular/platform-browser", "@angular/router", "@angular/material", "@angular/cdk" })
+            Assert.AreEqual("^22.3.0", dependencies.GetProperty(name).GetString(), name);
+        Assert.AreEqual("^20.0.5", dependencies.GetProperty("ngx-toastr").GetString());
+        var dev = json.RootElement.GetProperty("devDependencies");
+        foreach (string name in new[] { "@angular/build", "@angular/cli", "@angular/compiler-cli" })
+            Assert.AreEqual("^22.3.0", dev.GetProperty(name).GetString(), name);
+        Expect.Contains(files["tsconfig.json"], "\"strict\": true,");
+        Expect.Contains(files["tsconfig.json"], "\"strictTemplates\": true,");
+
+        Expect.Contains(files["angular.json"], "\"builder\": \"@angular/build:extract-i18n\"");
+        Expect.Contains(files["angular.json"], "\"@schematics/angular:component\": {");
+        System.Text.Json.JsonDocument.Parse(files["angular.json"]);
+
+        var v19 = await Run("TS_EssentialBuild_v1.tt", ("AngularVersion", "19"));
+        Expect.DoesNotContain(v19["tsconfig.json"], "strictTemplates");
+        Expect.DoesNotContain(v19["angular.json"], "@schematics/angular:component");
+        Expect.Contains(v19["angular.json"], "@angular-devkit/build-angular:extract-i18n");
+        System.Text.Json.JsonDocument.Parse(v19["angular.json"]);
+        Assert.AreEqual("^21.0.0", AngularVersions.For(21).Range);
+    }
+
+    [TestMethod]
     public async Task The_global_error_listeners_exist_from_Angular_20()
     {
         string v18 = (await Run("TS_EssentialConfig_v1.tt", ("AngularVersion", "18")))["app.config.ts"];

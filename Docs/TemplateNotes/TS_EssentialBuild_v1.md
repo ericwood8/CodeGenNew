@@ -10,9 +10,9 @@ The `Build` group of the Angular essentials: `package.json`, `angular.json`, `ts
 | 19 | `~0.15.0` | `~5.6.3` | `@angular-devkit/build-angular` | Karma and Jasmine | `outputPath` and `index` in angular.json, `module: ES2022` with the bundler resolution |
 | 20 | `~0.15.1` | `~5.8.2` | `@angular/build` (`:application`, `:dev-server`, `:karma`) | Karma and Jasmine | `module: preserve`, `provideBrowserGlobalErrorListeners()` in app.config.ts |
 | 21 | `~0.16.0` | `~5.9.2` | `@angular/build` (`:unit-test`) | Vitest and jsdom | |
-| 22 | `~0.16.0` | `~6.0.2` | `@angular/build` (`:unit-test`) | Vitest and jsdom | no `@angular/animations`, `Eager` change detection |
+| 22 | `~0.16.0` | `~6.0.2` | `@angular/build` (`:unit-test`) | Vitest and jsdom | no `@angular/animations`, `Eager` change detection, every `@angular` package, Material and the CDK from `^22.3.0` |
 
-`@angular/material` and `@angular/cdk` take the same major version. Up to 21 the app also gets `@angular/animations` (Material's peer), and for Karma on 18 and 19 `@angular/platform-browser-dynamic`. `Toasts=ngx-toastr` adds the package (`^19.1.0` with `provideAnimations()` before 21, `^20.0.5` from 21 with an npm `overrides` entry for 22) and its stylesheet.
+`@angular/material` and `@angular/cdk` take the same version range as the framework (`AngularPackages.Range`: `^22.3.0` for 22, `^N.0.0` for the others). The production budgets warn at 1 MB and fail at 2 MB (Angular Material's bundle is about 925 kB). From 20 `tsconfig.json` also carries `strict` and `strictTemplates`, as `ng new` writes them; the generated screens compile clean with both. The apps keep zone.js: the screens change plain properties inside `subscribe` callbacks, so a zoneless app would first need those properties turned into signals. Up to 21 the app also gets `@angular/animations` (Material's peer), and for Karma on 18 and 19 `@angular/platform-browser-dynamic`. `Toasts=ngx-toastr` adds the package (`^19.1.0` with `provideAnimations()` before 21, `^20.0.5` from 21 with an npm `overrides` entry for 22) and its stylesheet.
 
 ## What the other templates write for each version
 

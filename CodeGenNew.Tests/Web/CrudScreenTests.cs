@@ -162,7 +162,7 @@ public class CrudScreenTests
         Expect.Contains(build18["package.json"], "\"@angular/animations\": \"^18.0.0\"");
         Expect.Contains(build18["angular.json"], "node_modules/ngx-toastr/toastr.css");
         var config18 = (await Run("TS_EssentialConfig_v1.tt", ("Toasts", "ngx-toastr"), ("AngularVersion", "18")))["app.config.ts"];
-        Expect.Contains(config18, "provideToastr(),");
+        Expect.Contains(config18, "provideToastr({ timeOut: 3000, positionClass: 'toast-top-right', preventDuplicates: true }),");
         Expect.Contains(config18, "provideAnimations(),");
 
         var build22 = await Run("TS_EssentialBuild_v1.tt", ("Toasts", "ngx-toastr"), ("AngularVersion", "22"));
@@ -170,7 +170,7 @@ public class CrudScreenTests
         Expect.DoesNotContain(build22["package.json"], "@angular/animations");
         Expect.Contains(build22["package.json"], "\"overrides\"");
         var config22 = (await Run("TS_EssentialConfig_v1.tt", ("Toasts", "ngx-toastr"), ("AngularVersion", "22")))["app.config.ts"];
-        Expect.Contains(config22, "provideToastr(),");
+        Expect.Contains(config22, "provideToastr({ timeOut: 3000, positionClass: 'toast-top-right', preventDuplicates: true }),");
         Expect.DoesNotContain(config22, "provideAnimations");
         System.Text.Json.JsonDocument.Parse(build22["package.json"]);   // valid JSON whatever the setting
         System.Text.Json.JsonDocument.Parse(build18["package.json"]);
