@@ -72,3 +72,5 @@ A whole-number or text key the person gives a new row that is also a foreign key
 `LedgerTables`: the list page of a ledger table (a log table) has a document box and a `Show paid` button that answer what the document has been paid (`Paid 200 of 300, 100 left`, or `Paid in full: 300 of 300`) over the table's `paid` route (`PaymentScreens.Paid`).
 
 `StockTables`: the page of the stock ledger has the stock box and its three handlers (`StockScreens.BlazorBox`, `BlazorHandlers`).
+
+A product table of `FacetTables` gets a "Narrow by" section (`CatalogScreens.BlazorBox`): a keyword, Find products and Clear filters, a check box for each value with its count, the matching products and Previous and Next. The state and the handlers are `FacetQuery`, `FacetChoices` and `NarrowByAsync`; the client's `CatalogFacetsAsync` and `CatalogNarrowAsync` answer the two JSON documents.

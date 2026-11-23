@@ -1,4 +1,4 @@
--- The tables of the table shapes of the generator (spec item 143, entries 1 to 49), added to the real InvoiceSystem database and to InvoiceSystem_test.
+-- The tables of the table shapes of the generator (spec item 143, entries 1 to 50), added to the real InvoiceSystem database and to InvoiceSystem_test.
 -- Re-runnable: a table that exists is left alone. Run with:  sqlcmd -S <server> -E -I -d <database> -b -i InvoiceSystemTableShapes.sql
 -- The log, queue, archive and tenant tables (entries 1 to 3 and 5) are already there (ErrorLog, ErrorLogArchive, JobQueue, PurgePolicy, Tenant, Organization);
 -- this script adds the rest and EmployeeTenant where the database lacks it. Nothing existing is changed.
@@ -1435,4 +1435,35 @@ CREATE TABLE dbo.InvoiceAllowanceCharge (
     Percentage DECIMAL(9, 4) NULL,
     Amount DECIMAL(18, 2) NOT NULL
 );
+GO
+
+-- 50. Catalog search with facets: a product and the attributes it carries (name, value and, for the numeric ones, a number), read back as facets by FacetTables=ProductAttribute
+IF OBJECT_ID('dbo.ProductAttribute', 'U') IS NOT NULL AND COL_LENGTH('dbo.ProductAttribute', 'NumberValue') IS NULL
+    DROP TABLE dbo.ProductAttribute;
+GO
+IF OBJECT_ID('dbo.Product', 'U') IS NOT NULL AND OBJECT_ID('dbo.ProductAttribute', 'U') IS NULL AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE referenced_object_id = OBJECT_ID('dbo.Product'))
+    TRUNCATE TABLE dbo.Product;
+GO
+IF OBJECT_ID('dbo.Product', 'U') IS NULL
+CREATE TABLE dbo.Product (
+    ProductId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_Product PRIMARY KEY,
+    CatalogNumber VARCHAR(40) NOT NULL CONSTRAINT UQ_Product_CatalogNumber UNIQUE,
+    Name VARCHAR(120) NOT NULL,
+    Description VARCHAR(255) NULL,
+    Manufacturer VARCHAR(60) NOT NULL
+);
+GO
+IF OBJECT_ID('dbo.ProductAttribute', 'U') IS NULL
+CREATE TABLE dbo.ProductAttribute (
+    ProductAttributeId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_ProductAttribute PRIMARY KEY,
+    ProductId INT NOT NULL CONSTRAINT FK_ProductAttribute_Product REFERENCES dbo.Product (ProductId),
+    Name VARCHAR(40) NOT NULL,
+    Value VARCHAR(80) NULL,
+    NumberValue DECIMAL(18, 4) NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ProductAttribute_Product_Name' AND object_id = OBJECT_ID('dbo.ProductAttribute'))
+    CREATE INDEX IX_ProductAttribute_Product_Name ON dbo.ProductAttribute (ProductId, Name);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ProductAttribute_Name_Value' AND object_id = OBJECT_ID('dbo.ProductAttribute'))
+    CREATE INDEX IX_ProductAttribute_Name_Value ON dbo.ProductAttribute (Name, Value);
 GO

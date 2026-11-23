@@ -1,0 +1,7 @@
+# the facet box in the angular front end: python matrix_check.py CatalogNg --settings-file Matrix/catalog_angular.settings --frontend
+@schema=catalog
+@stack=api,angular
+FacetTables=ProductAttribute
+AccessMode=Ef
+ApiTests=true
+Screens=Product,ProductAttribute

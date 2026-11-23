@@ -1,0 +1,7 @@
+# the facet box on the OData pages of the react front end: python matrix_check.py CatalogOData --settings-file Matrix/catalog_react_odata.settings --frontend
+@schema=catalog
+@stack=api,react
+FacetTables=ProductAttribute
+AccessMode=Ef
+OData=true
+Screens=Product,ProductAttribute

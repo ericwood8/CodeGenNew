@@ -129,6 +129,8 @@
     bool ledger = payNames?.Kind == RustPaymentWriter.Kind.Ledger;
     var stockLedger = log && !tenantTable ? StockPlan.ForLedger(Model, Project) : null;   // StockTables: the ledger table also has the stock routes
     bool stockRoutes = stockLedger is not null;
+    var catalogShape = !log && !tenantTable ? CatalogPlan.ForProduct(Model, Project) : null;   // FacetTables: the product table also has the facets and narrow routes
+    bool catalogRoutes = catalogShape is not null;
     var stockLevel = !log && !tenantTable ? RustStockWriter.LevelFor(StockPlan.ForLevel(Model, Project), t, keyType) : null;   // StockTables: the level table refuses a change of the quantities by hand
     var priceNames = RustPriceWriter.NamesFor(pricePlan, t, pricePlan is null ? null : RustTable.Of(pricePlan.ListTable, Project), DialectInfo.For(Model.Dialect), keyType);
     // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
@@ -189,7 +191,7 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || stockRoutes || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || stockRoutes || catalogRoutes || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
@@ -198,7 +200,7 @@
     else if (ledger || stockRoutes)
         Line("    response::{IntoResponse, Response},");
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
-    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || catalogRoutes || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
     Line(log ? (ledger || stockRoutes ? "    routing::{get, post}," : "    routing::get,") : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -304,6 +306,8 @@
         sb.Append(RustPaymentWriter.RouteLine(t.Route, readLayer, payNames));
     if (stockRoutes)
         sb.Append(RustStockWriter.RouteLines(t.Route, readLayer));
+    if (catalogRoutes)
+        sb.Append(RustCatalogWriter.RouteLines(t.Route, readLayer));
     if (taxNames?.Document is not null)
         sb.Append(RustTaxWriter.RouteLine(t.Route, readLayer));
     if (allowNames?.Document is not null)
@@ -351,6 +355,8 @@
         Line(RustStockWriter.Code(stockLedger, t, Project, DialectInfo.For(Model.Dialect)));
     if (stockLevel is not null)
         Line(RustStockWriter.LevelCode(stockLevel));
+    if (catalogShape is not null)
+        Line(RustCatalogWriter.Code(catalogShape, t, Project, DialectInfo.For(Model.Dialect)));
     if (docNames is not null)
         Line(RustRateDocumentWriter.Code(docNames));
     if (taxNames is not null)

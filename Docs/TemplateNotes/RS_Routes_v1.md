@@ -52,3 +52,7 @@ The names the tax, allowance and totals writers work from are built in Core, not
 `StockTables` is built here too (`RustStockWriter`): the ledger table router gets the nine stock routes over raw sqlx statements in a transaction (numbers cast to 64-bit, times as naive date-times); the level table router gets `check_stock_new`, `check_stock_changes` and `check_stock_delete`.
 
 With `StockSweepMinutes` the ledger module also has `start_stock_sweep`, which `RS_Mod` calls from `start_background` (`expire_holds` every N minutes, the first run one interval after the start; run it in one instance only).
+
+A product table of `FacetTables` gets `catalog_facets` and `catalog_narrow` (`RustCatalogWriter`). The query is written with sqlx's `QueryBuilder`, so the placeholders and the quotes follow the database; the repeated `filter` parameters are read as `Query<Vec<(String, String)>>`. The keyword is `LOWER(column) LIKE ... ESCAPE '!'` on each text column.
+
+With a number column `catalog_where` also keeps the products with a number inside each `range=Name:Min:Max` (bound as 64-bit floating point) and each group answers `min`, `max`, `selectedMin` and `selectedMax`; the keyword is also matched against the attribute values. Rust does not read SQL Server, so `FacetFullText` does not apply.

@@ -412,6 +412,9 @@
         bool partyBox = PartyScreens.HasBox(Model, Project);   // the OData page asks the same REST route through its OData module
         if (partyBox)
             foreach (string line in PartyScreens.ReactHandlers(apiVar, setList, !nameActive)) T(line);
+        bool catalogBox = !nameActive && CatalogScreens.HasBox(Model, Project);   // FacetTables: a keyword, the facets and the page of products that match, over the REST route on the OData page too
+        if (catalogBox)
+            foreach (string line in CatalogScreens.ReactHandlers(apiVar, odata ? null : setList)) T(line);
         if (nameActive)
         {
         }
@@ -1010,6 +1013,8 @@
         }
         if (partyBox)
             foreach (string line in PartyScreens.ReactBox()) T(line);
+        if (catalogBox)
+            foreach (string line in CatalogScreens.ReactBox()) T(line);
         if (chooseColumns)
         {
             T();
@@ -1584,6 +1589,8 @@
         }
         if (partyBox)
             foreach (string line in PartyScreens.ReactBoxTests(apiVar, pageName, nameActive ? "getAll" : odata ? "queryPage" : "getPage")) S(line);
+        if (catalogBox)
+            foreach (string line in CatalogScreens.ReactBoxTests(apiVar, pageName, true, odata ? null : keyProp)) S(line);
         var testRow = nameActive ? null : GridTestRow.For(form, chosen);
         if (testRow is not null)
         {

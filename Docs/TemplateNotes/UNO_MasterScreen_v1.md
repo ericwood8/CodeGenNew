@@ -19,3 +19,5 @@ Add and Edit open `UNO_DetailScreen`'s dialog, or `UNO_DetailMasterScreen`'s for
 `LedgerTables`: the bar of a ledger table has a document box and a `Show paid` button that answer what the document has been paid over the client's `PaidAsync` (`PaymentScreens.DesktopBox`, `DesktopHandlers`, `DesktopMembers` and `UnoRead` with `PaymentScreens.Paid`).
 
 `StockTables`: the list of the stock ledger has the stock bar (two boxes, `Show stock`, `Stock-take`, `Low stock`) over the API client.
+
+A product table of `FacetTables` gets a keyword box, Find products, Narrow by and Clear filters in the bar and the answer beside them. Narrow by opens a menu with one check item for each value of each attribute (with its count); choosing one runs the search again. The view model reads through the API client (`CatalogFacetsAsync`, `CatalogNarrowAsync`). The bar shows the number of products and the first five.

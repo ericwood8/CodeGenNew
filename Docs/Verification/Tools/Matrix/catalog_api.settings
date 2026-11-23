@@ -1,0 +1,8 @@
+# the facet routes and their generated tests in every API stack: python matrix_check.py CatalogApi --settings-file Matrix/catalog_api.settings
+@schema=catalog
+@stack=api,python,rust
+FacetTables=ProductAttribute
+AccessMode=Ef
+ApiTests=true
+PythonTests=true
+RustTests=true

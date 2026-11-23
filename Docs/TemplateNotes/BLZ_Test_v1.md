@@ -30,3 +30,5 @@ bUnit tests of the Blazor pages, in a test project beside the Blazor app. `Blazo
 `LedgerTables`: a test asks for what a document has been paid and shows the answer (`PaymentScreens.BlazorBoxTest(PaymentScreens.Paid)`).
 
 `StockTables`: the test of the stock ledger page has a test that shows the stock, takes stock and lists what is low.
+
+A product table of `FacetTables` gets a test that types a keyword, presses Find products, ticks a value and checks the requests.

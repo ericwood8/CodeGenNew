@@ -49,8 +49,10 @@
             modules.Add("rate_routes");
         if (RustLedgerTests.Applies(Database, Project))
             modules.Add("ledger_routes");
-        if (RustStockTests.Applies(Database, Project))
-            modules.Add("stock_routes");
+        if (RustStockTests.Applies(Database, Project))
+            modules.Add("stock_routes");
+        if (RustCatalogTests.Applies(Database, Project))
+            modules.Add("catalog_routes");
         if (RustRateDocumentTests.Applies(Database, Project))
             modules.Add("rate_document_routes");
         if (RustTaxTests.Applies(Database, Project))

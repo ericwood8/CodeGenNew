@@ -168,3 +168,7 @@ A whole-number or text key the person gives a new row that is also a foreign key
 `InstallmentTables`: the page of an installment table has a document box and a `Show schedule` button and an answer line, and a test of them (`PaymentScreens`).
 
 - **Delete shows at once.** `remove` asks, then in a transition hides the row (`useOptimistic`, `shownRows`) and calls `deleteRow`; a refused delete shows its message and the row returns when the transition ends, a successful one drops it from the page's list and reads the page again.
+
+A product table of `FacetTables` gets a "narrow by" box above the grid (`CatalogScreens`): a keyword, Find products and Clear filters, one check box for each value of each attribute with its count, the matching products as a list and Previous and Next. It reads `catalogFacets` and `catalogNarrow` of the table's api module (the REST routes, also on the OData page). The page test types a keyword, ticks a value and checks the calls.
+
+When the attribute table has a number column the box shows From and To boxes for a numeric attribute (the placeholders are its lowest and highest number) and Apply ranges. On the REST page the matching products are also the rows of the grid, read by key (`getById`), and Clear filters reads the grid again; the OData page keeps its grid (its rows are OData documents).

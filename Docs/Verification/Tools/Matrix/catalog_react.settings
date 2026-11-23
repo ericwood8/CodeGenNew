@@ -1,0 +1,7 @@
+# the facet box in the react front end: python matrix_check.py CatalogUi --settings-file Matrix/catalog_react.settings --frontend
+@schema=catalog
+@stack=api,react
+FacetTables=ProductAttribute
+AccessMode=Ef
+ApiTests=true
+Screens=Product,ProductAttribute

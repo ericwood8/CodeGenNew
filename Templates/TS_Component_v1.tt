@@ -240,6 +240,9 @@
         bool stockBox = !oneRow && StockScreens.HasBox(Model, Project);   // StockTables: the stock of an item, a stock-take and the low stock list
         if (stockBox)
             foreach (string line in StockScreens.AngularBox()) H(line);
+        bool catalogBox = !oneRow && CatalogScreens.HasBox(Model, Project);   // FacetTables: a keyword, the facets and the page of products that match, over the REST route on the OData screen too
+        if (catalogBox)
+            foreach (string line in CatalogScreens.AngularBox()) H(line);
         bool taxBox = !oneRow && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate, over the REST route on the OData screen too
         if (taxBox)
             foreach (string line in TaxScreens.AngularBox()) H(line);
@@ -773,7 +776,7 @@
             spec.Append("    expect(component.selectedRow).not.toBeNull();\n    expect(component.adding).toBe(true);\n  });\n});\n");
         }
         else
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + (partyBox ? "\n" + PartyScreens.AngularBoxTest() : "") + (rateNames is { } rateSpec ? "\n" + RateScreens.AngularBoxTest(rateSpec) : "") + (priceNames is { } priceSpec ? "\n" + PriceScreens.AngularBoxTest(priceSpec) : "") + (paidBox ? "\n" + PaymentScreens.AngularBoxTest(PaymentScreens.Paid) : "") + (paymentBox ? "\n" + PaymentScreens.AngularBoxTest() : "") + (taxBox ? "\n" + TaxScreens.AngularBoxTest() : "") + (allowBox ? "\n" + AllowanceScreens.AngularBoxTest() : "") + "\n});\n");
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + (catalogBox ? "\n" + CatalogScreens.AngularBoxTest() : "") + (partyBox ? "\n" + PartyScreens.AngularBoxTest() : "") + (rateNames is { } rateSpec ? "\n" + RateScreens.AngularBoxTest(rateSpec) : "") + (priceNames is { } priceSpec ? "\n" + PriceScreens.AngularBoxTest(priceSpec) : "") + (paidBox ? "\n" + PaymentScreens.AngularBoxTest(PaymentScreens.Paid) : "") + (paymentBox ? "\n" + PaymentScreens.AngularBoxTest() : "") + (taxBox ? "\n" + TaxScreens.AngularBoxTest() : "") + (allowBox ? "\n" + AllowanceScreens.AngularBoxTest() : "") + "\n});\n");
         if (writeRoles.Count > 0 && !oneRow) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
         if (testRow is not null && !oneRow) spec.Append(testRow.AngularOpenedFromAnotherPage(title, cls));
 
@@ -1119,6 +1122,8 @@
             foreach (string line in PaymentScreens.AngularHandlers(PaymentScreens.Paid)) T(line);
         if (stockBox)
             foreach (string line in StockScreens.AngularHandlers()) T(line);
+        if (catalogBox)
+            foreach (string line in CatalogScreens.AngularHandlers()) T(line);
         if (taxBox)
             foreach (string line in TaxScreens.AngularHandlers()) T(line);
         if (allowBox)

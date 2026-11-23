@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestCatalog_v1.tt
+    // Generates: tests/api/catalog_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of what RS_Routes writes for FacetTables, run in process over a scratch database like RS_Test. Each case adds products and attributes of its own and plays the facet counts, the alternatives within an attribute, the keyword over the attribute values, the ranges, paging and the refusals. The words are CatalogWords.
+    // Written only for a project with RustTests=true and a product table the tests can fill (CatalogTestPlan).
+    // Needs Client.start of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (RustCatalogTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/catalog_routes.rs@@@\n" + RustCatalogTests.File(Database, Project));
+    }
+#>

@@ -1,5 +1,6 @@
 using System.Text;
 using CodeGenNew.Core.Allowance;
+using CodeGenNew.Core.Catalog;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Party;
@@ -354,6 +355,12 @@ public static class RowShapeWriter
         {
             o.Append(StockWriter.Code(stockLedger, contextType, project.StockHoldMinutes, project.StockSweepMinutes));
             maps.Append(Fill(StockWriter.MapLines(stockLedger, project.StockSweepMinutes > 0)));
+        }
+
+        if (CatalogPlan.ForProduct(table, project, database) is { } catalog)
+        {
+            o.Append(CatalogWriter.Code(catalog, contextType));
+            maps.Append(Fill(CatalogWriter.MapLines(catalog)));
         }
 
         if (StockPlan.ForLevel(table, project, database) is { } stockLevel)

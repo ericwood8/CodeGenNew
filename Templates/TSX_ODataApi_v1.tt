@@ -48,7 +48,8 @@
         bool rateBox = RateScreens.HasBox(table, Project);   // RateTables: the page's rate lookup asks the table's REST route
         bool taxBox = TaxScreens.HasBox(table, Project);   // TaxLines: the page's tax box asks the table's REST route
         bool allowBox = AllowanceScreens.HasBox(table, Project);   // AllowanceCharges: the page's totals box asks the table's REST route
-        bool restBox = partyBox || rateBox || priceBox || paymentBox || taxBox || allowBox;
+        bool catalogBox = CatalogScreens.HasBox(table, Project);   // FacetTables: the page's facets and product list ask the table's REST routes
+        bool restBox = partyBox || rateBox || priceBox || paymentBox || taxBox || allowBox || catalogBox;
         if (restBox) L("import { request } from './client';");
         L("import { createODataApi } from './odataClient';");
         L($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
@@ -66,6 +67,7 @@
             if (partyBox) L(PartyScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
             if (rateBox) L(RateScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
             if (priceBox) L(PriceScreens.ReactODataApiLine(baseName, $"/api/{plan.Set}"));
+            if (catalogBox) foreach (string line in CatalogScreens.ReactApiLines($"/api/{plan.Set}")) L(line);
             if (paymentBox) L(PaymentScreens.ReactODataApiLine($"/api/{plan.Set}"));
             if (taxBox) L(TaxScreens.ReactODataApiLine($"/api/{plan.Set}"));
             if (allowBox) L(AllowanceScreens.ReactODataApiLine($"/api/{plan.Set}"));

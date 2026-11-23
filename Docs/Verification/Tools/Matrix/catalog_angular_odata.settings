@@ -1,0 +1,7 @@
+# the facet box on the OData screens of the angular front end: python matrix_check.py CatalogNgOData --settings-file Matrix/catalog_angular_odata.settings --frontend
+@schema=catalog
+@stack=api,angular
+FacetTables=ProductAttribute
+AccessMode=Ef
+OData=true
+Screens=Product,ProductAttribute

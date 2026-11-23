@@ -353,6 +353,9 @@
         bool stockBox = !oneRow && !nameActive && StockScreens.HasBox(Model, Project);   // StockTables: the stock of an item, a stock-take and the low stock list
         if (stockBox)
             foreach (string line in StockScreens.BlazorBox()) L(line);
+        bool catalogBox = !oneRow && !nameActive && CatalogScreens.HasBox(Model, Project);   // FacetTables: a keyword, the facets and the page of products that match
+        if (catalogBox)
+            foreach (string line in CatalogScreens.BlazorBox()) L(line);
         bool taxBox = !oneRow && !nameActive && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate
         if (taxBox)
             foreach (string line in TaxScreens.BlazorBox()) L(line);
@@ -1634,6 +1637,8 @@
             foreach (string line in PaymentScreens.BlazorHandlers("Client", PaymentScreens.Paid)) L(line);
         if (stockBox)
             foreach (string line in StockScreens.BlazorHandlers("Client")) L(line);
+        if (catalogBox)
+            foreach (string line in CatalogScreens.BlazorHandlers("Client")) L(line);
         if (taxBox)
             foreach (string line in TaxScreens.BlazorHandlers("Client")) L(line);
         if (allowBox)

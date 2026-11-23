@@ -420,6 +420,8 @@
                 o.Append(PaymentScreens.BlazorBoxTest());
             if (!form.IsNameActive && PaymentScreens.HasPaidBox(Model, Project))
                 o.Append(PaymentScreens.BlazorBoxTest(PaymentScreens.Paid));
+            if (!form.IsNameActive && CatalogScreens.HasBox(Model, Project))
+                o.Append(CatalogScreens.BlazorBoxTest());
             if (!form.IsNameActive && TaxScreens.HasBox(Model, Project))
                 o.Append(TaxScreens.BlazorBoxTest());
             if (!form.IsNameActive && AllowanceScreens.HasBox(Model, Project))

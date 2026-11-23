@@ -49,3 +49,5 @@ The service is `export class HolidayService extends NamedCrudService<Holiday>` (
 `LedgerTables`: the service of a ledger table has `paid(document)` over the table's `paid` route (`PaymentScreens.AngularServiceLines` with `PaymentScreens.Paid`).
 
 `StockTables`: the service of the stock ledger has `stockAvailable`, `stockAdjust` and `stockLow`.
+
+A product table of `FacetTables` also gets `catalogFacets` and `catalogNarrow` (the keyword, the chosen `Name:Value` pairs as repeated `filter` parameters and the page).

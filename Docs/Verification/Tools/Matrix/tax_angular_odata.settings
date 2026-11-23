@@ -1,0 +1,6 @@
+# the tax subtotals box on the OData screens of the angular front end: python matrix_check.py TaxNgOData --settings-file Matrix/tax_angular_odata.settings --frontend
+@schema=tax_lines
+@stack=api,angular
+TaxLines=InvoiceLine:TaxCategoryId:TaxRate:LineTotal:TaxAmount:TaxCategory:Rate:ValidFrom:ValidTo:LineDate:InvoiceId:Code
+AccessMode=Ef
+OData=true

@@ -212,6 +212,12 @@
             L("  // a stock table (StockTables): the stock of an item, a stock-take that writes an adjustment row, and the items at or under their reorder level");
             foreach (string line in StockScreens.ReactApiLines()) L(line);
         }
+        if (CatalogScreens.HasBox(Model, Project))
+        {
+            L();
+            L("  // a product table with attributes (FacetTables): the facets of the products that match a keyword and the chosen values, and the page of products");
+            foreach (string line in CatalogScreens.ReactApiLines()) L(line);
+        }
         if (TaxScreens.HasBox(Model, Project))
         {
             L();

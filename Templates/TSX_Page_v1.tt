@@ -294,6 +294,9 @@
         var priceNames = !oneRow && PriceScreens.HasBox(Model, Project) ? PriceScreens.Names(Model, Project) : null;   // PriceListTables: a lookup of the price in force, over the REST route on the OData page too
         if (priceNames is { } priceHandlers)
             foreach (string line in PriceScreens.ReactHandlers(apiVar, priceHandlers)) T(line);
+        bool catalogBox = !oneRow && CatalogScreens.HasBox(Model, Project);   // FacetTables: a keyword, the facets and the page of products that match, over the REST route on the OData page too
+        if (catalogBox)
+            foreach (string line in CatalogScreens.ReactHandlers(apiVar, odata ? null : setList)) T(line);
         bool paymentBox = !oneRow && PaymentScreens.HasBox(Model, Project);   // InstallmentTables: what the installments of a document come to, over the REST route on the OData page too
         if (paymentBox)
             foreach (string line in PaymentScreens.ReactHandlers(apiVar)) T(line);
@@ -848,6 +851,8 @@
             foreach (string line in RateScreens.ReactBox()) T(line);
         if (priceNames is { } priceBox)
             foreach (string line in PriceScreens.ReactBox(priceBox)) T(line);
+        if (catalogBox)
+            foreach (string line in CatalogScreens.ReactBox()) T(line);
         if (paymentBox)
             foreach (string line in PaymentScreens.ReactBox()) T(line);
         if (taxBox)
@@ -1360,6 +1365,8 @@
             foreach (string line in RateScreens.ReactBoxTests(apiVar, pageName, rateTests)) S(line);
         if (priceNames is { } priceTests)
             foreach (string line in PriceScreens.ReactBoxTests(apiVar, pageName, priceTests)) S(line);
+        if (catalogBox)
+            foreach (string line in CatalogScreens.ReactBoxTests(apiVar, pageName, false, odata ? null : keyProp)) S(line);
         if (paymentBox)
             foreach (string line in PaymentScreens.ReactBoxTests(apiVar, pageName)) S(line);
         if (taxBox)

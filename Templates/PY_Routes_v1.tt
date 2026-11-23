@@ -173,6 +173,7 @@
     var payNames = tenantTable ? null : PythonPaymentWriter.NamesFor(log ? null : PaymentPlan.BankFor(Model, Project), log ? null : PaymentPlan.InstallmentFor(Model, Project), log ? null : PaymentPlan.DueFor(Model, Project), t, Project, log ? LedgerPlan.For(Model, Project) : null);   // LedgerTables: a log table that also has POST record and GET paid
     var stockNames = tenantTable || !log ? null : PythonStockWriter.LedgerNames(StockPlan.ForLedger(Model, Project), t, Project);   // StockTables: the ledger table also has the stock routes
     var stockLevel = log || tenantTable ? null : PythonStockWriter.LevelFor(StockPlan.ForLevel(Model, Project), t);   // StockTables: the level table refuses a change of the quantities by hand
+    var catalogNames = log || tenantTable ? null : PythonCatalogWriter.NamesFor(CatalogPlan.ForProduct(Model, Project), t, Project);   // FacetTables: the product table also has the facets and narrow routes
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -184,6 +185,8 @@
         Line("import asyncio");
         Line("import logging");
     }
+    if (catalogNames is not null)
+        Line("import re");
     if (contentNames is not null)
         Line("import unicodedata");
     var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true
@@ -225,6 +228,8 @@
         Line($"from datetime import {string.Join(", ", clonedDates)}");
     if (docNames is not null || taxNames is not null || allowNames is not null || totalsNames is not null || payNames?.UsesDecimal == true)
         Line("from decimal import ROUND_HALF_UP, Decimal");
+    else if (catalogNames is not null)
+        Line("from decimal import Decimal");
     if (tenantTable)
         Line("from typing import Any");
     if (textKey)
@@ -269,7 +274,11 @@
         foreach (string word in new[] { "func", "update" })
             if (!sqlalchemy.Contains(word))
                 sqlalchemy.Add(word);
-    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null || payNames?.HasRoute == true || stockNames is not null ? ["Query"] : []).Concat(log && payNames?.Kind != PythonPaymentWriter.Kind.Ledger ? [] : ["Response"])));
+    if (catalogNames is not null)
+        foreach (string word in PythonCatalogWriter.SqlAlchemyWords)
+            if (!sqlalchemy.Contains(word))
+                sqlalchemy.Add(word);
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null || payNames?.HasRoute == true || stockNames is not null || catalogNames is not null ? ["Query"] : []).Concat(log && payNames?.Kind != PythonPaymentWriter.Kind.Ledger ? [] : ["Response"])));
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
     else if (stockNames is not null)
@@ -319,6 +328,9 @@
             Line($"from app.models.{related.Module} import {related.Class}");
     if (stockNames is not null)
         foreach (var related in stockNames.Related)
+            Line($"from app.models.{related.Module} import {related.Class}");
+    if (catalogNames is not null)
+        foreach (var related in catalogNames.Related)
             Line($"from app.models.{related.Module} import {related.Class}");
     if (docRateTable is not null)
         Line($"from app.routes.{docRateTable.Module} import find_rate");
@@ -538,6 +550,12 @@
         Line();
         Line(PythonStockWriter.LevelHelper(stockLevel).TrimEnd('\n'));
     }
+    if (catalogNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonCatalogWriter.Helper(catalogNames).TrimEnd('\n'));
+    }
     if (docNames is not null)
     {
         Line();
@@ -622,6 +640,13 @@
     {
         Line();
         Line(PythonStockWriter.LedgerRoutes(stockNames, t.Route, readDepends, userParameter, writeDepends).TrimEnd('\n'));
+        Line();
+    }
+
+    if (catalogNames is not null)
+    {
+        Line();
+        Line(PythonCatalogWriter.Routes(catalogNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
         Line();
     }
 

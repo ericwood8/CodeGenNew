@@ -91,3 +91,5 @@ The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAhead
 `PartyTables`: the screen of a party table has the Find by identifier box and a generated spec of it (`findByIdentifier` asks the table's `by-identifier` route with the trimmed value and the answer replaces the rows).
 
 A whole-number or text key the person gives a new row that is also a foreign key to another table (a customer that is a row of the party table) is a drop-down of the parent's rows on the form, not a number box: it can be chosen for a new row and is disabled once the row is saved (`FormColumn.IsKeyLookupField`).
+
+A product table of `FacetTables` (its attributes are the usual child, so the table gets this component) gets the same "narrow by" section as TS_Component (`CatalogScreens`), on the OData screen too, and its spec ticks a value and checks both calls.

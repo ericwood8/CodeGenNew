@@ -65,3 +65,7 @@ With `ApiAuth=true` and a `GuardedColumns` rule that names this table the module
 `LedgerTables`: the api object of a ledger table has `paid(document)` over the table's `paid` route (`PaymentScreens.ReactApiLine(PaymentScreens.Paid)`).
 
 `StockTables`: the api module of the stock ledger has `stockAvailable`, `stockAdjust` and `stockLow`.
+
+A product table of `FacetTables` also gets `catalogFacets` and `catalogNarrow`, which ask `GET facets` and `GET narrow` (the keyword and the chosen `Name:Value` pairs are query parameters).
+
+`catalogFacets` and `catalogNarrow` also send the chosen ranges (`range=Name:Min:Max`).

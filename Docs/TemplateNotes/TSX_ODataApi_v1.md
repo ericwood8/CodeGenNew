@@ -11,3 +11,5 @@ It is the OData twin of `TSX_Api`: the same model (`models/<table>`), the same r
 `PriceListTables`: the module of a price table also has `priceOn`, which asks the table's REST route (`/api/<set>/price`) for the page's price lookup.
 
 `InstallmentTables`: the module has a `schedule` method over the table's REST route (a price table gets its `priceOn` there too).
+
+A product table of `FacetTables` gets `catalogFacets` and `catalogNarrow` in its OData api module too, over the REST routes (OData has no such query).

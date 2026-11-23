@@ -1,0 +1,11 @@
+# the facet routes in every API stack and the facet box in the Blazor, Uno and WinUI3 front ends: python matrix_check.py Catalog --settings-file Matrix/catalog_screens.settings (React and Angular are separate runs: catalog_react.settings, catalog_angular.settings, with --frontend)
+@schema=catalog
+@stack=api,python,rust,blazor,uno,winui3
+FacetTables=ProductAttribute
+AccessMode=Ef
+ApiTests=true
+PythonTests=true
+RustTests=true
+BlazorTests=true
+DesktopTests=true
+Screens=Product,ProductAttribute

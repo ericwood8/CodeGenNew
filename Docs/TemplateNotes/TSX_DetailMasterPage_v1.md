@@ -86,3 +86,7 @@ The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAhead
 A whole-number or text key the person gives a new row that is also a foreign key to another table (a customer that is a row of the party table) is a drop-down of the parent's rows on the form, not a number box: it can be chosen for a new row and is disabled once the row is saved (`FormColumn.IsKeyLookupField`).
 
 - **Delete shows at once.** `remove` asks, then in a transition hides the row (`useOptimistic`, `shownRows`) and calls `deleteRow`; a refused delete shows its message and the row returns when the transition ends, a successful one drops it from the page's list and reads the page again.
+
+The same "narrow by" box of `FacetTables` (see TSX_Page): a product that has child rows (its attributes are the usual child) gets this page, so the box and its test are written here too; the test wraps the page in a router.
+
+The box has the same From, To and Apply ranges and, on the REST page, the grid takes the matching products (see TSX_Page).

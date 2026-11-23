@@ -1,4 +1,5 @@
 using CodeGenNew.Core.Allowance;
+using CodeGenNew.Core.Catalog;
 using System.Text.RegularExpressions;
 using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Payment;
@@ -29,7 +30,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), BankAccount(table, database, project), Installments(table, database, project), PaymentMeans(table, database, project), Ledger(table, database, project), Stock(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), BankAccount(table, database, project), Installments(table, database, project), PaymentMeans(table, database, project), Ledger(table, database, project), Stock(table, database, project), Facets(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
                 Approval(table, database, project), RateDocument(table, database, project), DocumentTotals(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
@@ -325,6 +326,18 @@ public static class DatabaseShapeDetector
             return Payment("LedgerTables", "Payment transaction ledger", entry, $"{gateway.Name} and {key.Name} with {kind.Name}, {status.Name} and {amount.Name} look like a ledger of payments of {documents.TableName}", p => LedgerPlan.Problems(database, p), table.TableName, project, project.LedgerTables);
         }
         return null;
+    }
+
+    /// <summary> An attribute table: one foreign key to a product and two text columns, a name that cannot be NULL and a value, and nothing else but the key. Read back as facets by the product table. </summary>
+    private static ShapeSuggestion? Facets(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (CatalogPlan.IsAttributeTable(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }] || table.Columns.Count != 4 || table.ForeignKeys.Count(f => f.ReferencingColumns.Count == 1) != 1)
+            return null;
+        var name = FindColumn(table.Columns, CatalogPlan.NameColumns, c => c.IsStringColumn && !c.IsNullable);
+        var value = FindColumn(table.Columns, CatalogPlan.ValueColumns, c => c.IsStringColumn);
+        if (name is null || value is null)
+            return null;
+        return Payment("FacetTables", "Catalog search with facets", table.TableName, $"{name.Name} and {value.Name} per product look like the attributes of a catalog (voltage, size, material) that can be counted as facets", p => CatalogPlan.Problems(database, p), table.TableName, project, project.FacetTables);
     }
 
     /// <summary> A stock level table: a key to an item, a quantity on hand and a quantity reserved, with a ledger table (Kind, Quantity) and a table of holds (Quantity, Status, ExpiresOn) beside it. </summary>

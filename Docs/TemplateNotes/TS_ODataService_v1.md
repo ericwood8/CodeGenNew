@@ -19,3 +19,5 @@ Every name is the JSON name the REST routes use, so the model (`models/<table>`)
 `PriceListTables`: the service of a price table also has `priceOn`, which asks the table's REST route (`<restUrl>/price`) for the screen's price lookup.
 
 `InstallmentTables`: the service has `schedule(document)` over the table's REST route.
+
+A product table of `FacetTables` gets `catalogFacets` and `catalogNarrow` over the REST routes (`restUrl`), as TaxLines does.
