@@ -808,13 +808,13 @@ GO
 
 IF OBJECT_ID('dbo.PaymentInstallment', 'U') IS NULL
 CREATE TABLE dbo.PaymentInstallment (
-    PaymentInstalmentId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PaymentInstalment PRIMARY KEY,
+    PaymentInstallmentId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PaymentInstallment PRIMARY KEY,
     SalesOrderId INT NOT NULL CONSTRAINT FK_PaymentInstalment_Order REFERENCES dbo.SalesOrder (SalesOrderId),
     SequenceNo INT NOT NULL CONSTRAINT CK_PaymentInstalment_Sequence CHECK (SequenceNo > 0),
     DueDate DATE NOT NULL,
     Amount DECIMAL(12,2) NOT NULL CONSTRAINT CK_PaymentInstalment_Amount CHECK (Amount > 0),
     PaidOn DATE NULL,
-    CONSTRAINT UQ_PaymentInstalment UNIQUE (SalesOrderId, SequenceNo)
+    CONSTRAINT UQ_PaymentInstallment UNIQUE (SalesOrderId, SequenceNo)
 );
 GO
 
@@ -1352,7 +1352,7 @@ INSERT INTO @ix (IndexName, TableName, Cols) VALUES
     ('IX_PaymentMeans_Order', 'PaymentMeans', 'SalesOrderId'),
     ('IX_PaymentMeans_Terms', 'PaymentMeans', 'PaymentTermsId'),
     ('IX_PaymentMeans_Account', 'PaymentMeans', 'PayeeBankAccountId'),
-    ('IX_PaymentInstalment_Due', 'PaymentInstallment', 'DueDate'),
+    ('IX_PaymentInstallment_Due', 'PaymentInstallment', 'DueDate'),
     ('IX_GoodsReceipt_Order', 'GoodsReceipt', 'SalesOrderId'),
     ('IX_GoodsReceiptLine_Line', 'GoodsReceiptLine', 'SalesOrderLineId'),
     ('IX_CreditNote_Invoice', 'CreditNote', 'SalesInvoiceId'),
