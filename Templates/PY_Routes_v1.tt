@@ -171,6 +171,8 @@
     var totalsNames = PythonTotalsWriter.NamesFor(totalsPlan, t, Project);
     // BankAccountTables, InstallmentTables, PaymentTermsTables: a valid IBAN or account and routing number, installments that are numbered, in due order and within the total, and a due date worked out from the payment terms
     var payNames = tenantTable ? null : PythonPaymentWriter.NamesFor(log ? null : PaymentPlan.BankFor(Model, Project), log ? null : PaymentPlan.InstallmentFor(Model, Project), log ? null : PaymentPlan.DueFor(Model, Project), t, Project, log ? LedgerPlan.For(Model, Project) : null);   // LedgerTables: a log table that also has POST record and GET paid
+    var stockNames = tenantTable || !log ? null : PythonStockWriter.LedgerNames(StockPlan.ForLedger(Model, Project), t, Project);   // StockTables: the ledger table also has the stock routes
+    var stockLevel = log || tenantTable ? null : PythonStockWriter.LevelFor(StockPlan.ForLevel(Model, Project), t);   // StockTables: the level table refuses a change of the quantities by hand
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -198,6 +200,10 @@
                 clonedDates.Add(word);
     if (payNames is not null)
         foreach (string word in PythonPaymentWriter.DateWords(payNames))
+            if (!clonedDates.Contains(word))
+                clonedDates.Add(word);
+    if (stockNames is not null)
+        foreach (string word in PythonStockWriter.Names.DateWords)
             if (!clonedDates.Contains(word))
                 clonedDates.Add(word);
     if (docNames is not null)
@@ -253,11 +259,17 @@
         foreach (string word in PythonPriceWriter.SqlAlchemyWords)
             if (!sqlalchemy.Contains(word))
                 sqlalchemy.Add(word);
-    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null || payNames?.HasRoute == true ? ["Query"] : []).Concat(log && payNames?.Kind != PythonPaymentWriter.Kind.Ledger ? [] : ["Response"])));
+    if (stockNames is not null)
+        foreach (string word in new[] { "func", "update" })
+            if (!sqlalchemy.Contains(word))
+                sqlalchemy.Add(word);
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null || payNames?.HasRoute == true || stockNames is not null ? ["Query"] : []).Concat(log && payNames?.Kind != PythonPaymentWriter.Kind.Ledger ? [] : ["Response"])));
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
+    else if (stockNames is not null)
+        Line("from pydantic import BaseModel");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
-    if (!log || payNames?.Kind == PythonPaymentWriter.Kind.Ledger)
+    if (!log || payNames?.Kind == PythonPaymentWriter.Kind.Ledger || stockNames is not null)
         Line("from sqlalchemy.exc import IntegrityError");
     Line(softNames is not null ? "from sqlalchemy.orm import Session, with_loader_criteria" : "from sqlalchemy.orm import Session");
     Line();
@@ -298,6 +310,9 @@
         Line($"from app.models.{priceListTable.Module} import {priceListTable.Class}");
     if (payNames is not null)
         foreach (var related in payNames.Related)
+            Line($"from app.models.{related.Module} import {related.Class}");
+    if (stockNames is not null)
+        foreach (var related in stockNames.Related)
             Line($"from app.models.{related.Module} import {related.Class}");
     if (docRateTable is not null)
         Line($"from app.routes.{docRateTable.Module} import find_rate");
@@ -505,6 +520,18 @@
         Line();
         Line(PythonPaymentWriter.Helper(payNames).TrimEnd('\n'));
     }
+    if (stockNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonStockWriter.LedgerHelper(stockNames).TrimEnd('\n'));
+    }
+    if (stockLevel is not null)
+    {
+        Line();
+        Line();
+        Line(PythonStockWriter.LevelHelper(stockLevel).TrimEnd('\n'));
+    }
     if (docNames is not null)
     {
         Line();
@@ -582,6 +609,13 @@
     {
         Line();
         Line(PythonPaymentWriter.Route(payNames, t.Route, readDepends, userParameter, t.Schema, writeDepends).TrimEnd('\n'));
+        Line();
+    }
+
+    if (stockNames is not null)
+    {
+        Line();
+        Line(PythonStockWriter.LedgerRoutes(stockNames, t.Route, readDepends, userParameter, writeDepends).TrimEnd('\n'));
         Line();
     }
 
@@ -849,6 +883,8 @@
     }
     if (payNames is not null)
         Line(PythonPaymentWriter.CheckLine(payNames));
+    if (stockLevel is not null)
+        Line(PythonStockWriter.LevelCreateLine);
     if (docNames is not null)
         Line("    convert_currency(session, row, None)");
     if (taxNames is not null)
@@ -942,6 +978,8 @@
     }
     if (treePlan is not null)
         Line($"    check_tree(session, id, body.changes().get(\"{treeNames!.Parent}\", row.{treeNames.Parent}))");
+    if (stockLevel is not null)
+        Line(PythonStockWriter.LevelUpdateLine);
     if (effNames is not null)
     {
         string Changed(string a) => $"body.changes().get(\"{a}\", row.{a})";
@@ -1048,6 +1086,8 @@
         Line($"    if is_administrator(row) and not other_administrators(session, row.{t.Key.Name}):\n        raise last_administrator()");
     if (treePlan is not null)
         Line("    refuse_children(session, id)");
+    if (stockLevel is not null)
+        Line(PythonStockWriter.LevelDeleteLine);
     if (people)
     {
         Line($"    if detach_person(session, row.{key}, user):");

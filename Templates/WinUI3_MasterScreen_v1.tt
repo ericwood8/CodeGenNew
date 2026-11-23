@@ -122,6 +122,7 @@
         var allowBox = !logOnly && AllowanceScreens.HasBox(Model, Project);   // AllowanceCharges: the allowances, the charges and the net of one document in the bar
         var taxBox = !logOnly && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate in the bar
         var paidBox = logOnly && PaymentScreens.HasPaidBox(Model, Project);   // LedgerTables: what a document has been paid, in the bar
+        var stockBox = logOnly && StockScreens.HasBox(Model, Project);   // StockTables: the stock of an item, a stock-take and the low stock list, in the bar
         var payBox = !logOnly && PaymentScreens.HasBox(Model, Project);   // InstallmentTables: what the installments of a document come to, in the bar
         var priceNames = !logOnly && PriceScreens.HasBox(Model, Project) ? PriceScreens.CsNames(Model, Project) : null;   // PriceListTables: a lookup of the price in force in the bar; the grid stays the table's pages
         var rateNames = !logOnly && RateScreens.HasBox(Model, Project) ? RateScreens.CsNames(Model, Project) : null;   // RateTables: a lookup of the rate in force in the bar; the grid stays the table's pages
@@ -242,7 +243,7 @@
 <# if (exportAll) { #>
                 <Button Content="Export all" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnExportAllClick" />
 <# } #>
-<#= (partyBox ? PartyScreens.DesktopBox() : "") + (rateNames is not null ? RateScreens.DesktopBox() : "") + (priceNames is { } priceBar ? PriceScreens.DesktopBox(priceBar) : "") + (payBox ? PaymentScreens.DesktopBox() : "") + (paidBox ? PaymentScreens.DesktopBox(PaymentScreens.Paid) : "") + (taxBox ? TaxDesktopScreens.Box() : "") + (allowBox ? AllowanceScreens.DesktopBox() : "") #><# if (softScreen) { #>
+<#= (partyBox ? PartyScreens.DesktopBox() : "") + (rateNames is not null ? RateScreens.DesktopBox() : "") + (priceNames is { } priceBar ? PriceScreens.DesktopBox(priceBar) : "") + (payBox ? PaymentScreens.DesktopBox() : "") + (paidBox ? PaymentScreens.DesktopBox(PaymentScreens.Paid) : "") + (stockBox ? StockScreens.DesktopBox() : "") + (taxBox ? TaxDesktopScreens.Box() : "") + (allowBox ? AllowanceScreens.DesktopBox() : "") #><# if (softScreen) { #>
                 <ToggleButton Content="Show deleted" IsChecked="{x:Bind ViewModel.ShowDeleted, Mode=TwoWay}" Click="OnShapeViewClick" />
 <# } #>
 <# if (validOnScreen) { #>
@@ -511,7 +512,7 @@ public sealed partial class <#= table #>ListPage : Page
 <#= DesktopGridExtras.ExportPageMembers(title.Pluralize(), false) #>
 <# } #>
 
-<#= (partyBox ? PartyScreens.DesktopHandlers().TrimEnd('\n') + "\n" : "") + (rateNames is not null ? RateScreens.DesktopHandlers() : "") + (priceNames is not null ? PriceScreens.DesktopHandlers() : "") + (payBox ? PaymentScreens.DesktopHandlers() : "") + (paidBox ? PaymentScreens.DesktopHandlers(PaymentScreens.Paid) : "") + (taxBox ? TaxDesktopScreens.Handlers() : "") + (allowBox ? AllowanceScreens.DesktopHandlers() : "") #>
+<#= (partyBox ? PartyScreens.DesktopHandlers().TrimEnd('\n') + "\n" : "") + (rateNames is not null ? RateScreens.DesktopHandlers() : "") + (priceNames is not null ? PriceScreens.DesktopHandlers() : "") + (payBox ? PaymentScreens.DesktopHandlers() : "") + (paidBox ? PaymentScreens.DesktopHandlers(PaymentScreens.Paid) : "") + (stockBox ? StockScreens.DesktopHandlers() : "") + (taxBox ? TaxDesktopScreens.Handlers() : "") + (allowBox ? AllowanceScreens.DesktopHandlers() : "") #>
 <# if (!logOnly) { #>
     private async void OnEditClick(object sender, RoutedEventArgs e)
     {
@@ -795,7 +796,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     [ObservableProperty]
     private int _totalPages = 1;
 
-<#= (rateNames is not null ? RateScreens.DesktopMembers(RateScreens.WinUI3Read(Model, Project, "_context")) : "") + (priceNames is not null ? PriceScreens.DesktopMembers(PriceScreens.WinUI3Read(Model, Project, "_context")) : "") + (payBox ? PaymentScreens.DesktopMembers(PaymentScreens.WinUI3Read(Model, Project, "_context"), PaymentPlan.InstallmentFor(Model, Project)!.Document.CSharpBase()) : "") + (paidBox ? PaymentScreens.DesktopMembers(PaymentScreens.WinUI3PaidRead(Model, Project, "_context"), LedgerPlan.For(Model, Project)!.Document.CSharpBase(), PaymentScreens.Paid) : "") + (taxBox ? TaxDesktopScreens.Members(TaxDesktopScreens.WinUI3Read(Model, Project, "_context")) : "") + (allowBox ? AllowanceScreens.DesktopMembers(AllowanceScreens.WinUI3Read(Model, Project, "_context")) : "") #><# if (listScreen) { #>
+<#= (rateNames is not null ? RateScreens.DesktopMembers(RateScreens.WinUI3Read(Model, Project, "_context")) : "") + (priceNames is not null ? PriceScreens.DesktopMembers(PriceScreens.WinUI3Read(Model, Project, "_context")) : "") + (payBox ? PaymentScreens.DesktopMembers(PaymentScreens.WinUI3Read(Model, Project, "_context"), PaymentPlan.InstallmentFor(Model, Project)!.Document.CSharpBase()) : "") + (paidBox ? PaymentScreens.DesktopMembers(PaymentScreens.WinUI3PaidRead(Model, Project, "_context"), LedgerPlan.For(Model, Project)!.Document.CSharpBase(), PaymentScreens.Paid) : "") + (stockBox ? StockScreens.WinUI3Members(StockPlan.ForLedger(Model, Project)!, "_context") : "") + (taxBox ? TaxDesktopScreens.Members(TaxDesktopScreens.WinUI3Read(Model, Project, "_context")) : "") + (allowBox ? AllowanceScreens.DesktopMembers(AllowanceScreens.WinUI3Read(Model, Project, "_context")) : "") #><# if (listScreen) { #>
 <# if (softScreen) { #>
     /// <summary> The grid lists the rows that were soft deleted (SoftDeleteTables) instead of the table's rows; each has Restore. </summary>
     [ObservableProperty]

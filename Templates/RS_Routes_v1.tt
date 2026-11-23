@@ -127,6 +127,9 @@
     // BankAccountTables, InstallmentTables, PaymentTermsTables: a valid IBAN or account and routing number, installments that are numbered, in due order and within the total, and a due date worked out from the payment terms
     var payNames = !tenantTable ? RustPaymentWriter.NamesFor(log ? null : PaymentPlan.BankFor(Model, Project), log ? null : PaymentPlan.InstallmentFor(Model, Project), log ? null : PaymentPlan.DueFor(Model, Project), t, Project, DialectInfo.For(Model.Dialect), keyType, log ? LedgerPlan.For(Model, Project) : null) : null;   // LedgerTables: a log table that also has POST record and GET paid
     bool ledger = payNames?.Kind == RustPaymentWriter.Kind.Ledger;
+    var stockLedger = log && !tenantTable ? StockPlan.ForLedger(Model, Project) : null;   // StockTables: the ledger table also has the stock routes
+    bool stockRoutes = stockLedger is not null;
+    var stockLevel = !log && !tenantTable ? RustStockWriter.LevelFor(StockPlan.ForLevel(Model, Project), t, keyType) : null;   // StockTables: the level table refuses a change of the quantities by hand
     var priceNames = RustPriceWriter.NamesFor(pricePlan, t, pricePlan is null ? null : RustTable.Of(pricePlan.ListTable, Project), DialectInfo.For(Model.Dialect), keyType);
     // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
     // TaxLines: the line carries the rate of its category, the tax is worked out, and GET tax-subtotals answers a document's tax by category
@@ -186,17 +189,17 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || stockRoutes || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
-    else if (ledger)
+    else if (ledger || stockRoutes)
         Line("    response::{IntoResponse, Response},");
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
     bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
-    Line(log ? (ledger ? "    routing::{get, post}," : "    routing::get,") : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
+    Line(log ? (ledger || stockRoutes ? "    routing::{get, post}," : "    routing::get,") : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
     Line("};");
@@ -228,7 +231,7 @@
             Line($"use crate::models::{totalsNames.Extra.Module}::{totalsNames.Extra.Struct};");
     }
     Line($"use crate::repos::{t.Module} as repo;");
-    Line(log ? (ledger ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiResult, Pool};") : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : usesDb ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
+    Line(log ? (ledger || stockRoutes ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiResult, Pool};") : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : usesDb ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
     if (validate && !log)
         Line($"use crate::validation::{t.Module}::validate;");
     if (gated && !log)
@@ -299,6 +302,8 @@
         sb.Append(RustPriceWriter.RouteLine(t.Route, readLayer));
     if (payNames?.HasRoute == true)
         sb.Append(RustPaymentWriter.RouteLine(t.Route, readLayer, payNames));
+    if (stockRoutes)
+        sb.Append(RustStockWriter.RouteLines(t.Route, readLayer));
     if (taxNames?.Document is not null)
         sb.Append(RustTaxWriter.RouteLine(t.Route, readLayer));
     if (allowNames?.Document is not null)
@@ -342,6 +347,10 @@
         Line(RustPriceWriter.Code(priceNames, scoped || tenanted ? userArgument : null, scoped || tenanted ? filterArguments : null));
     if (payNames is not null)
         Line(RustPaymentWriter.Code(payNames));
+    if (stockLedger is not null)
+        Line(RustStockWriter.Code(stockLedger, t, Project, DialectInfo.For(Model.Dialect)));
+    if (stockLevel is not null)
+        Line(RustStockWriter.LevelCode(stockLevel));
     if (docNames is not null)
         Line(RustRateDocumentWriter.Code(docNames));
     if (taxNames is not null)
@@ -633,6 +642,8 @@
     }
     if (payNames is not null)
         Line(RustPaymentWriter.CheckLine(payNames, false));
+    if (stockLevel is not null)
+        Line(RustStockWriter.LevelCreateLine);
     if (docNames is not null)
         Line("    convert_currency(&pool, &mut row, None).await?;");
     if (taxNames is not null)
@@ -750,6 +761,8 @@
     }
     if (payNames is not null)
         Line(RustPaymentWriter.CheckLine(payNames, true));
+    if (stockLevel is not null)
+        Line(RustStockWriter.LevelUpdateLine);
     if (docNames is not null)
     {
         Line($"    let document_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
@@ -819,6 +832,8 @@
     }
     if (treePlan is not null)
         Line("    refuse_children(&pool, id).await?;");
+    if (stockLevel is not null)
+        Line(RustStockWriter.LevelDeleteLine);
     if (assetPlan is not null)
         Line(RustAssetWriter.DeleteLines(t, assetPlan).TrimEnd((char)10));
     if (linkRefuses)

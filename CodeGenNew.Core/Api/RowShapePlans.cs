@@ -6,6 +6,7 @@ using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Settings;
+using CodeGenNew.Core.Stock;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Tenant;
 
@@ -323,11 +324,11 @@ public static class DefaultRowPlan
 /// <summary> Whether a table has any row shape (tree, content, soft delete, effective dating) and the reasons the project's lists cannot be served. </summary>
 public static class RowShapePlan
 {
-    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.ContentTables.Length > 0 || project.AssetTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0 || project.DefaultRowTables.Length > 0 || project.PartyTables.Length > 0 || project.RateTables.Length > 0 || project.PriceListTables.Length > 0 || project.BankAccountTables.Length > 0 || project.InstallmentTables.Length > 0 || project.PaymentTermsTables.Length > 0 || project.LedgerTables.Length > 0 || project.RateDocuments.Length > 0 || project.AllowanceCharges.Length > 0 || project.DocumentTotals.Length > 0 || project.TaxLines.Length > 0 || project.SnapshotColumns.Length > 0 || project.PolymorphicLinks.Length > 0;
+    public static bool Any(ProjectSettings project) => project.TreeTables.Length > 0 || project.ContentTables.Length > 0 || project.AssetTables.Length > 0 || project.SoftDeleteTables.Length > 0 || project.EffectiveDatedTables.Length > 0 || project.DefaultRowTables.Length > 0 || project.PartyTables.Length > 0 || project.RateTables.Length > 0 || project.PriceListTables.Length > 0 || project.BankAccountTables.Length > 0 || project.InstallmentTables.Length > 0 || project.PaymentTermsTables.Length > 0 || project.LedgerTables.Length > 0 || project.RateDocuments.Length > 0 || project.AllowanceCharges.Length > 0 || project.DocumentTotals.Length > 0 || project.TaxLines.Length > 0 || project.SnapshotColumns.Length > 0 || project.PolymorphicLinks.Length > 0 || project.StockTables.Length > 0;
 
     public static bool Has(TableModel table, ProjectSettings project) =>
         TreePlan.For(table, project) is not null || ContentPlan.For(table, project) is not null || AssetPlan.For(table, project) is not null || SoftDeletePlan.For(table, project) is not null || EffectiveDatePlan.For(table, project) is not null || DefaultRowPlan.For(table, project) is not null
-        || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project) || PartyPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || PriceListPlan.IsListed(table.TableName, project) || PaymentPlan.IsListed(table.TableName, project) || LedgerPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project) || DocumentTotalsPlan.IsListed(table.TableName, project);
+        || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project) || PartyPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || PriceListPlan.IsListed(table.TableName, project) || PaymentPlan.IsListed(table.TableName, project) || LedgerPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project) || DocumentTotalsPlan.IsListed(table.TableName, project) || StockPlan.IsLevel(table.TableName, project) || StockPlan.IsLedger(table.TableName, project);
 
     /// <summary> Every reason the three settings cannot be served by <paramref name="database"/>. </summary>
     public static List<string> Problems(DatabaseModel database, ProjectSettings project)
@@ -355,6 +356,7 @@ public static class RowShapePlan
         problems.AddRange(PriceListPlan.Problems(database, project));
         problems.AddRange(PaymentPlan.Problems(database, project));
         problems.AddRange(LedgerPlan.Problems(database, project));
+        problems.AddRange(StockPlan.Problems(database, project));
         problems.AddRange(RateDocumentPlan.Problems(database, project));
         problems.AddRange(TaxLinePlan.Problems(database, project));
         problems.AddRange(AllowanceChargePlan.Problems(database, project));

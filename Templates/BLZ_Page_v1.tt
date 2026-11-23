@@ -350,6 +350,9 @@
         bool paidBox = !oneRow && !nameActive && PaymentScreens.HasPaidBox(Model, Project);   // LedgerTables: what a document has been paid, over the table's paid route
         if (paidBox)
             foreach (string line in PaymentScreens.BlazorBox(PaymentScreens.Paid)) L(line);
+        bool stockBox = !oneRow && !nameActive && StockScreens.HasBox(Model, Project);   // StockTables: the stock of an item, a stock-take and the low stock list
+        if (stockBox)
+            foreach (string line in StockScreens.BlazorBox()) L(line);
         bool taxBox = !oneRow && !nameActive && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate
         if (taxBox)
             foreach (string line in TaxScreens.BlazorBox()) L(line);
@@ -1629,6 +1632,8 @@
             foreach (string line in PaymentScreens.BlazorHandlers("Client")) L(line);
         if (paidBox)
             foreach (string line in PaymentScreens.BlazorHandlers("Client", PaymentScreens.Paid)) L(line);
+        if (stockBox)
+            foreach (string line in StockScreens.BlazorHandlers("Client")) L(line);
         if (taxBox)
             foreach (string line in TaxScreens.BlazorHandlers("Client")) L(line);
         if (allowBox)

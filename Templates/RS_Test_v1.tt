@@ -48,7 +48,7 @@
         }
 
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
-        bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
+        bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && !StockPlan.IsManagedQuantity(Model.TableName, c.Name, Project) && ForeignKeyParentRoute(c, out string _).Length == 0
             && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(c.ValidExample(Project, Model.TableName), CultureInfo.InvariantCulture));
         var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && !RatePlan.IsCurrency(Model, c, Project) && PaymentPlan.BankSample(Model, c, Project) is null)
             ?? bodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)

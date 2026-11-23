@@ -27,6 +27,7 @@ public static class LogTablePlan
         }).Concat(QueuePlan.Entries(project).Select(q => (q.Table, (string?)null)))
         .Concat(InboundPlan.Entries(project).Where(q => !InboundPlan.IsEditable(q.Table, project)).Select(q => (q.Table, (string?)null)))
         .Concat(Payment.LedgerPlan.Entries(project).Select(l => (l.Table, (string?)null)))
+        .Concat(Stock.StockPlan.LogTableNames(project).Select(l => (l, (string?)null)))
         .Concat(ArchivePlan.ArchiveTableNames(project).Select(a => (a, (string?)null)))
         .Where(e => e.Item1.Length > 0).DistinctBy(e => e.Item1, StringComparer.OrdinalIgnoreCase).ToList();
 

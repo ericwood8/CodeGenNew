@@ -1,0 +1,10 @@
+# the stock routes in every API stack and the stock box in the Blazor, Uno and WinUI3 front ends: python matrix_check.py Stock --settings-file Matrix/stock_screens.settings (React and Angular are separate runs: stock_react.settings, stock_angular.settings, with --frontend)
+@schema=stock
+@stack=api,python,rust,blazor,uno,winui3
+StockTables=StockLevel
+AccessMode=Ef
+ApiTests=true
+PythonTests=true
+RustTests=true
+BlazorTests=true
+DesktopTests=true

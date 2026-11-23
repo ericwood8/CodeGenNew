@@ -7,7 +7,7 @@ namespace CodeGenNew.Core.Web;
 /// <summary> The bUnit tests of the Blazor page of a log table (LogTables): it lists rows, so they check the heading, a row, that no button adds, changes or deletes one, and that Search sends the first and last day. </summary>
 public static class BlazorLogTests
 {
-    public static string Body(string type, BlazorTestPlan plan, string title, QueueShape? queue = null, ProjectSettings? project = null, InboundShape? inbound = null, PaymentBox? paid = null)
+    public static string Body(string type, BlazorTestPlan plan, string title, QueueShape? queue = null, ProjectSettings? project = null, InboundShape? inbound = null, PaymentBox? paid = null, bool stock = false)
     {
         var row = plan.Row;
         var o = new StringBuilder();
@@ -152,6 +152,8 @@ public static class BlazorLogTests
         }
         if (paid is not null)
             o.Append(PaymentScreens.BlazorBoxTest(paid).TrimEnd('\n')).Append('\n');
+        if (stock)
+            o.Append(Stock.StockScreens.BlazorBoxTest().TrimEnd('\n')).Append('\n');
         L("}");
         return o.ToString();
     }

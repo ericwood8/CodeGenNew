@@ -140,7 +140,7 @@ public sealed class ApiTestPlan
     /// <summary> The table a foreign key column points at: its ApiTests class is where a row for an empty parent comes from. </summary>
     private string ParentTable(ColumnModel c) => _model.ForeignKeys.First(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name).ReferencedTable;
 
-    private bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ParentRoute(c, out string _).Length == 0
+    private bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && !Stock.StockPlan.IsManagedQuantity(_model.TableName, c.Name, _project) && ParentRoute(c, out string _).Length == 0
         && (_project.RangeFor(c) is not { } range || range.Max > long.Parse(c.ValidExample(_project, _model.TableName), CultureInfo.InvariantCulture));
 
     /// <summary> The C# expression of the value a new row's body holds for <paramref name="c"/>. </summary>

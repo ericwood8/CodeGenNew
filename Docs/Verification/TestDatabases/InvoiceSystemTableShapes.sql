@@ -395,6 +395,20 @@ CREATE TABLE dbo.StockLedger (
 );
 GO
 
+-- A hold on stock for a buyer (a cart or an order): held until it is committed, released or expires
+IF OBJECT_ID('dbo.StockReservation', 'U') IS NULL
+CREATE TABLE dbo.StockReservation (
+    StockReservationId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_StockReservation PRIMARY KEY,
+    ItemId INT NOT NULL CONSTRAINT FK_StockReservation_Item REFERENCES dbo.Item (ItemId),
+    Quantity INT NOT NULL CONSTRAINT CK_StockReservation_Quantity CHECK (Quantity > 0),
+    Status VARCHAR(10) NOT NULL CONSTRAINT DF_StockReservation_Status DEFAULT 'held' CONSTRAINT CK_StockReservation_Status CHECK (Status IN ('held', 'committed', 'released', 'expired')),
+    Reference VARCHAR(60) NULL,
+    CreatedOn DATETIME NOT NULL CONSTRAINT DF_StockReservation_CreatedOn DEFAULT GETDATE(),
+    ExpiresOn DATETIME NOT NULL,
+    ResolvedOn DATETIME NULL
+);
+GO
+
 -- 19. Payment transactions: an append-only ledger, never a card number
 IF OBJECT_ID('dbo.PaymentTransaction', 'U') IS NULL
 CREATE TABLE dbo.PaymentTransaction (
@@ -1375,6 +1389,9 @@ INSERT INTO @ix (IndexName, TableName, Cols) VALUES
     ('IX_SerialNumber_InvoiceLine', 'SerialNumber', 'SalesInvoiceLineId'),
     ('IX_StorageLocation_Parent', 'StorageLocation', 'ParentStorageLocationId'),
     ('IX_ItemLocationStock_Location', 'ItemLocationStock', 'StorageLocationId'),
+    ('IX_StockLedger_Item', 'StockLedger', 'ItemId, OccurredOn'),
+    ('IX_StockReservation_Item', 'StockReservation', 'ItemId, Status'),
+    ('IX_StockReservation_Expiry', 'StockReservation', 'Status, ExpiresOn'),
     ('IX_LocationStockLedger_Item', 'LocationStockLedger', 'ItemId, StorageLocationId, OccurredOn'),
     ('IX_LocationStockLedger_Location', 'LocationStockLedger', 'StorageLocationId'),
     ('IX_LocationStockLedger_Lot', 'LocationStockLedger', 'LotId'),

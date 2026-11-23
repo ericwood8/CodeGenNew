@@ -244,6 +244,8 @@
             foreach (string line in PaymentScreens.AngularServiceLines("apiUrl")) L(line);
         if (PaymentScreens.HasPaidBox(Model, Project))
             foreach (string line in PaymentScreens.AngularServiceLines("apiUrl", PaymentScreens.Paid)) L(line);
+        if (StockScreens.HasBox(Model, Project))
+            foreach (string line in StockScreens.AngularServiceLines("apiUrl")) L(line);
         if (TaxScreens.HasBox(Model, Project))
             foreach (string line in TaxScreens.AngularServiceLines("apiUrl")) L(line);
         if (AllowanceScreens.HasBox(Model, Project))

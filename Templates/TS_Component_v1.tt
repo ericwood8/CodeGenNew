@@ -237,6 +237,9 @@
         bool paidBox = !oneRow && PaymentScreens.HasPaidBox(Model, Project);   // LedgerTables: what a document has been paid, over the table's paid route
         if (paidBox)
             foreach (string line in PaymentScreens.AngularBox(PaymentScreens.Paid)) H(line);
+        bool stockBox = !oneRow && StockScreens.HasBox(Model, Project);   // StockTables: the stock of an item, a stock-take and the low stock list
+        if (stockBox)
+            foreach (string line in StockScreens.AngularBox()) H(line);
         bool taxBox = !oneRow && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate, over the REST route on the OData screen too
         if (taxBox)
             foreach (string line in TaxScreens.AngularBox()) H(line);
@@ -1114,6 +1117,8 @@
             foreach (string line in PaymentScreens.AngularHandlers()) T(line);
         if (paidBox)
             foreach (string line in PaymentScreens.AngularHandlers(PaymentScreens.Paid)) T(line);
+        if (stockBox)
+            foreach (string line in StockScreens.AngularHandlers()) T(line);
         if (taxBox)
             foreach (string line in TaxScreens.AngularHandlers()) T(line);
         if (allowBox)

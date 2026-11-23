@@ -152,6 +152,12 @@
             foreach (string line in PaymentScreens.ReactHandlers(apiVar, PaymentScreens.Paid)) T(line);
             T();
         }
+        bool stockBox = StockScreens.HasBox(Model, Project);   // StockTables: the stock of an item, a stock-take and the low stock list
+        if (stockBox)
+        {
+            foreach (string line in StockScreens.ReactHandlers(apiVar)) T(line);
+            T();
+        }
         T("  useEffect(() => {");
         T("    load();");
         if (queue is not null)
@@ -229,6 +235,8 @@
         T();
         if (paidBox)
             foreach (string line in PaymentScreens.ReactBox(PaymentScreens.Paid)) T(line);
+        if (stockBox)
+            foreach (string line in StockScreens.ReactBox()) T(line);
         T("      <ColumnPicker columns={columnList} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
         T();
         T("      {error && <p role=\"alert\">{error}</p>}");
@@ -439,6 +447,8 @@
         }
         if (paidBox)
             foreach (string line in PaymentScreens.ReactBoxTests(apiVar, pageName, PaymentScreens.Paid, false)) S(line);
+        if (stockBox)
+            foreach (string line in StockScreens.ReactBoxTests(apiVar, pageName)) S(line);
         S("});");
 
         Write($"@@@FILE {pagesFolder}/{pageName}.tsx@@@\n" + ts);

@@ -5,6 +5,7 @@ using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
+using CodeGenNew.Core.Stock;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Tenant;
 using CodeGenNew.Core.Usage;
@@ -74,6 +75,12 @@ public sealed class TableShapes
     /// <summary> The table as payment means whose due date is worked out from payment terms (<c>PaymentTermsTables</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
     public DueDateShape? DueDate => Shape<DueDateShape>();
     public LedgerShape? Ledger => Shape<LedgerShape>();
+
+    /// <summary> The table as the stock level table of <c>StockTables</c> (its saves and deletes may not change the quantities); null when it is not. </summary>
+    public StockShape? StockLevel => Shape<StockShape>();
+
+    /// <summary> The table as the ledger of a stock table (<c>StockTables</c>): the table that carries the stock routes; null when it is not. </summary>
+    public StockLedgerOf? StockLedger => Shape<StockLedgerOf>();
 
     /// <summary> The table as the table of price lists that a price table (<c>PriceListTables</c>) points at; null when it is not. </summary>
     public PriceListHeadShape? PriceListHead => Shape<PriceListHeadShape>();
@@ -191,6 +198,8 @@ public sealed class TableShapes
         if (shape == typeof(PriceListShape)) return _database is null ? PriceListPlan.For(_table, _project) : PriceListPlan.For(_table, _project, _database);
         if (shape == typeof(BankAccountShape)) return _database is null ? PaymentPlan.BankFor(_table, _project) : PaymentPlan.BankFor(_table, _project, _database);
         if (shape == typeof(InstallmentShape)) return _database is null ? PaymentPlan.InstallmentFor(_table, _project) : PaymentPlan.InstallmentFor(_table, _project, _database);
+        if (shape == typeof(StockShape)) return _database is null ? StockPlan.ForLevel(_table, _project) : StockPlan.ForLevel(_table, _project, _database);
+        if (shape == typeof(StockLedgerOf)) return (_database is null ? StockPlan.ForLedger(_table, _project) : StockPlan.ForLedger(_table, _project, _database)) is { } stock ? new StockLedgerOf(stock) : null;
         if (shape == typeof(LedgerShape)) return _database is null ? LedgerPlan.For(_table, _project) : LedgerPlan.For(_table, _project, _database);
         if (shape == typeof(DueDateShape)) return _database is null ? PaymentPlan.DueFor(_table, _project) : PaymentPlan.DueFor(_table, _project, _database);
         if (shape == typeof(PriceListHeadShape)) return (_database ?? RatePlan.Remembered(_project)) is { } known ? PriceListPlan.HeadOf(_table, _project, known) is { } priced ? new PriceListHeadShape(priced) : null : null;

@@ -4,6 +4,7 @@ using CodeGenNew.Core.Party;
 using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
+using CodeGenNew.Core.Stock;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Totals;
 using CodeGenNew.Core.Tenant;
@@ -28,7 +29,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), BankAccount(table, database, project), Installments(table, database, project), PaymentMeans(table, database, project), Ledger(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), BankAccount(table, database, project), Installments(table, database, project), PaymentMeans(table, database, project), Ledger(table, database, project), Stock(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
                 Approval(table, database, project), RateDocument(table, database, project), DocumentTotals(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
@@ -324,6 +325,27 @@ public static class DatabaseShapeDetector
             return Payment("LedgerTables", "Payment transaction ledger", entry, $"{gateway.Name} and {key.Name} with {kind.Name}, {status.Name} and {amount.Name} look like a ledger of payments of {documents.TableName}", p => LedgerPlan.Problems(database, p), table.TableName, project, project.LedgerTables);
         }
         return null;
+    }
+
+    /// <summary> A stock level table: a key to an item, a quantity on hand and a quantity reserved, with a ledger table (Kind, Quantity) and a table of holds (Quantity, Status, ExpiresOn) beside it. </summary>
+    private static ShapeSuggestion? Stock(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (StockPlan.IsLevel(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        var onHand = FindColumn(table.Columns, [StockPlan.DefaultOnHand, "QtyOnHand", "Quantity"], c => !c.IsNullable && c.IsIntegerColumn);
+        var reserved = FindColumn(table.Columns, [StockPlan.DefaultReserved, "QtyReserved", "Allocated"], c => !c.IsNullable && c.IsIntegerColumn);
+        if (onHand is null || reserved is null || onHand.Name.EqualsIgnoreCase(reserved.Name))
+            return null;
+        var item = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1).Select(f => table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(f.ReferencingColumns[0]))).FirstOrDefault(c => c is { IsIntegerColumn: true, IsNullable: false });
+        if (item is null)
+            return null;
+        string stem = table.TableName.EndsWith("Level", StringComparison.OrdinalIgnoreCase) && table.TableName.Length > 5 ? table.TableName[..^5] : table.TableName;
+        string ledger = stem + "Ledger", holds = stem + "Reservation";
+        if (!database.Tables.Any(t => t.TableName.EqualsIgnoreCase(ledger)) || !database.Tables.Any(t => t.TableName.EqualsIgnoreCase(holds)))
+            return null;
+        bool plain = item.Name.EqualsIgnoreCase(StockPlan.DefaultItem) && onHand.Name.EqualsIgnoreCase(StockPlan.DefaultOnHand) && reserved.Name.EqualsIgnoreCase(StockPlan.DefaultReserved);
+        string entry = table.TableName + (plain ? "" : $":{item.Name}:{onHand.Name}:{reserved.Name}:{ledger}:{holds}");
+        return Payment("StockTables", "Inventory and stock reservation", entry, $"{onHand.Name} and {reserved.Name} per {item.Name} with {ledger} and {holds} look like a stock level with its ledger and holds", p => StockPlan.Problems(database, p), table.TableName, project, project.StockTables);
     }
 
     /// <summary> A document line with a key to a tax category table, a tax rate, a taxable amount and a tax amount. </summary>

@@ -7,6 +7,7 @@ using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Sql;
+using CodeGenNew.Core.Stock;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Totals;
 
@@ -17,10 +18,10 @@ namespace CodeGenNew.Core.Api;
 public static class RowShapeWriter
 {
     /// <summary> Whether the table's API has to call <c>CheckSaveAsync</c>. </summary>
-    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Content is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).Effective is not null || TableShapes.For(table, project).DefaultRow is not null || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PartyPlan.IsIdentifierTable(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || PriceListPlan.IsListed(table.TableName, project) || PaymentPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project);
+    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Content is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).Effective is not null || TableShapes.For(table, project).DefaultRow is not null || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PartyPlan.IsIdentifierTable(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || PriceListPlan.IsListed(table.TableName, project) || PaymentPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project) || StockPlan.IsLevel(table.TableName, project);
 
     /// <summary> Whether the table's API has to call <c>CheckDeleteAsync</c>. </summary>
-    public static bool HasDeleteCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).SoftDelete is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).DefaultRow is not null || PolymorphicPlan.RefusesDeleteOf(table.TableName, project);
+    public static bool HasDeleteCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).SoftDelete is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).DefaultRow is not null || PolymorphicPlan.RefusesDeleteOf(table.TableName, project) || StockPlan.IsLevel(table.TableName, project);
 
     /// <summary> Whether the table's API has to call <c>AfterDeleteAsync</c> (an asset table removes its file, a linked table may remove its links). </summary>
     public static bool HasAfterDelete(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Asset is not null || PolymorphicPlan.RemovesLinksOf(table.TableName, project);
@@ -347,6 +348,19 @@ public static class RowShapeWriter
             o.Append(LedgerWriter.Code(ledger, contextType, TableShapes.For(table, project).Log?.Timestamp));
             maps.Append(Fill(LedgerWriter.RecordMapLine(ledger)));
             maps.Append(Fill(LedgerWriter.PaidMapLine(ledger)));
+        }
+
+        if (StockPlan.ForLedger(table, project, database) is { } stockLedger)
+        {
+            o.Append(StockWriter.Code(stockLedger, contextType, project.StockHoldMinutes));
+            maps.Append(Fill(StockWriter.MapLines(stockLedger)));
+        }
+
+        if (StockPlan.ForLevel(table, project, database) is { } stockLevel)
+        {
+            o.Append(StockWriter.LevelCode(stockLevel, contextType));
+            save.Append(StockWriter.LevelSaveLines);
+            delete.Append(StockWriter.LevelDeleteLines);
         }
 
         if (RateDocumentPlan.For(table, project, database) is { } document)

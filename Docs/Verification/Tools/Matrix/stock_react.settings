@@ -1,0 +1,10 @@
+# the stock box in the react front end: python matrix_check.py StockUi --settings-file Matrix/stock_react.settings --frontend
+@schema=stock
+@stack=api,react
+StockTables=StockLevel
+AccessMode=Ef
+ApiTests=true
+PythonTests=true
+RustTests=true
+BlazorTests=true
+DesktopTests=true

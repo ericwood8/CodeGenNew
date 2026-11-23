@@ -1,0 +1,10 @@
+# the stock box in the angular front end: python matrix_check.py StockUi --settings-file Matrix/stock_angular.settings --frontend
+@schema=stock
+@stack=api,angular
+StockTables=StockLevel
+AccessMode=Ef
+ApiTests=true
+PythonTests=true
+RustTests=true
+BlazorTests=true
+DesktopTests=true

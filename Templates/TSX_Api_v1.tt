@@ -206,6 +206,12 @@
             L("  // a payment ledger (LedgerTables): what a document has been paid");
             L(PaymentScreens.ReactApiLine(PaymentScreens.Paid));
         }
+        if (StockScreens.HasBox(Model, Project))
+        {
+            L();
+            L("  // a stock table (StockTables): the stock of an item, a stock-take that writes an adjustment row, and the items at or under their reorder level");
+            foreach (string line in StockScreens.ReactApiLines()) L(line);
+        }
         if (TaxScreens.HasBox(Model, Project))
         {
             L();

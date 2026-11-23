@@ -61,6 +61,8 @@
             foreach (string line in PaymentScreens.CsClientLines(BlazorNames.ApiRoute(table.TableName))) L(line);
         if (PaymentScreens.HasPaidBox(table, Project))
             foreach (string line in PaymentScreens.CsClientLines(BlazorNames.ApiRoute(table.TableName), PaymentScreens.Paid)) L(line);
+        if (StockScreens.HasBox(table, Project))
+            foreach (string line in StockScreens.CsClientLines(BlazorNames.ApiRoute(table.TableName))) L(line);
         if (TaxScreens.HasBox(table, Project))
         {
             foreach (string line in TaxScreens.CsClientLines()) L(line);

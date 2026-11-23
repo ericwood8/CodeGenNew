@@ -43,6 +43,8 @@ public static class ApiSampleValues
                 text = text[..chars];
             return Json(text);
         }
+        if (c.IsIntegerColumn && table is not null && Stock.StockPlan.IsManagedQuantity(table, c.Name, project))
+            return "0";   // StockTables: a new level starts empty
         if (c.IsIntegerColumn)
             return project.RangeFor(c) is { } range ? Math.Max(range.Min, Math.Min(1, range.Max)).ToString(CultureInfo.InvariantCulture) : "1";
         if (c.IsNumericColumn || c.IsMoneyColumn)

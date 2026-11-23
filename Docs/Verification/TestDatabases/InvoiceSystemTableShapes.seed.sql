@@ -224,6 +224,10 @@ BEGIN
         (@i3, 'reservation', 3, '2026-10-25', 'cart'), (@i3, 'adjustment', 0, '2026-10-01', 'stock-take');
 END;
 
+IF NOT EXISTS (SELECT 1 FROM dbo.StockReservation)
+    INSERT INTO dbo.StockReservation (ItemId, Quantity, Status, Reference, CreatedOn, ExpiresOn) VALUES
+        (@i1, 10, 'held', 'cart', '2026-10-20', '2099-12-31'), (@i3, 3, 'held', 'cart', '2026-10-25', '2099-12-31');
+
 -- 19. Payments
 INSERT INTO dbo.PaymentTransaction (SalesOrderId, Kind, Status, Amount, GatewayId, IdempotencyKey, Payload)
 SELECT o.SalesOrderId, v.K, v.S, v.A, v.G, v.Y, v.P
