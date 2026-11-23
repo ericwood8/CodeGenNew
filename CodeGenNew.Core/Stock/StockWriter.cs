@@ -6,7 +6,7 @@ public static class StockWriter
 {
     private static string Sheet(StockShape s) => s.Ledger.Table.TableName;
 
-    public static string MapLines(StockShape s)
+    public static string MapLines(StockShape s, bool sweep = false)
     {
         string item = s.Item.CSharpBase(), holdKey = s.Reservation.Key.CSharpBase();
         return $"        app.MapGet(\"§R/{StockPlan.AvailableRoute}\", ([FromServices] §CTX context, [FromQuery(Name = \"item\")] {item}? item) => AvailableAsync(context, item))§AUTH;\n"
@@ -17,7 +17,8 @@ public static class StockWriter
             + $"        app.MapPost(\"§R/{StockPlan.CommitRoute}/{{id}}\", ([FromServices] §CTX context, {holdKey} id) => CommitAsync(context, id))§AUTH;\n"
             + $"        app.MapPost(\"§R/{StockPlan.ReleaseRoute}/{{id}}\", ([FromServices] §CTX context, {holdKey} id) => ReleaseAsync(context, id))§AUTH;\n"
             + $"        app.MapPost(\"§R/{StockPlan.ExpireRoute}\", ([FromServices] §CTX context) => ExpireRouteAsync(context))§AUTH;\n"
-            + $"        app.MapPost(\"§R/{StockPlan.AdjustRoute}\", ([FromServices] §CTX context, StockRequest request) => AdjustAsync(context, request))§AUTH;\n";
+            + $"        app.MapPost(\"§R/{StockPlan.AdjustRoute}\", ([FromServices] §CTX context, StockRequest request) => AdjustAsync(context, request))§AUTH;\n"
+            + (sweep ? "        StartSweep(app);\n" : "");
     }
 
     public const string LevelSaveLines = "        if (await CheckStockAsync(context, row, isNew) is { } stockProblem)\n            return stockProblem;\n";
@@ -49,7 +50,7 @@ public static class StockWriter
 """;
     }
 
-    public static string Code(StockShape s, string contextType, int holdMinutes)
+    public static string Code(StockShape s, string contextType, int holdMinutes, int sweepMinutes = 0)
     {
         var l = s.Ledger;
         var h = s.Reservation;
@@ -69,6 +70,36 @@ public static class StockWriter
         string holdRef = h.Reference is null ? "" : $", {h.Reference.CSharpName()} = reference";
         string resolvedSet = h.Resolved is null ? "" : $".SetProperty(x => x.{h.Resolved.CSharpName()}, (DateTime?)now)";
         string clip = refMax > 0 ? $"text.Length > {refMax} ? text[..{refMax}] : text" : "text";
+        string sweep = sweepMinutes <= 0 ? "" : $$"""
+
+    /// <summary> Frees the holds that have run out every {{sweepMinutes}} minutes (StockSweepMinutes); the first run is one interval after the start. Run it in one instance of the API only. </summary>
+    public static void StartSweep(WebApplication app) =>
+        app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(() => SweepAsync(app.Services, app.Lifetime.ApplicationStopping)));
+
+    private static async Task SweepAsync(IServiceProvider services, CancellationToken stop)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes({{sweepMinutes}}));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stop))
+            {
+                try
+                {
+                    using var scope = services.CreateScope();
+                    await ExpireAsync(scope.ServiceProvider.GetRequiredService<{{contextType}}>(), null);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    services.GetRequiredService<ILoggerFactory>().CreateLogger("StockSweep").LogError(ex, "The scheduled stock sweep failed.");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+""";
         return $$"""
     /// <summary> What the stock routes read from a request. </summary>
     public sealed record StockRequest(long? Item, long? Quantity, long? Counted, string? Reference, int? Minutes, string? Kind);
@@ -265,7 +296,7 @@ public static class StockWriter
     }
 
     public static async Task<IResult> ExpireRouteAsync({{contextType}} context) => Results.Ok(new { expired = await ExpireAsync(context, null) });
-
+{{sweep}}
     /// <summary> A stock-take: the counted quantity becomes what is on hand and a ledger row (an adjustment of the difference, which may be zero) says so. A count below what is reserved is refused. </summary>
     public static async Task<IResult> AdjustAsync({{contextType}} context, StockRequest request)
     {

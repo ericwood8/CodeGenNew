@@ -129,9 +129,19 @@ public static class StockPlan
     public static StockShape? ForReservation(TableModel table, ProjectSettings project, DatabaseModel database) =>
         Entries(project).FirstOrDefault(e => e.ReservationTable.EqualsIgnoreCase(table.TableName)) is { } entry && Resolve(entry, project, database, out _) is { } shape ? shape : null;
 
+    /// <summary> Whether the API frees the holds that have run out on its own: <c>StockSweepMinutes</c> is set and some stock table resolves. </summary>
+    public static bool HasSweep(DatabaseModel database, ProjectSettings project) =>
+        project.StockSweepMinutes > 0 && database.Tables.Any(t => ForLedger(t, project, database) is not null);
+
+    /// <summary> The ledger tables whose holds the sweep frees, in table order. </summary>
+    public static IEnumerable<TableModel> SweptLedgers(DatabaseModel database, ProjectSettings project) =>
+        database.Tables.Where(t => ForLedger(t, project, database) is not null).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase);
+
     public static List<string> Problems(DatabaseModel database, ProjectSettings project)
     {
         var problems = new List<string>();
+        if (project.StockSweepMinutes > 0 && Entries(project).Count == 0)
+            problems.Add("StockSweepMinutes needs StockTables: there are no holds to free.");
         foreach (var entry in Entries(project))
         {
             Resolve(entry, project, database, out string? problem);

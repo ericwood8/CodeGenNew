@@ -94,7 +94,8 @@ public static class RustStockWriter
             ? $"INSERT INTO {level.Table} ({lvItem}, {lvOn}, {lvRes}) VALUES ({P(1)}, {P(2)}, 0)"
             : $"INSERT INTO {level.Table} ({lvItem}, {lvOn}, {lvRes}, {lvReorder}) VALUES ({P(1)}, {P(2)}, 0, 0)";
 
-        return TemplateText.FillAll(CodeText, [
+        return TemplateText.FillAll(project.StockSweepMinutes > 0 ? CodeText + "\n" + SweepText : CodeText, [
+            ("§SWEEP", project.StockSweepMinutes.ToString()),
             ("§SQL_LEVEL_ALL", RustTable.Raw($"SELECT {big(lvItem)}, {big(lvOn)}, {big(lvRes)} FROM {level.Table}")),
             ("§SQL_LEVEL", RustTable.Raw($"SELECT {big(lvOn)}, {big(lvRes)}, {reorderBig} FROM {level.Table} WHERE {lvItem} = {P(1)}")),
             ("§SQL_ITEM", RustTable.Raw($"SELECT COUNT(*) FROM {items.Table} WHERE {Q(s.ItemKey)} = {P(1)}")),
@@ -117,6 +118,28 @@ public static class RustStockWriter
             ("§CLIP", refMax > 0 ? $"text.chars().take({refMax}).collect::<String>()" : "text.to_string()"), ("§MINUTES", project.StockHoldMinutes.ToString()),
             ("§HOLDREFNOTE", ""), .. Words()]);
     }
+
+    /// <summary> The function main.rs reaches through routes::start_background for the sweep (StockSweepMinutes). </summary>
+    public const string SweepFunction = "start_stock_sweep";
+
+    private const string SweepText = """"
+
+const STOCK_SWEEP_MINUTES: u64 = §SWEEP;
+
+/// Frees the holds that have run out every STOCK_SWEEP_MINUTES minutes (StockSweepMinutes); the first run is one interval after the start. Run it in one instance of the API only.
+pub fn start_stock_sweep(pool: Pool) {
+    tokio::spawn(async move {
+        let every = std::time::Duration::from_secs(STOCK_SWEEP_MINUTES * 60);
+        let mut timer = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+        loop {
+            timer.tick().await;
+            if expire_holds(&pool, None).await.is_err() {
+                eprintln!("The scheduled stock sweep failed.");
+            }
+        }
+    });
+}
+"""";
 
     private const string LevelText = """"
 fn check_stock_new(row: &§STRUCT) -> ApiResult<()> {

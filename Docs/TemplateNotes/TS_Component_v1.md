@@ -135,3 +135,5 @@ A whole-number or text key the person gives a new row that is also a foreign key
 `InstallmentTables`: the screen of an installment table has a document box, a `Show schedule` button and an answer line, and a spec of them (`PaymentScreens`).
 
 `LedgerTables`: the screen of a ledger table has a document box, a `Show paid` button and the answer, and a spec that asks for what a document has been paid over the service's `paid` call (`PaymentScreens.AngularBox`, `AngularHandlers` and `AngularBoxTest` with `PaymentScreens.Paid`).
+
+`StockTables`: the list of the stock ledger has the stock box (`StockScreens.AngularBox`) and its handlers; a stock-take reads the list again.

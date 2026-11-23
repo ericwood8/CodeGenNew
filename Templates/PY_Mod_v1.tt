@@ -92,11 +92,18 @@
             Line($"    {module}.public_router,");
         Line("]");
     }
-    if (Project.WantsUsageSchedule)
+    if (Project.WantsSchedule)
     {
+        var jobs = new List<string>();
+        if (Project.WantsUsageSchedule && UsagePlan.HasSchedule(Database, Project))
+            jobs.Add("usage.roll_up_every");
+        if (Project.WantsStockSchedule && StockPlan.HasSweep(Database, Project))
+            foreach (var ledger in StockPlan.SweptLedgers(Database, Project))
+                if (tables.FirstOrDefault(t => t.Class == PythonTable.Of(ledger, Project).Class) is { } swept)
+                    jobs.Add($"{swept.Module}.{PythonStockWriter.SweepJob}");
         Line();
-        Line("# Jobs main.py runs while the API is up (UsageRollupHours).");
-        Line(UsagePlan.HasSchedule(Database, Project) ? "startup = [usage.roll_up_every]" : "startup = []");
+        Line("# Jobs main.py runs while the API is up (UsageRollupHours, StockSweepMinutes).");
+        Line($"startup = [{string.Join(", ", jobs)}]");
     }
     Write(sb.ToString());
 #>

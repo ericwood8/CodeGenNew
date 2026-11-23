@@ -47,3 +47,5 @@ Not written: calls for extra routes a hand-written API adds (DepartmentService.g
 The service is `export class HolidayService extends NamedCrudService<Holiday>` (`CrudService` when the table has no NOT NULL text Name; a uniqueidentifier or text key adds `, string`, and a text key is never on `NamedCrudService`). It names the route and keeps the typed `getPage(pageNumber, pageSize, <filters>, sortBy, sortDescending)`, which calls the base's `searchPage`. getAll, getById, create, update, delete, clone and findByName are the base's (crud.service.ts, written by the Crud essentials group; see TS_EssentialCrud_v1.md), so the service file is about twenty lines. findByName is generated for a NOT NULL text Name only, the same condition as the repository's GetByName and the API's `GET <route>/{name}`.
 
 `LedgerTables`: the service of a ledger table has `paid(document)` over the table's `paid` route (`PaymentScreens.AngularServiceLines` with `PaymentScreens.Paid`).
+
+`StockTables`: the service of the stock ledger has `stockAvailable`, `stockAdjust` and `stockLow`.

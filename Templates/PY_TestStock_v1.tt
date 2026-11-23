@@ -1,0 +1,19 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestStock_v1.tt
+    // Generates: tests/conftest.py and tests/test_stock.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of what PY_Routes writes for StockTables. conftest.py is the one PY_TestApprovals writes (the application over a scratch database). test_stock.py adds an item of its own to each case and plays the routes of the
+    // stock ledger: a receipt, a reservation that takes stock out of what is available, a commit, a release, a stock-take and the check of the level against the ledger. The words are StockWords.
+    // Written only for a project with PythonTests=true and a stock table the tests can fill (StockTestPlan); not for SQL Server.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (PythonStockTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/conftest.py@@@\n" + PythonApprovalTests.Conftest(Project, Database.Dialect));
+        Write("@@@FILE tests/test_stock.py@@@\n" + PythonStockTests.File(Database, Project));
+    }
+#>

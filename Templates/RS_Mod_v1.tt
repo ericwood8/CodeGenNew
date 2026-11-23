@@ -98,12 +98,22 @@
             Line($"        .merge({m}::public_router())");
         Line("}");
     }
-    if (Project.WantsUsageSchedule)
+    if (Project.WantsSchedule)
     {
+        var starts = new List<string>();
+        if (Project.WantsUsageSchedule && UsagePlan.HasSchedule(Database, Project) && routeModules.Contains("usage"))
+            starts.Add("usage::start_roll_up");
+        if (Project.WantsStockSchedule && StockPlan.HasSweep(Database, Project))
+            foreach (var ledger in StockPlan.SweptLedgers(Database, Project))
+                if (routeModules.Contains(RustTable.Of(ledger, Project).Module))
+                    starts.Add($"{RustTable.Of(ledger, Project).Module}::{RustStockWriter.SweepFunction}");
         Line();
-        Line("/// Starts the work that runs while the API is up (UsageRollupHours).");
+        Line("/// Starts the work that runs while the API is up (UsageRollupHours, StockSweepMinutes).");
         Line("pub fn start_background(pool: Pool) {");
-        Line(UsagePlan.HasSchedule(Database, Project) && routeModules.Contains("usage") ? "    usage::start_roll_up(pool);" : "    let _ = pool;");
+        if (starts.Count == 0)
+            Line("    let _ = pool;");
+        for (int i = 0; i < starts.Count; i++)
+            Line($"    {starts[i]}({(i == starts.Count - 1 ? "pool" : "pool.clone()")});");
         Line("}");
     }
     Write(sb.ToString());

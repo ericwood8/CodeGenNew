@@ -283,6 +283,8 @@ public static class DefaultAssetSeeder
         "RS_TestRates_v1.tt", "RS_TestRates_v1.tt.config",
         "RS_TestLedger_v1.tt", "RS_TestLedger_v1.tt.config",
         "PY_TestLedger_v1.tt", "PY_TestLedger_v1.tt.config",
+        "RS_TestStock_v1.tt", "RS_TestStock_v1.tt.config",
+        "PY_TestStock_v1.tt", "PY_TestStock_v1.tt.config",
         "RS_TestTax_v1.tt", "RS_TestTax_v1.tt.config",
         "RS_TestAllowance_v1.tt", "RS_TestAllowance_v1.tt.config",
         "PY_TestAllowance_v1.tt", "PY_TestAllowance_v1.tt.config",

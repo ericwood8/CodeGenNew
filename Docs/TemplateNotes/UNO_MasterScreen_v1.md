@@ -17,3 +17,5 @@ Add and Edit open `UNO_DetailScreen`'s dialog, or `UNO_DetailMasterScreen`'s for
 `InstallmentTables`: the bar of an installment table has a document box and a `Show schedule` button that ask the API client (`ScheduleAsync`); the answer is shown beside the button.
 
 `LedgerTables`: the bar of a ledger table has a document box and a `Show paid` button that answer what the document has been paid over the client's `PaidAsync` (`PaymentScreens.DesktopBox`, `DesktopHandlers`, `DesktopMembers` and `UnoRead` with `PaymentScreens.Paid`).
+
+`StockTables`: the list of the stock ledger has the stock bar (two boxes, `Show stock`, `Stock-take`, `Low stock`) over the API client.

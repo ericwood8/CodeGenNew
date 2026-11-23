@@ -63,3 +63,5 @@ A table with a NOT NULL `Name` and `IsActive` gets a module too: `getAll`, `getA
 With `ApiAuth=true` and a `GuardedColumns` rule that names this table the module also has `getGuards()` (`GET <route>/guards`: which guarded columns the signed-in person may change); the page reads it (see `TSX_Page_v1.md`).
 
 `LedgerTables`: the api object of a ledger table has `paid(document)` over the table's `paid` route (`PaymentScreens.ReactApiLine(PaymentScreens.Paid)`).
+
+`StockTables`: the api module of the stock ledger has `stockAvailable`, `stockAdjust` and `stockLow`.

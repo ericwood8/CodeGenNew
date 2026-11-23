@@ -15,3 +15,5 @@ For a table with a `GuardedColumns` rule (`ApiAuth=true`) the class also has `Ge
 `InstallmentTables`: the client has `ScheduleAsync(document)` over the table's REST route.
 
 `LedgerTables`: the client of a ledger table has `PaidAsync` over the table's `paid` route (`PaymentScreens.CsClientLines`).
+
+`StockTables`: the client of the stock ledger has `StockAvailableAsync`, `StockAdjustAsync` and `StockLowAsync`.

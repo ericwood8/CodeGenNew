@@ -178,6 +178,12 @@
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
 
     Line($"@@@FILE app/routes/{t.Module}.py@@@");
+    bool stockSweep = stockNames is { SweepMinutes: > 0 };   // StockSweepMinutes: the module also holds the job that frees the holds that ran out
+    if (stockSweep)
+    {
+        Line("import asyncio");
+        Line("import logging");
+    }
     if (contentNames is not null)
         Line("import unicodedata");
     var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true
@@ -291,7 +297,7 @@
             gateNames.Add($"may_{t.Module}_{t.SchemaFields.First(f => f.Column.Name.EqualsIgnoreCase(hint.Column)).Name}");
         Line("from app.gates import " + string.Join(", ", gateNames.OrderBy(n => n, StringComparer.Ordinal)));
     }
-    Line("from app.db import get_session");
+    Line(stockSweep ? "from app.db import SessionLocal, get_session" : "from app.db import get_session");
     if (tenanted)
     {
         var tenancyNames = tenantTable

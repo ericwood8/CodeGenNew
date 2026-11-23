@@ -22,7 +22,7 @@
     if (stacks.Count == 0) stacks = ["React"];
     string origins = string.Join(", ", stacks.Select(s => Str($"http://localhost:{Project.DevPort(s)}")));
     bool auth = Project.ApiAuth;
-    bool schedule = Project.WantsUsageSchedule;
+    bool schedule = Project.WantsSchedule;
 #>
 @@@FILE app/__init__.py@@@
 # The generated API: app.main is the FastAPI application (uvicorn app.main:app).
@@ -392,7 +392,7 @@ signing_key()   # stops the start-up when Jwt__Key is missing or shorter than 32
 <# if (schedule) { #>
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Starts the jobs of the routes (the scheduled roll-up of the usage ledger, UsageRollupHours) and stops them with the API."""
+    """Starts the jobs of the routes (the scheduled roll-up of the usage ledger, UsageRollupHours, and the sweep of the stock holds, StockSweepMinutes) and stops them with the API."""
     tasks = [asyncio.create_task(job()) for job in getattr(routes, "startup", [])]
     yield
     for task in tasks:

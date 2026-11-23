@@ -159,8 +159,8 @@ pub async fn serve(listener: tokio::net::TcpListener, frontend: Option<PathBuf>)
     }
 #>
     let pool = support::connect().await?;
-<# if (Project.WantsUsageSchedule) { #>
-    routes::start_background(pool.clone());   // UsageRollupHours
+<# if (Project.WantsSchedule) { #>
+    routes::start_background(pool.clone());   // UsageRollupHours, StockSweepMinutes
 <# } #>
 <#
     if (auth || Project.InboundClientTables.Length > 0)

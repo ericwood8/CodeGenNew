@@ -27,3 +27,5 @@ The Python and Rust APIs do not serve OData; the menu lists a table for the log 
 Checked with `Docs/Verification/Tools/Schemas/log_table.sql`: the API over a scratch SQLite copy (newest first, the range, 405, the export), React, Angular and Blazor in a browser and WinUI3 with UI Automation (a range of two days over 60 rows lists 7), and the generated tests of each. The Python API was run over the same file with rows on both sides of a day boundary and the Rust crate's generated tests were run over it; the generated React, Angular and Blazor tests (View included) pass and the WinUI3 app builds. The View dialogs were not opened in a browser or in the desktop apps.
 
 `LedgerTables`: the page of a ledger table has a document box and a `Show paid` button that answer what the document has been paid over the table's `paid` route, and a test that asks for it (`PaymentScreens.ReactHandlers`, `ReactBox` and `ReactBoxTests` with `PaymentScreens.Paid`).
+
+`StockTables`: the page of the stock ledger has the stock box (`StockScreens.ReactBox`): item and counted boxes, `Show stock`, `Stock-take` (reads the list again) and `Low stock`, with a vitest test.

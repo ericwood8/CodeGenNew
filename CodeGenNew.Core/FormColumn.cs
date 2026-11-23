@@ -1,5 +1,6 @@
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Rate;
+using CodeGenNew.Core.Stock;
 using CodeGenNew.Core.Tax;
 using CodeGenNew.Core.Totals;
 
@@ -31,7 +32,7 @@ public sealed class FormColumn
 
     // The editor a column gets on the form. The order is the rule every stack follows: the first that fits wins.
     private FieldKind Editor => _editor ??=
-        Column.IsSystemStampColumn || _form.IsGuardStamp(Column) || ContentScreens.IsStateColumn(_form.Table, _project, Column) || DefaultRowScreens.IsFlagColumn(_form.Table, _project, Column) || SnapshotPlan.IsOwnedColumn(_form.Table, _project, Column) || RateDocumentPlan.IsOwnedColumn(_form.Table, _project, Column) || TaxLinePlan.IsOwnedColumn(_form.Table, _project, Column) || DocumentTotalsPlan.IsOwnedColumn(_form.Table, _project, Column) || AssetScreens.IsUploadColumn(_form.Table, _project, Column) ? FieldKind.SystemStamp
+        Column.IsSystemStampColumn || _form.IsGuardStamp(Column) || ContentScreens.IsStateColumn(_form.Table, _project, Column) || DefaultRowScreens.IsFlagColumn(_form.Table, _project, Column) || SnapshotPlan.IsOwnedColumn(_form.Table, _project, Column) || RateDocumentPlan.IsOwnedColumn(_form.Table, _project, Column) || TaxLinePlan.IsOwnedColumn(_form.Table, _project, Column) || DocumentTotalsPlan.IsOwnedColumn(_form.Table, _project, Column) || AssetScreens.IsUploadColumn(_form.Table, _project, Column) || StockPlan.IsManagedQuantity(_form.Table.TableName, Column.Name, _project) ? FieldKind.SystemStamp
         : _form.TypedKey && Column.IsPrimaryKey && _form.LookupOf(Column) is not null ? FieldKind.Lookup
         : _form.TypedKey && Column.IsPrimaryKey ? (_form.TextKey ? FieldKind.TypedKey : FieldKind.TypedNumberKey)
         : _form.LookupOf(Column) is not null ? FieldKind.Lookup

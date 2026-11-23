@@ -8,7 +8,7 @@ public static class PythonStockWriter
 {
     /// <summary> The Python names the stock routes of a ledger table need. </summary>
     public sealed record Names(PythonTable Ledger, PythonTable Level, PythonTable Hold, PythonTable Items, string LvItem, string LvOn, string LvRes, string? LvReorder, string ItemAnn, string ItemKey, string LgItem, string LgKind, string LgQty, string LgStamp,
-        string? LgRef, string? LgExpires, string HKey, string HKeyAnn, string HItem, string HQty, string HStatus, string HCreated, string HExpires, string? HResolved, string? HRef, string Now, int RefMax, int HoldMinutes)
+        string? LgRef, string? LgExpires, string HKey, string HKeyAnn, string HItem, string HQty, string HStatus, string HCreated, string HExpires, string? HResolved, string? HRef, string Now, int RefMax, int HoldMinutes, int SweepMinutes = 0)
     {
         /// <summary> The tables whose model the routes read. </summary>
         public IEnumerable<PythonTable> Related => new[] { Level, Hold, Items }.DistinctBy(t => t.Class).Where(t => t.Class != Ledger.Class);
@@ -33,7 +33,7 @@ public static class PythonStockWriter
         return new Names(ledger, level, hold, items, level.FieldOf(stock.Item).Name, level.FieldOf(stock.OnHand).Name, level.FieldOf(stock.Reserved).Name, stock.Reorder is null ? null : level.FieldOf(stock.Reorder).Name, level.FieldOf(stock.Item).Annotation,
             items.FieldOf(stock.ItemKey).Name, ledger.FieldOf(l.Item).Name, ledger.FieldOf(l.Kind).Name, ledger.FieldOf(l.Quantity).Name, ledger.FieldOf(l.Stamp).Name, l.Reference is null ? null : ledger.FieldOf(l.Reference).Name,
             l.Expires is null ? null : ledger.FieldOf(l.Expires).Name, hold.FieldOf(h.Key).Name, hold.FieldOf(h.Key).Annotation, hold.FieldOf(h.Item).Name, hold.FieldOf(h.Quantity).Name, hold.FieldOf(h.Status).Name, hold.FieldOf(h.Created).Name, hold.FieldOf(h.Expires).Name,
-            h.Resolved is null ? null : hold.FieldOf(h.Resolved).Name, h.Reference is null ? null : hold.FieldOf(h.Reference).Name, "datetime.now()", refMax, project.StockHoldMinutes);
+            h.Resolved is null ? null : hold.FieldOf(h.Resolved).Name, h.Reference is null ? null : hold.FieldOf(h.Reference).Name, "datetime.now()", refMax, project.StockHoldMinutes, project.StockSweepMinutes);
     }
 
     public static LevelNames? LevelFor(StockShape? stock, PythonTable level) =>
@@ -58,7 +58,29 @@ public static class PythonStockWriter
     public static string LevelHelper(LevelNames n) => TemplateText.Fill(LevelText, [("§ON", n.On), ("§RES", n.Res), .. Words()]);
 
     /// <summary> The request body, the helpers and the guarded updates, written before the routes of the ledger table. </summary>
-    public static string LedgerHelper(Names n) => Fill(HelperText, n);
+    public static string LedgerHelper(Names n) => Fill(n.SweepMinutes > 0 ? HelperText + "\n\n\n" + SweepText : HelperText, n);
+
+    /// <summary> The name of the job main.py starts for the sweep (StockSweepMinutes). </summary>
+    public const string SweepJob = "stock_sweep_every";
+
+    private const string SweepText = """"
+STOCK_SWEEP_MINUTES = §SWEEP
+
+
+def _sweep_once() -> None:
+    with SessionLocal() as session:
+        expire_holds(session)
+
+
+async def stock_sweep_every() -> None:
+    """Frees the holds that have run out every STOCK_SWEEP_MINUTES minutes (StockSweepMinutes); the first run is one interval after the start. Run it in one instance of the API only."""
+    while True:
+        await asyncio.sleep(STOCK_SWEEP_MINUTES * 60)
+        try:
+            await asyncio.to_thread(_sweep_once)
+        except Exception:
+            logging.getLogger("stock").exception("The scheduled stock sweep failed.")
+"""";
 
     public static string LedgerRoutes(Names n, string route, string readDepends, string userParameter, string writeDepends) =>
         Fill(RouteText, n, ("§ROUTE", route), ("§READ", readDepends), ("§USER", userParameter), ("§WRITE", writeDepends), ("§AVAILABLEROUTE", StockPlan.AvailableRoute), ("§LOWROUTE", StockPlan.LowRoute), ("§CHECKROUTE", StockPlan.CheckRoute),
@@ -73,7 +95,7 @@ public static class PythonStockWriter
         {
             ("§LEDGER", n.Ledger.Class), ("§LEVEL", n.Level.Class), ("§HOLD", n.Hold.Class), ("§ITEMS", n.Items.Class), ("§LVITEM", n.LvItem), ("§LVON", n.LvOn), ("§LVRES", n.LvRes), ("§ITEMANN", n.ItemAnn), ("§ITEMKEY", n.ItemKey),
             ("§LGITEM", n.LgItem), ("§LGKIND", n.LgKind), ("§LGQTY", n.LgQty), ("§LGSTAMP", n.LgStamp), ("§HKEYANN", n.HKeyAnn), ("§HKEY", n.HKey), ("§HITEM", n.HItem), ("§HQTY", n.HQty), ("§HSTATUS", n.HStatus), ("§HCREATED", n.HCreated), ("§HEXPIRES", n.HExpires),
-            ("§NOW", n.Now), ("§MINUTES", n.HoldMinutes.ToString()), ("§CLIP", clip),
+            ("§NOW", n.Now), ("§MINUTES", n.HoldMinutes.ToString()), ("§SWEEP", n.SweepMinutes.ToString()), ("§CLIP", clip),
             ("§REORDERVALUE", n.LvReorder is null ? "0" : $"{n.Level.Class}.{n.LvReorder}"), ("§REORDERATTR", n.LvReorder is null ? "0" : "row." + n.LvReorder), ("§REORDERINIT", n.LvReorder is null ? "" : $", {n.LvReorder}=0"),
             ("§LEDGERREFNOTE", ledgerRef("note")), ("§LEDGERREFREF", ledgerRef("reference")), ("§LEDGERREFSTOCKTAKE", ledgerRef("reference or \"stock-take\"")),
             ("§LEDGEREXPIRES", n.LgExpires is null ? "" : $", {n.LgExpires}=expires"), ("§HOLDREF", holdRef),

@@ -352,8 +352,8 @@ public static class RowShapeWriter
 
         if (StockPlan.ForLedger(table, project, database) is { } stockLedger)
         {
-            o.Append(StockWriter.Code(stockLedger, contextType, project.StockHoldMinutes));
-            maps.Append(Fill(StockWriter.MapLines(stockLedger)));
+            o.Append(StockWriter.Code(stockLedger, contextType, project.StockHoldMinutes, project.StockSweepMinutes));
+            maps.Append(Fill(StockWriter.MapLines(stockLedger, project.StockSweepMinutes > 0)));
         }
 
         if (StockPlan.ForLevel(table, project, database) is { } stockLevel)

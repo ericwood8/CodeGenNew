@@ -48,3 +48,7 @@ A table in `LogTables` (an insert-only ledger, `LogTablePlan`) gets the reading 
 `LedgerTables` is built here too: a ledger table is also a log table (reading routes only), and its router gets `check_ledger`, `POST <route>/record` (`record_transaction`, which writes the row with `repo::insert` and answers 201, or 200 with the stored row for a retry: `check_ledger` returns it) and `GET <route>/paid` (`paid_amount`); the amounts are worked out as `f64` and rounded to the scale of the total. The log router then imports `post`, `ApiJson`, `Db`, `created` and `Response` (`RustPaymentWriter.NamesFor` takes the ledger shape only for a log table).
 
 The names the tax, allowance and totals writers work from are built in Core, not in the template: `RustTaxWriter.NamesFor`, `RustAllowanceWriter.NamesFor` and `RustTotalsWriter.NamesFor` (one call per document shape) read the shape, the `RustTable` of each table and the dialect that quotes the column names, and the template only calls them.
+
+`StockTables` is built here too (`RustStockWriter`): the ledger table router gets the nine stock routes over raw sqlx statements in a transaction (numbers cast to 64-bit, times as naive date-times); the level table router gets `check_stock_new`, `check_stock_changes` and `check_stock_delete`.
+
+With `StockSweepMinutes` the ledger module also has `start_stock_sweep`, which `RS_Mod` calls from `start_background` (`expire_holds` every N minutes, the first run one interval after the start; run it in one instance only).

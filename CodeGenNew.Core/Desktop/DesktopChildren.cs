@@ -32,8 +32,9 @@ public sealed record DesktopChild(
     // two foreign keys of one child to the same parent (a component and an assembly, both products) need a names dictionary each
     private static bool SharesParent(ChildGrid grid, ChildLookup lookup) => grid.Lookups.Count(o => o.ParentTable == lookup.ParentTable) > 1;
 
+    // a log table (LogTables, queues, ledgers, stock ledgers and holds) is only read: it has a list page and no dialog of its own
     private static bool HasScreen(ChildGrid grid, ProjectSettings project) =>
-        project.Screens.Length > 0
+        LogTablePlan.IsListed(grid.Table, project) ? false : project.Screens.Length > 0
             ? project.Screens.Contains(grid.Table, StringComparer.OrdinalIgnoreCase)
             : grid.KeyName is not null && !grid.IsNameActive;
 

@@ -284,7 +284,7 @@ public static class StockScreens
         + $"                <Button Content=\"{ShowCaption}\" FontWeight=\"Bold\" Background=\"{{ThemeResource SystemControlBackgroundBaseLowBrush}}\" Click=\"OnShowStockClick\" />\n"
         + $"                <Button Content=\"{TakeCaption}\" FontWeight=\"Bold\" Background=\"{{ThemeResource SystemControlBackgroundBaseLowBrush}}\" Click=\"OnTakeStockClick\" />\n"
         + $"                <Button Content=\"{LowCaption}\" FontWeight=\"Bold\" Background=\"{{ThemeResource SystemControlBackgroundBaseLowBrush}}\" Click=\"OnShowLowClick\" />\n"
-        + $"                <TextBlock VerticalAlignment=\"Center\" AutomationProperties.Name=\"{ResultLabel}\" Text=\"{{x:Bind ViewModel.StockText, Mode=OneWay}}\" />\n";
+        + $"                <TextBlock VerticalAlignment=\"Center\" Text=\"{{x:Bind ViewModel.StockText, Mode=OneWay}}\" />\n";
 
     public static string DesktopHandlers() =>
         "    private async void OnShowStockClick(object sender, RoutedEventArgs e) => await ViewModel.ShowStockAsync();\n"

@@ -1,0 +1,19 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestStock_v1.tt
+    // Generates: tests/api/stock_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of what RS_Routes writes for StockTables, run in process over a scratch database like RS_Test. Each test adds an item of its own and plays the routes of the stock ledger: a receipt, a reservation that
+    // takes stock out of what is available, a commit, a release, a stock-take and the check of the level against the ledger. The words are StockWords.
+    // Written only for a project with RustTests=true and a stock table the tests can fill (StockTestPlan).
+    // Needs Client.start of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (RustStockTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/stock_routes.rs@@@\n" + RustStockTests.File(Database, Project));
+    }
+#>
