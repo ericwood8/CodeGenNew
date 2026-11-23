@@ -57,6 +57,8 @@
             foreach (string line in RateScreens.CsClientLines(type, BlazorNames.ApiRoute(table.TableName))) L(line);
         if (PriceScreens.HasBox(table, Project))
             foreach (string line in PriceScreens.CsClientLines(type, BlazorNames.ApiRoute(table.TableName))) L(line);
+        if (PaymentScreens.HasBox(table, Project))
+            foreach (string line in PaymentScreens.CsClientLines(BlazorNames.ApiRoute(table.TableName))) L(line);
         if (TaxScreens.HasBox(table, Project))
         {
             foreach (string line in TaxScreens.CsClientLines()) L(line);

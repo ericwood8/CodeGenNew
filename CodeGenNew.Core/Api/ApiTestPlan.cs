@@ -1,5 +1,6 @@
 using System.Globalization;
 using CodeGenNew.Core.Naming;
+using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Rate;
 
 namespace CodeGenNew.Core.Api;
@@ -38,8 +39,12 @@ public sealed class ApiTestPlan
         if (TableShapes.For(model, project).Effective is { } effective && !BodyColumns.Any(c => c.Name.EqualsIgnoreCase(effective.To.Name)))
             BodyColumns = BodyColumns.Append(effective.To).OrderBy(c => c.OrdinalPosition).ToList();
 
+        // BankAccountTables: a new row also sends its IBAN, or its account and routing number (each may allow NULL, but a row needs one of the two forms)
+        if (PaymentPlan.BankFor(model, project) is { } bank)
+            BodyColumns = BodyColumns.Concat(new[] { bank.Iban, bank.Account, bank.Routing }.OfType<ColumnModel>().Where(c => !BodyColumns.Any(b => b.Name.EqualsIgnoreCase(c.Name)))).OrderBy(c => c.OrdinalPosition).ToList();
+
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
-        Changed = BodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && !RatePlan.IsCurrency(model, c, project) && !RateDocumentPlan.IsCurrency(model, c, project))
+        Changed = BodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && PaymentPlan.BankSample(model, c, project) is null && !RatePlan.IsCurrency(model, c, project) && !RateDocumentPlan.IsCurrency(model, c, project))
             ?? BodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
             ?? BodyColumns.FirstOrDefault(HasRoomToGrow);
         ChangedJson = Changed is null ? "" : JsonNames.Camel(Changed.Name);
@@ -164,6 +169,8 @@ public sealed class ApiTestPlan
         }
         if (RateDocumentPlan.IsCurrency(_model, c, _project) && RateDocumentPlan.For(_model, _project) is { } rateDocument)
             return ApiSampleValues.Json(rateDocument.BaseCurrency);
+        if (PaymentPlan.BankSample(_model, c, _project) is { } account)
+            return ApiSampleValues.Json(account);
         if (IsFreeText(c))
             return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c, _project, _model.TableName))}, {c.CharacterLength})";
         string parentRoute = ParentRoute(c, out string parentKey);

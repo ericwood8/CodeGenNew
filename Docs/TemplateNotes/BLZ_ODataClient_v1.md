@@ -11,3 +11,5 @@ For a table with a `GuardedColumns` rule (`ApiAuth=true`) the class also has `Ge
 `RateTables`: the client of a rate table also has `RateOnAsync`, which asks the table's REST route for the page's rate lookup.
 
 `PriceListTables`: the client of a price table also has `PriceOnAsync`, which asks the table's REST route for the page's price lookup.
+
+`InstallmentTables`: the client has `ScheduleAsync(document)` over the table's REST route.

@@ -124,6 +124,8 @@
     var pricePlan = !log && !tenantTable ? PriceListPlan.For(Model, Project) : null;   // a table limited to an owner or a tenant: the lookup reads only the caller's rows
     var priceListTable = pricePlan is not null && tenanted && !tenantTable && !people && TenantPlan.OwnedBy(pricePlan.ListTable, Project) is not null ? RustTable.Of(pricePlan.ListTable, Project) : null;   // a row limited to a tenant may name only a list of the caller's tenant
     var priceOwnerList = pricePlan is not null && scoped && ownerField is not null && pricePlan.ListOwner is not null ? RustTable.Of(pricePlan.ListTable, Project) : null;   // a row with an owner column of its own may name only a list of the same owner
+    // BankAccountTables, InstallmentTables, PaymentTermsTables: a valid IBAN or account and routing number, installments that are numbered, in due order and within the total, and a due date worked out from the payment terms
+    var payNames = !log && !tenantTable ? RustPaymentWriter.NamesFor(PaymentPlan.BankFor(Model, Project), PaymentPlan.InstallmentFor(Model, Project), PaymentPlan.DueFor(Model, Project), t, Project, DialectInfo.For(Model.Dialect), keyType) : null;
     var priceNames = RustPriceWriter.NamesFor(pricePlan, t, pricePlan is null ? null : RustTable.Of(pricePlan.ListTable, Project), DialectInfo.For(Model.Dialect), keyType);
     // RateDocuments: the currency is trimmed and upper case, the rate in force on the day is fixed on create and kept while the currency and day stay, and the converted amount is the amount times the rate
     // TaxLines: the line carries the rate of its category, the tax is worked out, and GET tax-subtotals answers a document's tax by category
@@ -183,14 +185,14 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || priceNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null || effNames is not null || contentPlan is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
-    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || priceNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
+    bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
     Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
     if (roles || softAdmin)
         Line("    middleware,");
@@ -292,6 +294,8 @@
         sb.Append(RustRateWriter.RouteLine(t.Route, readLayer));
     if (priceNames is not null)
         sb.Append(RustPriceWriter.RouteLine(t.Route, readLayer));
+    if (payNames?.HasRoute == true)
+        sb.Append(RustPaymentWriter.RouteLine(t.Route, readLayer, payNames));
     if (taxNames?.Document is not null)
         sb.Append(RustTaxWriter.RouteLine(t.Route, readLayer));
     if (allowNames?.Document is not null)
@@ -333,6 +337,8 @@
         Line(RustRateWriter.Code(rateNames));
     if (priceNames is not null)
         Line(RustPriceWriter.Code(priceNames, scoped || tenanted ? userArgument : null, scoped || tenanted ? filterArguments : null));
+    if (payNames is not null)
+        Line(RustPaymentWriter.Code(payNames));
     if (docNames is not null)
         Line(RustRateDocumentWriter.Code(docNames));
     if (taxNames is not null)
@@ -545,7 +551,7 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null || priceNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null || priceNames is not null || payNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (tenantTable)
     {
         Line("    if !user.is_platform() {");
@@ -622,6 +628,8 @@
             Line(RustPriceWriter.ListLines(priceNames, priceListTable.Module, priceListTable.FieldOf(pricePlan!.ListKey).Name, tenancyArgument));
         Line("    check_price(&pool, None, &mut row).await?;");
     }
+    if (payNames is not null)
+        Line(RustPaymentWriter.CheckLine(payNames, false));
     if (docNames is not null)
         Line("    convert_currency(&pool, &mut row, None).await?;");
     if (taxNames is not null)
@@ -682,7 +690,7 @@
         Line("}");
         Line();
     }
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null || priceNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null || contentPlan is not null || assetPlan is not null || linkTable || defNames is not null || snapNames is not null || docNames is not null || taxNames is not null || allowNames is not null || idNames is not null || rateNames is not null || priceNames is not null || payNames is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
@@ -737,6 +745,8 @@
             Line(RustPriceWriter.ListLines(priceNames, priceListTable.Module, priceListTable.FieldOf(pricePlan!.ListKey).Name, tenancyArgument));
         Line("    check_price(&pool, Some(id), &mut row).await?;");
     }
+    if (payNames is not null)
+        Line(RustPaymentWriter.CheckLine(payNames, true));
     if (docNames is not null)
     {
         Line($"    let document_stored = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");

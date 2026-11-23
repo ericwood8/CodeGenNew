@@ -2,6 +2,7 @@ using System.Text;
 using CodeGenNew.Core.Allowance;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
@@ -207,6 +208,8 @@ public static class ApiClientCode
             foreach (string line in RateScreens.CsClientLines(type, "{Url}")) L(line);
         if (PriceScreens.HasBox(table, project))
             foreach (string line in PriceScreens.CsClientLines(type, "{Url}")) L(line);
+        if (PaymentScreens.HasBox(table, project))
+            foreach (string line in PaymentScreens.CsClientLines("{Url}")) L(line);
         if (TaxScreens.HasBox(table, project))
         {
             foreach (string line in TaxScreens.CsClientLines()) L(line);

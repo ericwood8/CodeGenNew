@@ -17,3 +17,5 @@ Every name is the JSON name the REST routes use, so the model (`models/<table>`)
 `RateTables`: the service of a rate table also has `rateOn`, which asks the table's REST route (`<restUrl>/rate`) for the screen's rate lookup.
 
 `PriceListTables`: the service of a price table also has `priceOn`, which asks the table's REST route (`<restUrl>/price`) for the screen's price lookup.
+
+`InstallmentTables`: the service has `schedule(document)` over the table's REST route.

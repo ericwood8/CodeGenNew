@@ -294,6 +294,9 @@
         var priceNames = !oneRow && PriceScreens.HasBox(Model, Project) ? PriceScreens.Names(Model, Project) : null;   // PriceListTables: a lookup of the price in force, over the REST route on the OData page too
         if (priceNames is { } priceHandlers)
             foreach (string line in PriceScreens.ReactHandlers(apiVar, priceHandlers)) T(line);
+        bool paymentBox = !oneRow && PaymentScreens.HasBox(Model, Project);   // InstallmentTables: what the installments of a document come to, over the REST route on the OData page too
+        if (paymentBox)
+            foreach (string line in PaymentScreens.ReactHandlers(apiVar)) T(line);
         bool taxBox = !oneRow && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate, over the REST route on the OData page too
         if (taxBox)
             foreach (string line in TaxScreens.ReactHandlers(apiVar)) T(line);
@@ -845,6 +848,8 @@
             foreach (string line in RateScreens.ReactBox()) T(line);
         if (priceNames is { } priceBox)
             foreach (string line in PriceScreens.ReactBox(priceBox)) T(line);
+        if (paymentBox)
+            foreach (string line in PaymentScreens.ReactBox()) T(line);
         if (taxBox)
             foreach (string line in TaxScreens.ReactBox()) T(line);
         if (allowBox)
@@ -1355,6 +1360,8 @@
             foreach (string line in RateScreens.ReactBoxTests(apiVar, pageName, rateTests)) S(line);
         if (priceNames is { } priceTests)
             foreach (string line in PriceScreens.ReactBoxTests(apiVar, pageName, priceTests)) S(line);
+        if (paymentBox)
+            foreach (string line in PaymentScreens.ReactBoxTests(apiVar, pageName)) S(line);
         if (taxBox)
             foreach (string line in TaxScreens.ReactBoxTests(apiVar, pageName)) S(line);
         if (allowBox)

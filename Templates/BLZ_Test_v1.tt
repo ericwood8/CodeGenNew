@@ -416,6 +416,8 @@
                 o.Append(RateScreens.BlazorBoxTest(RateScreens.Names(Model, Project)!.Value));
             if (!form.IsNameActive && PriceScreens.HasBox(Model, Project))
                 o.Append(PriceScreens.BlazorBoxTest(PriceScreens.Names(Model, Project)!.Value));
+            if (!form.IsNameActive && PaymentScreens.HasBox(Model, Project))
+                o.Append(PaymentScreens.BlazorBoxTest());
             if (!form.IsNameActive && TaxScreens.HasBox(Model, Project))
                 o.Append(TaxScreens.BlazorBoxTest());
             if (!form.IsNameActive && AllowanceScreens.HasBox(Model, Project))

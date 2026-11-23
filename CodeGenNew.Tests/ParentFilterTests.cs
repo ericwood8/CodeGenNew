@@ -148,7 +148,7 @@ public class ParentFilterTests
         string xaml = await Render("WinUI3_MasterScreen_v1.tt", Invoice(), project, "SalesInvoiceListPage.xaml");
         string vm = await Render("WinUI3_MasterScreen_v1.tt", Invoice(), project, "SalesInvoiceListViewModel.cs");
 
-        Expect.Contains(xaml, "AutomationProperties.Name=\"Filter by Customer\" ItemsSource=\"{x:Bind ViewModel.CustomerIdChoices}\"");
+        Expect.Contains(xaml, "AutomationProperties.Name=\"Filter by Customer\" PlaceholderText=\"All Customers\" ItemsSource=\"{x:Bind ViewModel.CustomerIdChoices}\"");
         Expect.Contains(xaml, "SelectedItem=\"{x:Bind ViewModel.CustomerIdFilter, Mode=TwoWay}\" SelectionChanged=\"OnKeyFilterChanged\"");
         Expect.Contains(vm, "public sealed record SalesInvoiceKeyChoice(object? Id, string Name);");
         Expect.Contains(vm, "customerId: CustomerIdFilter?.Id is null ? null : Convert.ToInt32(CustomerIdFilter.Id), invoiceStatusId: InvoiceStatusIdFilter?.Id is null ? null : Convert.ToByte(InvoiceStatusIdFilter.Id), pageNumber: PageNumber");

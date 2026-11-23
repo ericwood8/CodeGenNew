@@ -112,7 +112,7 @@ public static class RatePlan
     /// <summary> Keeps the database of a run for the templates that do not see the tables (the API's error answers). </summary>
     public static void Remember(DatabaseModel database, ProjectSettings project)
     {
-        if (project.RateTables.Length == 0 && project.PriceListTables.Length == 0 && project.TaxLines.Length == 0 && project.AllowanceCharges.Length == 0 && project.DocumentTotals.Length == 0)
+        if (project.RateTables.Length == 0 && project.PriceListTables.Length == 0 && project.BankAccountTables.Length == 0 && project.InstallmentTables.Length == 0 && project.PaymentTermsTables.Length == 0 && project.TaxLines.Length == 0 && project.AllowanceCharges.Length == 0 && project.DocumentTotals.Length == 0)
             return;
         Known.Remove(project);
         Known.Add(project, database);

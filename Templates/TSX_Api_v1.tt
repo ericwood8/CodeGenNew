@@ -194,6 +194,12 @@
             L("  // a price table (PriceListTables): the price in force for an item and a quantity");
             L(PriceScreens.ReactApiLine(baseName));
         }
+        if (PaymentScreens.HasBox(Model, Project))
+        {
+            L();
+            L("  // an installment table (InstallmentTables): what the installments of a document come to");
+            L(PaymentScreens.ReactApiLine());
+        }
         if (TaxScreens.HasBox(Model, Project))
         {
             L();

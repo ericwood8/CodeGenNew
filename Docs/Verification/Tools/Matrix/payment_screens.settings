@@ -1,0 +1,10 @@
+# the schedule box in every front end: python matrix_check.py Payments --settings-file Matrix/payment_screens.settings --frontend
+@schema=payments
+@stack=api,blazor,uno,winui3,react,angular
+BankAccountTables=PartyBankAccount
+InstallmentTables=PaymentInstallment:PayDocumentId:PayDocument:Total
+PaymentTermsTables=PaymentMeans:PayDocumentId:PayDocument:OrderedOn
+AccessMode=Ef
+ApiTests=true
+BlazorTests=true
+DesktopTests=true

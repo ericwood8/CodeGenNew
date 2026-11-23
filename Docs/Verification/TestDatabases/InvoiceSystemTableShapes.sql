@@ -765,7 +765,7 @@ CREATE TABLE dbo.PartyCommunication (
 );
 GO
 
--- Payment terms, bank accounts, means of payment and instalments
+-- Payment terms, bank accounts, means of payment and installments
 IF OBJECT_ID('dbo.PaymentTerms', 'U') IS NULL
 CREATE TABLE dbo.PaymentTerms (
     PaymentTermsId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PaymentTerms PRIMARY KEY,
@@ -806,8 +806,8 @@ CREATE TABLE dbo.PaymentMeans (
 );
 GO
 
-IF OBJECT_ID('dbo.PaymentInstalment', 'U') IS NULL
-CREATE TABLE dbo.PaymentInstalment (
+IF OBJECT_ID('dbo.PaymentInstallment', 'U') IS NULL
+CREATE TABLE dbo.PaymentInstallment (
     PaymentInstalmentId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PaymentInstalment PRIMARY KEY,
     SalesOrderId INT NOT NULL CONSTRAINT FK_PaymentInstalment_Order REFERENCES dbo.SalesOrder (SalesOrderId),
     SequenceNo INT NOT NULL CONSTRAINT CK_PaymentInstalment_Sequence CHECK (SequenceNo > 0),
@@ -1352,7 +1352,7 @@ INSERT INTO @ix (IndexName, TableName, Cols) VALUES
     ('IX_PaymentMeans_Order', 'PaymentMeans', 'SalesOrderId'),
     ('IX_PaymentMeans_Terms', 'PaymentMeans', 'PaymentTermsId'),
     ('IX_PaymentMeans_Account', 'PaymentMeans', 'PayeeBankAccountId'),
-    ('IX_PaymentInstalment_Due', 'PaymentInstalment', 'DueDate'),
+    ('IX_PaymentInstalment_Due', 'PaymentInstallment', 'DueDate'),
     ('IX_GoodsReceipt_Order', 'GoodsReceipt', 'SalesOrderId'),
     ('IX_GoodsReceiptLine_Line', 'GoodsReceiptLine', 'SalesOrderLineId'),
     ('IX_CreditNote_Invoice', 'CreditNote', 'SalesInvoiceId'),

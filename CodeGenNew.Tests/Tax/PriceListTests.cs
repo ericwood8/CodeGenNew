@@ -63,7 +63,7 @@ public class PriceListTests
     [DataRow("Missing", "is not a table of the database")]
     [DataRow("PriceListItem:Price", "whole-number column that cannot be NULL, of the same type as the key")]
     [DataRow("PriceListItem:PriceListId:Price", "must be a whole-number column")]
-    [DataRow("PriceListItem:PriceListId:ItemId:Nothing", "must be a number column")]
+    [DataRow("PriceListItem:PriceListId:ItemId:Nothing", "column that cannot be NULL")]
     [DataRow("PriceListItem:PriceListId:ItemId:MinQuantity:MinQuantity:PriceList", "must be four different columns")]
     [DataRow("PriceListItem:PriceListId:ItemId:MinQuantity:Price:Nothing", "is not a table of the database")]
     [DataRow("PriceListItem:PriceListId:ItemId:MinQuantity:Price:PriceList:Nothing:ValidFrom:ValidTo", "must be a text column that cannot be NULL")]

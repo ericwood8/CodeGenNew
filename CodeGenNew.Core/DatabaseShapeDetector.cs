@@ -1,6 +1,7 @@
 using CodeGenNew.Core.Allowance;
 using System.Text.RegularExpressions;
 using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
@@ -27,7 +28,7 @@ public static class DatabaseShapeDetector
         {
             foreach (var s in TableShapeDetector.Of(table, project))
                 yield return new(table.TableName, s);
-            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
+            foreach (var s in new[] { Polymorphic(table, database, project), Snapshot(table, database, project), Archive(table, database, project), Party(table, database, project), Rate(table, database, project), PriceList(table, database, project), BankAccount(table, database, project), Installments(table, database, project), PaymentMeans(table, database, project), TaxLine(table, database, project), Allowance(table, database, project),
                 Approval(table, database, project), RateDocument(table, database, project), DocumentTotals(table, database, project) })
                 if (s is not null)
                     yield return new(table.TableName, s);
@@ -222,6 +223,81 @@ public static class DatabaseShapeDetector
             return new ShapeSuggestion("Price lists with quantity breaks", "PriceListTables", entry, problem is null, problem is null ? why : $"{why}, but {problem}");
         }
         return null;
+    }
+
+    private static ColumnModel? FindColumn(IEnumerable<ColumnModel> columns, string[] names, Func<ColumnModel, bool> kind) => columns.FirstOrDefault(c => kind(c) && names.Any(n => c.Name.EqualsIgnoreCase(n)));
+
+    private static ShapeSuggestion? Payment(string setting, string title, string entry, string why, Func<ProjectSettings, List<string>> problems, string table, ProjectSettings project, string[] current)
+    {
+        var listed = project.WithOverrides([new(setting, string.Join(",", current.Append(entry)))]);
+        string? problem = problems(listed).FirstOrDefault(p => p.StartsWith($"{setting}: {table}", StringComparison.OrdinalIgnoreCase));
+        return new ShapeSuggestion(title, setting, entry, problem is null, problem is null ? why : $"{why}, but {problem}");
+    }
+
+    /// <summary> A bank account: a text column that holds an IBAN. </summary>
+    private static ShapeSuggestion? BankAccount(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (PaymentPlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        var iban = FindColumn(table.Columns, [PaymentPlan.DefaultIban, "IbanNumber", "IbanCode"], c => c.IsStringColumn);
+        if (iban is null)
+            return null;
+        string entry = iban.Name.EqualsIgnoreCase(PaymentPlan.DefaultIban) ? table.TableName : $"{table.TableName}:{iban.Name}";
+        return Payment("BankAccountTables", "Bank accounts with a checked IBAN", entry, $"{iban.Name} holds an IBAN, which has a length and a check digit to verify", p => PaymentPlan.Problems(database, p), table.TableName, project, project.BankAccountTables);
+    }
+
+    private static readonly string[] DocumentTotalNames = ["Total", "TotalAmount", "GrandTotal", "PayableAmount", "AmountDue", "DocumentTotal"];
+    private static readonly string[] DocumentDateNames = ["OrderedOn", "PlacedOn", "IssueDate", "InvoiceDate", "DocumentDate", "OrderDate", "IssuedOn"];
+
+    /// <summary> An installment: a number, a due date and an amount, with a key to a document that has a total. </summary>
+    private static ShapeSuggestion? Installments(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (PaymentPlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        var seq = FindColumn(table.Columns, [PaymentPlan.DefaultSequence, "InstallmentNo", "InstallmentNo", "InstallmentNumber"], c => !c.IsNullable && c.IsIntegerColumn);
+        var due = FindColumn(table.Columns, [PaymentPlan.DefaultDue, "DueOn"], c => !c.IsNullable && c.IsLocalDateColumn);
+        var amount = FindColumn(table.Columns, [PaymentPlan.DefaultAmount, "InstallmentAmount", "InstallmentAmount"], c => !c.IsNullable && c.IsFractionalColumn);
+        if (seq is null || due is null || amount is null)
+            return null;
+        foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !f.ReferencedTable.EqualsIgnoreCase(table.TableName)))
+        {
+            if (database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable)) is not { } documents)
+                continue;
+            var total = FindColumn(documents.Columns, DocumentTotalNames, c => !c.IsNullable && c.IsFractionalColumn);
+            if (total is null)
+                continue;
+            bool plain = seq.Name.EqualsIgnoreCase(PaymentPlan.DefaultSequence) && due.Name.EqualsIgnoreCase(PaymentPlan.DefaultDue) && amount.Name.EqualsIgnoreCase(PaymentPlan.DefaultAmount);
+            string entry = $"{table.TableName}:{fk.ReferencingColumns[0]}:{documents.TableName}:{total.Name}" + (plain ? "" : $":{seq.Name}:{due.Name}:{amount.Name}");
+            return Payment("InstallmentTables", "Installment schedules", entry, $"{fk.ReferencingColumns[0]} points at {documents.TableName}, which has a total, and {seq.Name} with {due.Name} and {amount.Name} look like installments", p => PaymentPlan.Problems(database, p), table.TableName, project, project.InstallmentTables);
+        }
+        return null;
+    }
+
+    /// <summary> A payment means row: a key to a document that has a date, a key to payment terms that have days to pay, and a due date that may be empty. </summary>
+    private static ShapeSuggestion? PaymentMeans(TableModel table, DatabaseModel database, ProjectSettings project)
+    {
+        if (PaymentPlan.IsListed(table.TableName, project) || table.PrimaryKeyColumns is not [{ IsIntegerColumn: true }])
+            return null;
+        var due = FindColumn(table.Columns, [PaymentPlan.DefaultDue, "DueOn"], c => c.IsNullable && c.IsLocalDateColumn);
+        if (due is null)
+            return null;
+        TableModel? terms = null, documents = null;
+        string? termsColumn = null, documentColumn = null;
+        ColumnModel? days = null, date = null;
+        foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !f.ReferencedTable.EqualsIgnoreCase(table.TableName)))
+        {
+            if (database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable)) is not { } other)
+                continue;
+            if (terms is null && FindColumn(other.Columns, [PaymentPlan.DefaultDays, "NetDays", "DueDays"], c => !c.IsNullable && c.IsIntegerColumn) is { } d)
+                (terms, termsColumn, days) = (other, fk.ReferencingColumns[0], d);
+            else if (documents is null && FindColumn(other.Columns, DocumentDateNames, c => !c.IsNullable && c.IsLocalDateColumn) is { } dt)
+                (documents, documentColumn, date) = (other, fk.ReferencingColumns[0], dt);
+        }
+        if (terms is null || documents is null || days is null || date is null)
+            return null;
+        bool plain = termsColumn!.EqualsIgnoreCase(PaymentPlan.DefaultTerms) && due.Name.EqualsIgnoreCase(PaymentPlan.DefaultDue) && terms.TableName.EqualsIgnoreCase(PaymentPlan.DefaultTermsTable) && days.Name.EqualsIgnoreCase(PaymentPlan.DefaultDays);
+        string entry = $"{table.TableName}:{documentColumn}:{documents.TableName}:{date.Name}" + (plain ? "" : $":{termsColumn}:{due.Name}:{terms.TableName}:{days.Name}");
+        return Payment("PaymentTermsTables", "Due date from payment terms", entry, $"{termsColumn} points at {terms.TableName}, which has days to pay, and {due.Name} can be worked out from the date of {documents.TableName}", p => PaymentPlan.Problems(database, p), table.TableName, project, project.PaymentTermsTables);
     }
 
     /// <summary> A document line with a key to a tax category table, a tax rate, a taxable amount and a tax amount. </summary>

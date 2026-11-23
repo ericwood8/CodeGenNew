@@ -1,3 +1,4 @@
+using CodeGenNew.Core.Payment;
 using System.Text;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Naming;
@@ -82,7 +83,11 @@ public sealed class DesktopTestPlan
             }
         }
         string key = ApiSampleValues.SampleId(table);
-        var members = ApiSampleValues.BodyColumns(table).Where(c => !c.IsRowVersionColumn && !c.IsCredentialColumn).Select(c => ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (c.IsPrimaryKey ? (c.IsIntegerColumn ? key : ApiSampleValues.Json(key)) : c.ValidExample(project, table.TableName)));
+        // BankAccountTables: a saved row carries an IBAN, or an account and routing number, that pass the checks (each column may allow NULL)
+        var bodyColumns = ApiSampleValues.BodyColumns(table);
+        if (PaymentPlan.BankFor(table, project) is { } bank)
+            bodyColumns = bodyColumns.Concat(new[] { bank.Iban, bank.Account, bank.Routing }.OfType<ColumnModel>().Where(c => !bodyColumns.Any(b => b.Name.EqualsIgnoreCase(c.Name)))).OrderBy(c => c.OrdinalPosition).ToList();
+        var members = bodyColumns.Where(c => !c.IsRowVersionColumn && !c.IsCredentialColumn).Select(c => ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (c.IsPrimaryKey ? (c.IsIntegerColumn ? key : ApiSampleValues.Json(key)) : PaymentPlan.BankSample(table, c, project) is { } account ? ApiSampleValues.Json(account) : c.ValidExample(project, table.TableName)));
         string? categoryJson = null, categoryEntity = null;
         // TaxLines: a save writes the rate of the line's category and the tax from it, so the sample row carries no category (when it may) and rate and tax 0, which is what a save leaves
         var taxEntry = TaxLinePlan.Entries(project).FirstOrDefault(e => e.Table.EqualsIgnoreCase(table.TableName) && e.Category is not null && e.Rate is not null && e.Tax is not null);

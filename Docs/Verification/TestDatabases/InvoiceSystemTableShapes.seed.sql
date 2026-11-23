@@ -442,7 +442,7 @@ SELECT p.PartyId, c.PartyContactId, v.H, v.V, v.P FROM (VALUES
 JOIN dbo.Party p ON p.LegalName = v.L LEFT JOIN dbo.PartyContact c ON c.PartyId = p.PartyId AND c.ContactName = v.CN
 WHERE NOT EXISTS (SELECT 1 FROM dbo.PartyCommunication x WHERE x.PartyId = p.PartyId AND x.Channel = v.H AND x.ChannelValue = v.V);
 
--- Payment terms, bank accounts, means of payment and instalments
+-- Payment terms, bank accounts, means of payment and installments
 INSERT INTO dbo.PaymentTerms (Code, Name, DaysToPay, EarlyDiscountPercent, EarlyDiscountDays, LatePenaltyPercent)
 SELECT v.C, v.N, v.D, v.P, v.E, v.L FROM (VALUES
     ('NET30', 'Net 30 days', 30, NULL, NULL, 1.50), ('2/10NET30', '2% in 10 days, net 30', 30, 2.00, 10, 1.50), ('NET60', 'Net 60 days', 60, NULL, NULL, 1.00), ('COD', 'Cash on delivery', 0, NULL, NULL, NULL)) v (C, N, D, P, E, L)
@@ -461,9 +461,9 @@ SELECT v.O, t.PaymentTermsId, v.M, v.D, a.PartyBankAccountId, v.R FROM (VALUES
 JOIN dbo.PaymentTerms t ON t.Code = v.T LEFT JOIN dbo.Party p ON p.LegalName = v.P LEFT JOIN dbo.PartyBankAccount a ON a.PartyId = p.PartyId
 WHERE v.O IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.PaymentMeans x WHERE x.PaymentReference = v.R);
 
-INSERT INTO dbo.PaymentInstalment (SalesOrderId, SequenceNo, DueDate, Amount)
+INSERT INTO dbo.PaymentInstallment (SalesOrderId, SequenceNo, DueDate, Amount)
 SELECT v.O, v.S, v.D, v.A FROM (VALUES (@o1, 1, '2026-12-01', 50.00), (@o1, 2, '2027-01-01', 50.00), (@o1, 3, '2027-02-01', 50.00)) v (O, S, D, A)
-WHERE v.O IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.PaymentInstalment x WHERE x.SalesOrderId = v.O AND x.SequenceNo = v.S);
+WHERE v.O IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.PaymentInstallment x WHERE x.SalesOrderId = v.O AND x.SequenceNo = v.S);
 
 -- Receipts, credit and debit notes, references and responses
 INSERT INTO dbo.GoodsReceipt (SalesOrderId, ReceivedOn, ReceivedBy, Note)

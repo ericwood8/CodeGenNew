@@ -169,6 +169,8 @@
     // DocumentTotals: the header's totals are written from its lines, its tax and its allowance rows in the same flush, and GET document-totals-check lists the headers that differ
     var totalsPlan = log || tenantTable ? null : DocumentTotalsPlan.For(Model, Project);   // a table with its own owner or tenant column: the check route is limited to the caller's rows
     var totalsNames = PythonTotalsWriter.NamesFor(totalsPlan, t, Project);
+    // BankAccountTables, InstallmentTables, PaymentTermsTables: a valid IBAN or account and routing number, installments that are numbered, in due order and within the total, and a due date worked out from the payment terms
+    var payNames = log || tenantTable ? null : PythonPaymentWriter.NamesFor(PaymentPlan.BankFor(Model, Project), PaymentPlan.InstallmentFor(Model, Project), PaymentPlan.DueFor(Model, Project), t, Project);
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
         : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
@@ -194,6 +196,10 @@
         foreach (string word in PythonPriceWriter.DateWords(priceNames))
             if (!clonedDates.Contains(word))
                 clonedDates.Add(word);
+    if (payNames is not null)
+        foreach (string word in PythonPaymentWriter.DateWords(payNames))
+            if (!clonedDates.Contains(word))
+                clonedDates.Add(word);
     if (docNames is not null)
         foreach (string word in PythonRateDocumentWriter.DateWords(docNames))
             if (!clonedDates.Contains(word))
@@ -205,7 +211,7 @@
     clonedDates.Sort(StringComparer.Ordinal);
     if (clonedDates.Count > 0)
         Line($"from datetime import {string.Join(", ", clonedDates)}");
-    if (docNames is not null || taxNames is not null || allowNames is not null || totalsNames is not null)
+    if (docNames is not null || taxNames is not null || allowNames is not null || totalsNames is not null || payNames?.UsesDecimal == true)
         Line("from decimal import ROUND_HALF_UP, Decimal");
     if (tenantTable)
         Line("from typing import Any");
@@ -216,7 +222,7 @@
         Line("from uuid import UUID, uuid4");
     else if (uuidFilter)
         Line("from uuid import UUID");
-    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter || contentNames is not null || docNames is not null || taxNames is not null || allowNames is not null || totalsNames is not null)
+    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter || contentNames is not null || docNames is not null || taxNames is not null || allowNames is not null || totalsNames is not null || payNames?.UsesDecimal == true)
         Line();
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbCastType is not null);
     var sqlalchemy = new List<string> { "select" };
@@ -247,7 +253,7 @@
         foreach (string word in PythonPriceWriter.SqlAlchemyWords)
             if (!sqlalchemy.Contains(word))
                 sqlalchemy.Add(word);
-    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null ? ["Query"] : []).Concat(log ? [] : ["Response"])));
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null || payNames?.HasRoute == true ? ["Query"] : []).Concat(log ? [] : ["Response"])));
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
@@ -290,6 +296,9 @@
         Line($"from app.models.{partyNames.IdentifierModule} import {partyNames.IdentifierClass}");
     if (priceListTable is not null && priceNames is not null && priceListTable.Class != t.Class)
         Line($"from app.models.{priceListTable.Module} import {priceListTable.Class}");
+    if (payNames is not null)
+        foreach (var related in payNames.Related)
+            Line($"from app.models.{related.Module} import {related.Class}");
     if (docRateTable is not null)
         Line($"from app.routes.{docRateTable.Module} import find_rate");
     if (taxCategoryTable is not null)
@@ -490,6 +499,12 @@
         Line();
         Line(PythonPriceWriter.Helper(priceNames).TrimEnd('\n'));
     }
+    if (payNames is not null)
+    {
+        Line();
+        Line();
+        Line(PythonPaymentWriter.Helper(payNames).TrimEnd('\n'));
+    }
     if (docNames is not null)
     {
         Line();
@@ -560,6 +575,13 @@
     {
         Line();
         Line(PythonRateWriter.Route(rateNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
+        Line();
+    }
+
+    if (payNames?.HasRoute == true)
+    {
+        Line();
+        Line(PythonPaymentWriter.Route(payNames, t.Route, readDepends, userParameter).TrimEnd('\n'));
         Line();
     }
 
@@ -825,6 +847,8 @@
         Line("    check_price(session, row)");
         Line(PythonPriceWriter.PairLine(priceNames));
     }
+    if (payNames is not null)
+        Line(PythonPaymentWriter.CheckLine(payNames));
     if (docNames is not null)
         Line("    convert_currency(session, row, None)");
     if (taxNames is not null)
@@ -978,6 +1002,8 @@
         Line("    check_price(session, row)");
         Line(PythonPriceWriter.PairLine(priceNames));
     }
+    if (payNames is not null)
+        Line(PythonPaymentWriter.CheckLine(payNames));
     if (docNames is not null)
         Line("    convert_currency(session, row, stored)");
     if (taxNames is not null)

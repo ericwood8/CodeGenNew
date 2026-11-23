@@ -135,6 +135,7 @@
         bool listScreen = shapeScreen || partyBox;
         var allowBox = !logOnly && AllowanceScreens.HasBox(Model, Project);   // AllowanceCharges: the allowances, the charges and the net of one document in the bar
         var taxBox = !logOnly && TaxScreens.HasBox(Model, Project);   // TaxLines: the tax of one document by category and rate in the bar
+        var payBox = !logOnly && PaymentScreens.HasBox(Model, Project);   // InstallmentTables: what the installments of a document come to, in the bar
         var priceNames = !logOnly && PriceScreens.HasBox(Model, Project) ? PriceScreens.CsNames(Model, Project) : null;   // PriceListTables: a lookup of the price in force in the bar; the grid stays the table's pages
         var rateNames = !logOnly && RateScreens.HasBox(Model, Project) ? RateScreens.CsNames(Model, Project) : null;   // RateTables: a lookup of the rate in force in the bar; the grid stays the table's pages
         string shapeView = string.Join(" || ", new[] { partyBox ? PartyScreens.DesktopView : null, softScreen ? "ShowDeleted" : null, validOnScreen ? "ValidOnActive" : null }.Where(x => x is not null));
@@ -254,7 +255,7 @@
 <# if (exportAll) { #>
                 <Button Content="Export all" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnExportAllClick" />
 <# } #>
-<#= (partyBox ? PartyScreens.DesktopBox() : "") + (rateNames is not null ? RateScreens.DesktopBox() : "") + (priceNames is { } priceBar ? PriceScreens.DesktopBox(priceBar) : "") + (taxBox ? TaxDesktopScreens.Box() : "") + (allowBox ? AllowanceScreens.DesktopBox() : "") #><# if (softScreen) { #>
+<#= (partyBox ? PartyScreens.DesktopBox() : "") + (rateNames is not null ? RateScreens.DesktopBox() : "") + (priceNames is { } priceBar ? PriceScreens.DesktopBox(priceBar) : "") + (payBox ? PaymentScreens.DesktopBox() : "") + (taxBox ? TaxDesktopScreens.Box() : "") + (allowBox ? AllowanceScreens.DesktopBox() : "") #><# if (softScreen) { #>
                 <ToggleButton Content="Show deleted" IsChecked="{x:Bind ViewModel.ShowDeleted, Mode=TwoWay}" Click="OnShapeViewClick" />
 <# } #>
 <# if (validOnScreen) { #>
@@ -524,7 +525,7 @@ public sealed partial class <#= stemName #>ListPage : Page
 <#= DesktopGridExtras.ExportPageMembers(title.Pluralize(), true) #>
 <# } #>
 
-<#= (partyBox ? PartyScreens.DesktopHandlers().TrimEnd('\n') + "\n" : "") + (rateNames is not null ? RateScreens.DesktopHandlers() : "") + (priceNames is not null ? PriceScreens.DesktopHandlers() : "") + (taxBox ? TaxDesktopScreens.Handlers() : "") + (allowBox ? AllowanceScreens.DesktopHandlers() : "") #>
+<#= (partyBox ? PartyScreens.DesktopHandlers().TrimEnd('\n') + "\n" : "") + (rateNames is not null ? RateScreens.DesktopHandlers() : "") + (priceNames is not null ? PriceScreens.DesktopHandlers() : "") + (payBox ? PaymentScreens.DesktopHandlers() : "") + (taxBox ? TaxDesktopScreens.Handlers() : "") + (allowBox ? AllowanceScreens.DesktopHandlers() : "") #>
 <# if (!logOnly) { #>
     private async void OnEditClick(object sender, RoutedEventArgs e)
     {
@@ -849,7 +850,7 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     [ObservableProperty]
     private int _totalPages = 1;
 
-<#= (rateNames is not null ? RateScreens.DesktopMembers(RateScreens.UnoRead(rateNames!.Value)) : "") + (priceNames is { } priceUno ? PriceScreens.DesktopMembers(PriceScreens.UnoRead(priceUno)) : "") + (taxBox ? TaxDesktopScreens.Members(TaxDesktopScreens.UnoRead()) : "") + (allowBox ? AllowanceScreens.DesktopMembers(AllowanceScreens.UnoRead()) : "") #><# if (listScreen) { #>
+<#= (rateNames is not null ? RateScreens.DesktopMembers(RateScreens.UnoRead(rateNames!.Value)) : "") + (priceNames is { } priceUno ? PriceScreens.DesktopMembers(PriceScreens.UnoRead(priceUno)) : "") + (payBox ? PaymentScreens.DesktopMembers(PaymentScreens.UnoRead(), PaymentPlan.InstallmentFor(Model, Project)!.Document.CSharpBase()) : "") + (taxBox ? TaxDesktopScreens.Members(TaxDesktopScreens.UnoRead()) : "") + (allowBox ? AllowanceScreens.DesktopMembers(AllowanceScreens.UnoRead()) : "") #><# if (listScreen) { #>
 <# if (softScreen) { #>
     /// <summary> The grid lists the rows that were soft deleted (SoftDeleteTables) instead of the table's rows; each has Restore. </summary>
     [ObservableProperty]

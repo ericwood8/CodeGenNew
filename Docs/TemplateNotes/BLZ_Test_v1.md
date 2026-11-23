@@ -24,3 +24,5 @@ bUnit tests of the Blazor pages, in a test project beside the Blazor app. `Blazo
 `RateTables`: the page tests of a rate table include a test of the rate lookup (the currencies are asked for trimmed, the day goes along and the rate found is shown).
 
 `PriceListTables`: the page tests of a price table include a test of the price lookup (the item and the quantity go along and the price found is shown).
+
+`InstallmentTables`: a test asks for the schedule of a document and shows the answer (`PaymentScreens.BlazorBoxTest`).

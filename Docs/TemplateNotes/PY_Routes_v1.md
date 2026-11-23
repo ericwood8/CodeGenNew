@@ -54,4 +54,6 @@ A table in `LogTables` (an insert-only ledger, `LogTablePlan`) gets the reading 
 
 `PriceListTables` is built here too: the router of a price table has `check_price` (called before a create or an update commits), `price_taken`, `find_price` and `GET price` (the lists of the group first, then the lists with no group; `PythonPriceWriter`, whose `NamesFor` the template calls). The unique index's refusal answers as the rule does.
 
+`BankAccountTables`, `InstallmentTables` and `PaymentTermsTables` are built here too: the router gets `check_account` (with `iban_valid` and `routing_valid`), `check_installment` (and `GET schedule`) or `check_due`, called before a create or an update commits (`PythonPaymentWriter`, whose `NamesFor` the template calls). The amounts are added as `Decimal`. A payment means table whose terms have a discount or a penalty also gets `GET payable` (`payable_on`).
+
 The names the tax, allowance and totals writers work from are built in Core, not in the template: `PythonTaxWriter.NamesFor`, `PythonAllowanceWriter.NamesFor` and `PythonTotalsWriter.NamesFor` read the shape and the `PythonTable` of each table (`PythonTable.SchemaFieldOf` finds a field among the schema fields), and the template only calls them.

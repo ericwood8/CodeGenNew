@@ -165,4 +165,6 @@ A whole-number or text key the person gives a new row that is also a foreign key
 
 `PriceListTables`: the page of a price table has boxes for the item, the quantity, the currency and the day (and the customer group when the entry names it) and a `Find price` button that ask the table's `price` route and show the price in force (or that there is none), with a generated test of it (`PriceScreens`).
 
+`InstallmentTables`: the page of an installment table has a document box and a `Show schedule` button and an answer line, and a test of them (`PaymentScreens`).
+
 - **Delete shows at once.** `remove` asks, then in a transition hides the row (`useOptimistic`, `shownRows`) and calls `deleteRow`; a refused delete shows its message and the row returns when the transition ends, a successful one drops it from the page's list and reads the page again.

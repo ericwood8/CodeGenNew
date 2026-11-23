@@ -3,6 +3,7 @@ using CodeGenNew.Core.Allowance;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Naming;
 using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Sql;
@@ -16,7 +17,7 @@ namespace CodeGenNew.Core.Api;
 public static class RowShapeWriter
 {
     /// <summary> Whether the table's API has to call <c>CheckSaveAsync</c>. </summary>
-    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Content is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).Effective is not null || TableShapes.For(table, project).DefaultRow is not null || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PartyPlan.IsIdentifierTable(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || PriceListPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project);
+    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Content is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).Effective is not null || TableShapes.For(table, project).DefaultRow is not null || SnapshotPlan.IsListed(table.TableName, project) || PolymorphicPlan.IsLinkTable(table.TableName, project) || PartyPlan.IsIdentifierTable(table.TableName, project) || RatePlan.IsListed(table.TableName, project) || PriceListPlan.IsListed(table.TableName, project) || PaymentPlan.IsListed(table.TableName, project) || RateDocumentPlan.IsListed(table.TableName, project) || TaxLinePlan.IsListed(table.TableName, project) || AllowanceChargePlan.IsListed(table.TableName, project);
 
     /// <summary> Whether the table's API has to call <c>CheckDeleteAsync</c>. </summary>
     public static bool HasDeleteCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).SoftDelete is not null || TableShapes.For(table, project).Asset is not null || TableShapes.For(table, project).DefaultRow is not null || PolymorphicPlan.RefusesDeleteOf(table.TableName, project);
@@ -36,6 +37,7 @@ public static class RowShapeWriter
             .Replace("§ID_TAKEN", PartyWords.IdentifierTakenType).Replace("§ID_TITLE", PartyWords.IdentifierTakenTitle)
             .Replace("§RATE_INVALID_TITLE", RateWords.InvalidTitle).Replace("§RATE_INVALID", RateWords.InvalidType).Replace("§RATE_TAKEN_TITLE", RateWords.TakenTitle).Replace("§RATE_TAKEN", RateWords.TakenType)
             .Replace("§PRICE_INVALID_TITLE", PriceWords.InvalidTitle).Replace("§PRICE_INVALID", PriceWords.InvalidType).Replace("§PRICE_TAKEN_TITLE", PriceWords.TakenTitle).Replace("§PRICE_TAKEN", PriceWords.TakenType)
+            .Replace("§PAY_INVALID_TITLE", PaymentWords.InvalidTitle).Replace("§PAY_INVALID", PaymentWords.InvalidType).Replace("§PAY_OVER_TITLE", PaymentWords.OverTotalTitle).Replace("§PAY_OVER", PaymentWords.OverTotalType)
             .Replace("§PRICE_MISSING_TITLE", PriceWords.MissingTitle).Replace("§PRICE_MISSING", PriceWords.MissingType)
             .Replace("§RATE_NEEDED_TITLE", RateWords.NeededTitle).Replace("§RATE_NEEDED", RateWords.NeededType).Replace("§RATE_MISSING_TITLE", RateWords.MissingTitle).Replace("§RATE_MISSING", RateWords.MissingType)
             .Replace("§TAX_NOTINFORCE_TITLE", TaxWords.NotInForceTitle).Replace("§TAX_NOTINFORCE", TaxWords.NotInForceType).Replace("§TAX_UNKNOWN_TITLE", TaxWords.UnknownTitle).Replace("§TAX_UNKNOWN", TaxWords.UnknownType)
@@ -81,7 +83,7 @@ public static class RowShapeWriter
             return TemplateText.FillAll(text, [.. values]);
         }
 
-        o.Append(Fill("/// <summary> The row-shape checks and routes of §T (" + string.Join(", ", new[] { tree is null ? null : "TreeTables", TableShapes.For(table, project).Content is null ? null : "ContentTables", TableShapes.For(table, project).Asset is null ? null : "AssetTables", soft is null ? null : "SoftDeleteTables", effective is null ? null : "EffectiveDatedTables", PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project) ? "PolymorphicLinks" : null, PartyPlan.IsListed(table.TableName, project) ? "PartyTables" : null, RatePlan.IsListed(table.TableName, project) ? "RateTables" : null, PriceListPlan.IsListed(table.TableName, project) ? "PriceListTables" : null }.OfType<string>())
+        o.Append(Fill("/// <summary> The row-shape checks and routes of §T (" + string.Join(", ", new[] { tree is null ? null : "TreeTables", TableShapes.For(table, project).Content is null ? null : "ContentTables", TableShapes.For(table, project).Asset is null ? null : "AssetTables", soft is null ? null : "SoftDeleteTables", effective is null ? null : "EffectiveDatedTables", PolymorphicPlan.IsLinkTable(table.TableName, project) || PolymorphicPlan.IsTarget(table.TableName, project) ? "PolymorphicLinks" : null, PartyPlan.IsListed(table.TableName, project) ? "PartyTables" : null, RatePlan.IsListed(table.TableName, project) ? "RateTables" : null, PriceListPlan.IsListed(table.TableName, project) ? "PriceListTables" : null, PaymentPlan.IsListed(table.TableName, project) ? "BankAccountTables, InstallmentTables or PaymentTermsTables" : null }.OfType<string>())
             + "): the table's API calls CheckSaveAsync before it saves a row and CheckDeleteAsync before it deletes one. Generated by API_RowShapes. </summary>\npublic static class §TShape\n{\n"));
 
         if (tree is not null)
@@ -319,6 +321,26 @@ public static class RowShapeWriter
             maps.Append(Fill(PriceListWriter.MapLine(priceList)));
         }
 
+        if (PaymentPlan.BankFor(table, project, database) is { } bankAccount)
+        {
+            o.Append(PaymentWriter.AccountCode(bankAccount, contextType));
+            save.Append(PaymentWriter.AccountSaveLines);
+        }
+
+        if (PaymentPlan.InstallmentFor(table, project, database) is { } installment)
+        {
+            o.Append(PaymentWriter.InstallmentCode(installment, contextType));
+            save.Append(PaymentWriter.InstallmentSaveLines);
+            maps.Append(Fill(PaymentWriter.InstallmentMapLine(installment)));
+        }
+
+        if (PaymentPlan.DueFor(table, project, database) is { } dueDate)
+        {
+            o.Append(PaymentWriter.DueCode(dueDate, contextType));
+            save.Append(PaymentWriter.DueSaveLines);
+            maps.Append(Fill(PaymentWriter.DueMapLine(dueDate)));
+        }
+
         if (RateDocumentPlan.For(table, project, database) is { } document)
         {
             var rates = document.Rates;
@@ -413,6 +435,8 @@ public static class RowShapeProblems
     public static IResult PriceInvalid(string detail) => Problem(400, "§PRICE_INVALID", "§PRICE_INVALID_TITLE", detail);
     public static IResult PriceTaken(string detail) => Problem(409, "§PRICE_TAKEN", "§PRICE_TAKEN_TITLE", detail);
     public static IResult PriceMissing(string detail) => Problem(404, "§PRICE_MISSING", "§PRICE_MISSING_TITLE", detail);
+    public static IResult PaymentInvalid(string detail) => Problem(400, "§PAY_INVALID", "§PAY_INVALID_TITLE", detail);
+    public static IResult InstallmentOverTotal(string detail) => Problem(400, "§PAY_OVER", "§PAY_OVER_TITLE", detail);
     public static IResult TaxUnknown(string detail) => Problem(400, "§TAX_UNKNOWN", "§TAX_UNKNOWN_TITLE", detail);
     public static IResult TaxNotInForce(string detail) => Problem(400, "§TAX_NOTINFORCE", "§TAX_NOTINFORCE_TITLE", detail);
     public static IResult AllowanceInvalid(string detail) => Problem(400, "§ALLOWANCE", "§ALLOWANCE_TITLE", detail);

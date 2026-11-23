@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using CodeGenNew.Core.Api;
 using CodeGenNew.Core.Content;
 using CodeGenNew.Core.Party;
+using CodeGenNew.Core.Payment;
 using CodeGenNew.Core.Price;
 using CodeGenNew.Core.Rate;
 using CodeGenNew.Core.Tax;
@@ -63,6 +64,15 @@ public sealed class TableShapes
     public TaxLineShape? TaxLine => Shape<TaxLineShape>();
     /// <summary> The table as the price rows of a price list (<c>PriceListTables</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
     public PriceListShape? PriceList => Shape<PriceListShape>();
+
+    /// <summary> The table as a bank account whose IBAN, or account and routing number, are checked (<c>BankAccountTables</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
+    public BankAccountShape? BankAccount => Shape<BankAccountShape>();
+
+    /// <summary> The table as the installments of a document (<c>InstallmentTables</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
+    public InstallmentShape? Installment => Shape<InstallmentShape>();
+
+    /// <summary> The table as payment means whose due date is worked out from payment terms (<c>PaymentTermsTables</c>); null when it is not, or when the generator has not remembered the database of the run. </summary>
+    public DueDateShape? DueDate => Shape<DueDateShape>();
 
     /// <summary> The table as the table of price lists that a price table (<c>PriceListTables</c>) points at; null when it is not. </summary>
     public PriceListHeadShape? PriceListHead => Shape<PriceListHeadShape>();
@@ -178,6 +188,9 @@ public sealed class TableShapes
         if (shape == typeof(DefaultRowShape)) return DefaultRowPlan.For(_table, _project);
         if (shape == typeof(ExtensionShape)) return ExtensionPlan.For(_table, _project);
         if (shape == typeof(PriceListShape)) return _database is null ? PriceListPlan.For(_table, _project) : PriceListPlan.For(_table, _project, _database);
+        if (shape == typeof(BankAccountShape)) return _database is null ? PaymentPlan.BankFor(_table, _project) : PaymentPlan.BankFor(_table, _project, _database);
+        if (shape == typeof(InstallmentShape)) return _database is null ? PaymentPlan.InstallmentFor(_table, _project) : PaymentPlan.InstallmentFor(_table, _project, _database);
+        if (shape == typeof(DueDateShape)) return _database is null ? PaymentPlan.DueFor(_table, _project) : PaymentPlan.DueFor(_table, _project, _database);
         if (shape == typeof(PriceListHeadShape)) return (_database ?? RatePlan.Remembered(_project)) is { } known ? PriceListPlan.HeadOf(_table, _project, known) is { } priced ? new PriceListHeadShape(priced) : null : null;
         if (shape == typeof(TaxLineShape)) return _database is null ? TaxLinePlan.For(_table, _project) : TaxLinePlan.For(_table, _project, _database);
         if (shape == typeof(NameActiveShape)) return NameActiveShape.For(_table, _project);
