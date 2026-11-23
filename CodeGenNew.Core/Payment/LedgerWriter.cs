@@ -16,8 +16,9 @@ public static class LedgerWriter
         string table = s.Table.TableName, documents = s.DocumentTable.TableName, doc = s.Document.CSharpName(), kind = s.Kind.CSharpName(), status = s.Status.CSharpName(), amount = s.Amount.CSharpName();
         string gateway = s.GatewayId.CSharpName(), key = s.IdempotencyKey.CSharpName(), documentKey = s.DocumentKey.CSharpName(), total = s.Total.CSharpName(), rowKey = s.Key.CSharpName(), documentType = s.Document.CSharpBase();
         return $$"""
-    /// <summary> The kind and status are one of the ledger's words (written in lower case), the document exists, a refund is a negative amount and any other kind a positive one, the gateway id and the idempotency key are given and not recorded yet,
-    /// and a succeeded refund is no more than what has been paid so far. </summary>
+    /// <summary> The kind and status are one of the ledger's words (written in lower case), the document exists, a refund is a negative amount and any other kind a positive one, the gateway id and the idempotency key are given and a gateway id is not recorded yet,
+    /// a retry (an idempotency key recorded for the same document, kind and amount) answers with the stored row, the key of a different transaction is refused, a succeeded refund is no more than what has been paid so far and a succeeded
+    /// capture does not take what is paid above the total of the document. </summary>
     public static async Task<IResult?> CheckLedgerAsync({{contextType}} context, {{table}} row)
     {
         row.{{kind}} = (row.{{kind}} ?? "").Trim().ToLowerInvariant();
@@ -35,15 +36,20 @@ public static class LedgerWriter
             return RowShapeProblems.PaymentInvalid(row.{{kind}} == "{{LedgerPlan.Refund}}" ? "{{PaymentWords.RefundSign}}" : "{{PaymentWords.AmountPositive}}");
         if (row.{{gateway}}.Length == 0 || row.{{key}}.Length == 0)
             return RowShapeProblems.PaymentInvalid("{{PaymentWords.GatewayMissing}}");
+        var again = await context.Set<{{table}}>().AsNoTracking().FirstOrDefaultAsync(x => x.{{key}} == row.{{key}});
+        if (again is not null)
+            return again.{{doc}} == row.{{doc}} && again.{{kind}} == row.{{kind}} && (decimal)again.{{amount}} == amount ? Results.Ok(again) : RowShapeProblems.LedgerDuplicate("{{PaymentWords.KeyReused}}");
         if (await context.Set<{{table}}>().AsNoTracking().AnyAsync(x => x.{{gateway}} == row.{{gateway}}))
             return RowShapeProblems.LedgerDuplicate("{{PaymentWords.GatewayTaken}}");
-        if (await context.Set<{{table}}>().AsNoTracking().AnyAsync(x => x.{{key}} == row.{{key}}))
-            return RowShapeProblems.LedgerDuplicate("{{PaymentWords.KeyTaken}}");
-        if (row.{{kind}} == "{{LedgerPlan.Refund}}" && row.{{status}} == "{{LedgerPlan.Succeeded}}")
+        if (row.{{status}} == "{{LedgerPlan.Succeeded}}" && (row.{{kind}} == "{{LedgerPlan.Refund}}" || row.{{kind}} == "{{LedgerPlan.Capture}}"))
         {
             var held = await context.Set<{{table}}>().AsNoTracking().Where(x => x.{{doc}} == row.{{doc}} && x.{{status}} == "{{LedgerPlan.Succeeded}}" && (x.{{kind}} == "{{LedgerPlan.Capture}}" || x.{{kind}} == "{{LedgerPlan.Refund}}")).Select(x => x.{{amount}}).ToListAsync();
-            if (held.Sum(x => (decimal)x) + amount < 0)
+            decimal paid = held.Sum(x => (decimal)x) + amount;
+            if (paid < 0)
                 return RowShapeProblems.RefundOverPaid("{{PaymentWords.RefundOver}}");
+            var limit = await context.Set<{{documents}}>().AsNoTracking().Where(d => d.{{documentKey}} == row.{{doc}}).Select(d => new { d.{{total}} }).FirstAsync();
+            if (paid > (decimal)limit.{{total}})
+                return RowShapeProblems.CaptureOverTotal("{{PaymentWords.CaptureOver}}");
         }
         return null;
     }

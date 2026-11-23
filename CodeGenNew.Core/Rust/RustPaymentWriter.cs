@@ -129,12 +129,12 @@ public static class RustPaymentWriter
             : $"    if row.{l.StampField} == chrono::NaiveDateTime::default() {{\n        row.{l.StampField} = chrono::Local::now().naive_local();\n    }}\n";
         return TemplateText.FillAll(LedgerText, ("§STRUCT", n.Struct), ("§KT", n.KeyType), ("§ROWKEY", l.RowKey), ("§DOCMODULE", n.DocModule!), ("§DOCKT", n.DocKeyType!), ("§DOC", n.DocField!), ("§KIND", l.KindField), ("§STATUS", l.StatusField),
             ("§AMT", l.AmountField), ("§GATEWAY", l.GatewayField), ("§IDEM", l.KeyField), ("§TOTAL", n.DocTotalField!), ("§FACTOR", Math.Pow(10, l.Scale).ToString(System.Globalization.CultureInfo.InvariantCulture) + ".0"), ("§STAMP", stamp),
-            ("§COUNTGATEWAY", RustTable.Raw($"SELECT COUNT(*) FROM {n.Table} WHERE {l.GatewayColumn} = ")), ("§COUNTKEY", RustTable.Raw($"SELECT COUNT(*) FROM {n.Table} WHERE {l.KeyColumn} = ")),
+            ("§COUNTGATEWAY", RustTable.Raw($"SELECT COUNT(*) FROM {n.Table} WHERE {l.GatewayColumn} = ")), ("§SELECTBYKEY", RustTable.Raw($"SELECT {n.SelectList} FROM {n.Table} WHERE {l.KeyColumn} = ")),
             ("§SELECTHELD", RustTable.Raw($"SELECT {n.SelectList} FROM {n.Table} WHERE {n.DocColumn} = ")), ("§ANDSUCCEEDED", RustTable.Raw($" AND {l.StatusColumn} = '{LedgerPlan.Succeeded}'")),
             ("§ANDPAID", RustTable.Raw($" AND {l.StatusColumn} = '{LedgerPlan.Succeeded}' AND {l.KindColumn} IN ('{LedgerPlan.Capture}', '{LedgerPlan.Refund}')")),
             ("§INVALIDTYPE", PaymentWords.InvalidType), ("§INVALIDTITLE", PaymentWords.InvalidTitle), ("§DUPTYPE", PaymentWords.LedgerDuplicateType), ("§DUPTITLE", PaymentWords.LedgerDuplicateTitle), ("§REFUNDTYPE", PaymentWords.RefundOverType), ("§REFUNDTITLE", PaymentWords.RefundOverTitle),
             ("§W_KIND", PaymentWords.KindBad), ("§W_STATUS", PaymentWords.StatusBad), ("§W_DOCUMENT", PaymentWords.DocumentMissing), ("§W_SIGN", PaymentWords.RefundSign), ("§W_POSITIVE", PaymentWords.AmountPositive), ("§W_GATEWAYMISSING", PaymentWords.GatewayMissing),
-            ("§W_GATEWAYTAKEN", PaymentWords.GatewayTaken), ("§W_KEYTAKEN", PaymentWords.KeyTaken), ("§W_REFUNDOVER", PaymentWords.RefundOver), ("§W_NEEDS", PaymentWords.NeedsDocument));
+            ("§W_GATEWAYTAKEN", PaymentWords.GatewayTaken), ("§W_KEYREUSED", PaymentWords.KeyReused), ("§W_REFUNDOVER", PaymentWords.RefundOver), ("§CAPTURETYPE", PaymentWords.CaptureOverType), ("§CAPTURETITLE", PaymentWords.CaptureOverTitle), ("§W_CAPTUREOVER", PaymentWords.CaptureOver), ("§W_NEEDS", PaymentWords.NeedsDocument));
     }
 
     private static string DueCode(Names n)
@@ -376,8 +376,8 @@ fn ledger_round(value: f64) -> f64 {
     (value * §FACTOR).round() / §FACTOR
 }
 
-/// The kind and status are one of the ledger's words (written in lower case), the document exists, a refund is a negative amount and any other kind a positive one, the gateway id and the idempotency key are given and not recorded yet, and a succeeded refund is no more than what has been paid so far.
-async fn check_ledger(pool: &Pool, row: &mut §STRUCT) -> ApiResult<()> {
+/// The kind and status are one of the ledger's words (written in lower case), the document exists, a refund is a negative amount and any other kind a positive one, the gateway id and the idempotency key are given and a gateway id is not recorded yet, a retry (an idempotency key recorded for the same document, kind and amount) answers with the stored row, the key of a different transaction is refused, a succeeded refund is no more than what has been paid so far and a succeeded capture does not take what is paid above the total of the document.
+async fn check_ledger(pool: &Pool, row: &mut §STRUCT) -> ApiResult<Option<§STRUCT>> {
     row.§KIND = row.§KIND.trim().to_lowercase();
     row.§STATUS = row.§STATUS.trim().to_lowercase();
     row.§GATEWAY = row.§GATEWAY.trim().to_string();
@@ -399,33 +399,49 @@ async fn check_ledger(pool: &Pool, row: &mut §STRUCT) -> ApiResult<()> {
     if row.§GATEWAY.is_empty() || row.§IDEM.is_empty() {
         return Err(ledger_invalid("§W_GATEWAYMISSING"));
     }
+    let mut key = sqlx::QueryBuilder::<Db>::new(§SELECTBYKEY);
+    key.push_bind(row.§IDEM.clone());
+    if let Some(again) = key.build_query_as::<§STRUCT>().fetch_optional(pool).await? {
+        if again.§DOC == row.§DOC && again.§KIND == row.§KIND && (ledger_number(again.§AMT.clone()) - amount).abs() < 0.000001 {
+            return Ok(Some(again));
+        }
+        return Err(ApiError::Rejected(409, "§DUPTYPE", "§DUPTITLE", "§W_KEYREUSED".into()));
+    }
     let mut gateway = sqlx::QueryBuilder::<Db>::new(§COUNTGATEWAY);
     gateway.push_bind(row.§GATEWAY.clone());
     if gateway.build_query_scalar::<i64>().fetch_one(pool).await? > 0 {
         return Err(ApiError::Rejected(409, "§DUPTYPE", "§DUPTITLE", "§W_GATEWAYTAKEN".into()));
     }
-    let mut key = sqlx::QueryBuilder::<Db>::new(§COUNTKEY);
-    key.push_bind(row.§IDEM.clone());
-    if key.build_query_scalar::<i64>().fetch_one(pool).await? > 0 {
-        return Err(ApiError::Rejected(409, "§DUPTYPE", "§DUPTITLE", "§W_KEYTAKEN".into()));
-    }
-    if refund && row.§STATUS == "succeeded" {
+    if row.§STATUS == "succeeded" && (refund || row.§KIND == "capture") {
         let mut held = sqlx::QueryBuilder::<Db>::new(§SELECTHELD);
         held.push_bind(row.§DOC.clone());
         held.push(§ANDPAID);
         let rows = held.build_query_as::<§STRUCT>().fetch_all(pool).await?;
-        let paid: f64 = rows.iter().map(|other| ledger_number(other.§AMT.clone())).sum();
-        if paid + amount < -0.000001 {
+        let paid: f64 = rows.iter().map(|other| ledger_number(other.§AMT.clone())).sum::<f64>() + amount;
+        if paid < -0.000001 {
             return Err(ApiError::Rejected(400, "§REFUNDTYPE", "§REFUNDTITLE", "§W_REFUNDOVER".into()));
         }
+        let limit = match crate::repos::§DOCMODULE::get_by_id(pool, row.§DOC.clone()).await? {
+            Some(document) => ledger_number(document.§TOTAL.clone()),
+            None => 0.0,
+        };
+        if paid > limit + 0.000001 {
+            return Err(ApiError::Rejected(400, "§CAPTURETYPE", "§CAPTURETITLE", "§W_CAPTUREOVER".into()));
+        }
     }
-    Ok(())
+    Ok(None)
 }
 
-/// Checks a row and stores it; the answer is the stored row.
+fn existing_response(row: §STRUCT) -> Response {
+    Json(row).into_response()
+}
+
+/// Checks a row and stores it; the answer is the stored row (a retry of a recorded transaction answers with the row stored the first time, 200).
 async fn record_transaction(State(pool): State<Pool>, ApiJson(mut row): ApiJson<§STRUCT>) -> ApiResult<Response> {
     row.§ROWKEY = Default::default();
-§STAMP    check_ledger(&pool, &mut row).await?;
+§STAMP    if let Some(existing) = check_ledger(&pool, &mut row).await? {
+        return Ok(existing_response(existing));
+    }
     let row = repo::insert(&pool, &row).await?;
     Ok(created(format!("record/{}", row.§ROWKEY), row))
 }

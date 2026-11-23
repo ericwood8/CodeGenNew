@@ -104,7 +104,8 @@ public static class PythonPaymentWriter
     private static string LedgerHelper(Names n) => Fill(LedgerHelperText, n, ("§KIND", n.Ledger!.KindName), ("§STATUS", n.Ledger.StatusName), ("§AMT", n.Ledger.AmountName), ("§GATEWAY", n.Ledger.GatewayName), ("§IDEM", n.Ledger.KeyName),
         ("§DUPTITLE", PaymentWords.LedgerDuplicateTitle), ("§DUPTYPE", PaymentWords.LedgerDuplicateType), ("§REFUNDTITLE", PaymentWords.RefundOverTitle), ("§REFUNDTYPE", PaymentWords.RefundOverType),
         ("§W_KIND", PaymentWords.KindBad), ("§W_STATUS", PaymentWords.StatusBad), ("§W_SIGN", PaymentWords.RefundSign), ("§W_POSITIVE", PaymentWords.AmountPositive), ("§W_GATEWAYMISSING", PaymentWords.GatewayMissing),
-        ("§W_GATEWAYTAKEN", PaymentWords.GatewayTaken), ("§W_KEYTAKEN", PaymentWords.KeyTaken), ("§W_REFUNDOVER", PaymentWords.RefundOver));
+        ("§W_GATEWAYTAKEN", PaymentWords.GatewayTaken), ("§W_KEYREUSED", PaymentWords.KeyReused), ("§W_REFUNDOVER", PaymentWords.RefundOver),
+        ("§CAPTURETITLE", PaymentWords.CaptureOverTitle), ("§CAPTURETYPE", PaymentWords.CaptureOverType), ("§W_CAPTUREOVER", PaymentWords.CaptureOver));
 
     private static string LedgerRoutes(Names n, string route, string readDepends, string userParameter, string schema, string writeDepends)
     {
@@ -278,8 +279,8 @@ def ledger_invalid(detail: str) -> ApiError:
     return ApiError(400, "§INVALIDTITLE", problem_type="§INVALIDTYPE", detail=detail)
 
 
-def check_ledger(session: Session, row) -> None:
-    """The kind and status are one of the ledger's words (written in lower case), the document exists, a refund is a negative amount and any other kind a positive one, the gateway id and the idempotency key are given and not recorded yet, and a succeeded refund is no more than what has been paid so far."""
+def check_ledger(session: Session, row):
+    """The kind and status are one of the ledger's words (written in lower case), the document exists, a refund is a negative amount and any other kind a positive one, the gateway id and the idempotency key are given and a gateway id is not recorded yet, a retry (an idempotency key recorded for the same document, kind and amount) answers with the stored row, the key of a different transaction is refused, a succeeded refund is no more than what has been paid so far and a succeeded capture does not take what is paid above the total of the document."""
     row.§KIND = (row.§KIND or "").strip().lower()
     row.§STATUS = (row.§STATUS or "").strip().lower()
     row.§GATEWAY = (row.§GATEWAY or "").strip()
@@ -296,23 +297,33 @@ def check_ledger(session: Session, row) -> None:
             raise ledger_invalid("§W_SIGN" if row.§KIND == "refund" else "§W_POSITIVE")
         if not row.§GATEWAY or not row.§IDEM:
             raise ledger_invalid("§W_GATEWAYMISSING")
+        again = session.scalar(select(§CLASS).where(§CLASS.§IDEM == row.§IDEM))
+        if again is not None:
+            if again.§DOC == row.§DOC and again.§KIND == row.§KIND and Decimal(str(again.§AMT)) == amount:
+                return again
+            raise ApiError(409, "§DUPTITLE", problem_type="§DUPTYPE", detail="§W_KEYREUSED")
         if session.scalar(select(§CLASS.§KEY).where(§CLASS.§GATEWAY == row.§GATEWAY)) is not None:
             raise ApiError(409, "§DUPTITLE", problem_type="§DUPTYPE", detail="§W_GATEWAYTAKEN")
-        if session.scalar(select(§CLASS.§KEY).where(§CLASS.§IDEM == row.§IDEM)) is not None:
-            raise ApiError(409, "§DUPTITLE", problem_type="§DUPTYPE", detail="§W_KEYTAKEN")
-        if row.§KIND == "refund" and row.§STATUS == "succeeded":
+        if row.§STATUS == "succeeded" and row.§KIND in ("capture", "refund"):
             held = session.scalars(select(§CLASS.§AMT).where(§CLASS.§DOC == row.§DOC, §CLASS.§STATUS == "succeeded", §CLASS.§KIND.in_(("capture", "refund")))).all()
-            if sum((Decimal(str(value)) for value in held), Decimal(0)) + amount < 0:
+            paid = sum((Decimal(str(value)) for value in held), Decimal(0)) + amount
+            if paid < 0:
                 raise ApiError(400, "§REFUNDTITLE", problem_type="§REFUNDTYPE", detail="§W_REFUNDOVER")
+            if paid > Decimal(str(session.get(§DOCCLASS, row.§DOC).§DOCVALUE)):
+                raise ApiError(400, "§CAPTURETITLE", problem_type="§CAPTURETYPE", detail="§W_CAPTUREOVER")
+    return None
 """";
 
     private const string LedgerRouteText = """"
 @router.post("§ROUTE/§RECORD", response_model=§SCHEMA, status_code=201§WRITE)
-def record_transaction(body: §SCHEMA, session: Session = Depends(get_session)§USER):
-    """Checks a row and stores it; the answer is the stored row."""
+def record_transaction(body: §SCHEMA, response: Response, session: Session = Depends(get_session)§USER):
+    """Checks a row and stores it; the answer is the stored row (a retry of a recorded transaction answers with the row stored the first time, 200)."""
     row = §CLASS(**body.columns())
     row.§KEY = None
-§STAMP    check_ledger(session, row)
+§STAMP    existing = check_ledger(session, row)
+    if existing is not None:
+        response.status_code = 200
+        return existing
     session.add(row)
     try:
         session.commit()

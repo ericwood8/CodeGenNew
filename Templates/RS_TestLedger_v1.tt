@@ -1,0 +1,21 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestLedger_v1.tt
+    // Generates: tests/api/ledger_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of what RS_Routes writes for LedgerTables, run in process over a scratch database like RS_Test. Each test adds a document of its own and records rows against it through the router.
+    // The cases: the paid amount from the succeeded rows, a refund that is negative and never more than has been paid, a capture never more than the total, a retried call that answers with the stored row,
+    // a key or gateway id recorded once, and no change or delete (405). A ledger keeps its rows, so the tests leave them in the scratch database.
+    // The words are PaymentWords, as in the other stacks' tests.
+    // Written only for a project with RustTests=true and a ledger the tests can fill (LedgerTestPlan).
+    // Needs Client.start of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (RustLedgerTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/ledger_routes.rs@@@\n" + RustLedgerTests.File(Database, Project));
+    }
+#>

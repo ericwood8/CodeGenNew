@@ -105,11 +105,14 @@ public class LedgerTests
         Expect.Contains(text, "if (row.Kind is not (\"authorize\" or \"capture\" or \"refund\" or \"void\"))");
         Expect.Contains(text, "if (row.Kind == \"refund\" ? amount >= 0 : amount <= 0)");
         Expect.Contains(text, "RowShapeProblems.LedgerDuplicate(");
-        Expect.Contains(text, "if (held.Sum(x => (decimal)x) + amount < 0)");
+        Expect.Contains(text, "decimal paid = held.Sum(x => (decimal)x) + amount;");
         Expect.Contains(text, "row.CreatedOn = DateTime.Now;");
         Expect.Contains(text, "app.MapPost(\"/api/paytransactions/record\"");
         Expect.Contains(text, "app.MapGet(\"/api/paytransactions/paid\"");
         Expect.Contains(text, "settled = paid >= total");
+        Expect.Contains(text, "Results.Ok(again)");
+        Expect.Contains(text, "RowShapeProblems.CaptureOverTotal(");
+        Expect.Contains(text, PaymentWords.CaptureOverType);
         Expect.Contains(text, PaymentWords.LedgerDuplicateType);
         Expect.Contains(text, PaymentWords.RefundOverType);
         Assert.IsFalse(text.Contains("CheckSaveAsync(ShopContext context, PayTransaction"), "a log table has no save check");
@@ -124,11 +127,14 @@ public class LedgerTests
         var names = PythonPaymentWriter.NamesFor(null, null, null, PythonTable.Of(shape.Table, project), project, shape)!;
         Assert.IsTrue(names.HasRoute && names.UsesDecimal);
         string python = PythonPaymentWriter.Helper(names) + PythonPaymentWriter.Route(names, "/api/paytransactions", "", "", "PayTransactionSchema", "");
-        Expect.Contains(python, "def check_ledger(session: Session, row) -> None:");
+        Expect.Contains(python, "def check_ledger(session: Session, row):");
         Expect.Contains(python, "if (amount >= 0) if row.kind == \"refund\" else (amount <= 0):");
         Expect.Contains(python, "@router.post(\"/api/paytransactions/record\", response_model=PayTransactionSchema, status_code=201)");
         Expect.Contains(python, "@router.get(\"/api/paytransactions/paid\")");
         Expect.Contains(python, "row.created_on = datetime.now()");
+        Expect.Contains(python, "response.status_code = 200");
+        Expect.Contains(python, "def check_ledger(session: Session, row):");
+        Expect.Contains(python, PaymentWords.CaptureOverType);
         Assert.AreEqual("    check_ledger(session, row)", PythonPaymentWriter.CheckLine(names));
     }
 
@@ -141,10 +147,12 @@ public class LedgerTests
         var names = RustPaymentWriter.NamesFor(null, null, null, RustTable.Of(shape.Table, project), project, DialectInfo.For(SqlDialect.PostgreSql), "i32", shape)!;
         Assert.IsTrue(names.HasRoute);
         string rust = RustPaymentWriter.Code(names);
-        Expect.Contains(rust, "async fn check_ledger(pool: &Pool, row: &mut PayTransaction) -> ApiResult<()> {");
+        Expect.Contains(rust, "async fn check_ledger(pool: &Pool, row: &mut PayTransaction) -> ApiResult<Option<PayTransaction>> {");
         Expect.Contains(rust, "async fn record_transaction(State(pool): State<Pool>, ApiJson(mut row): ApiJson<PayTransaction>) -> ApiResult<Response> {");
         Expect.Contains(rust, "async fn paid_amount(State(pool): State<Pool>, Query(query): Query<PaidQuery>)");
         Expect.Contains(rust, "row.created_on = chrono::Local::now().naive_local();");
+        Expect.Contains(rust, "-> ApiResult<Option<PayTransaction>> {");
+        Expect.Contains(rust, PaymentWords.CaptureOverType);
         string routes = RustPaymentWriter.RouteLine("/api/paytransactions", "", names);
         Expect.Contains(routes, ".route(\"/api/paytransactions/paid\", get(paid_amount))");
         Expect.Contains(routes, ".route(\"/api/paytransactions/record\", post(record_transaction))");
@@ -195,5 +203,25 @@ public class LedgerTests
         Expect.Contains(read, "refunded = -entries.Where(x => x.Kind == \"refund\")");
         Expect.Contains(read, "Paid in full: {paid} of {total}");
         Assert.AreEqual("", PaymentScreens.WinUI3PaidRead(database.Tables.Single(t => t.TableName == "PayDocument"), project, "_context"));
+    }
+
+    [TestMethod]
+    public void The_generated_tests_play_the_ledger_rules_in_the_three_stacks()
+    {
+        var database = new DatabaseModel { DatabaseName = "Shop", SchemaName = "dbo", Dialect = SqlDialect.Sqlite, Tables = [Documents(), Ledger()] };
+        var project = ProjectSettings.FromValues(new Dictionary<string, string> { ["ProjectName"] = "Shop", ["LedgerTables"] = Entry, ["AccessMode"] = "Ef", ["PythonTests"] = "true", ["RustTests"] = "true" });
+        CodeGenNew.Core.Rate.RatePlan.Remember(database, project);
+        var plan = LedgerTestPlan.For(database, project)!;
+        Assert.AreEqual("/api/paytransactions", plan.RowRoute);
+        string aspnet = LedgerApiTests.Methods(plan);
+        Expect.Contains(aspnet, "A_retried_call_answers_with_the_stored_row_and_a_key_or_gateway_id_is_recorded_once");
+        Expect.Contains(aspnet, PaymentWords.CaptureOverType);
+        Assert.IsTrue(PythonLedgerTests.Applies(database, project));
+        Expect.Contains(PythonLedgerTests.File(database, project), "def test_a_row_is_never_changed_or_deleted(ledger):");
+        Assert.IsTrue(RustLedgerTests.Applies(database, project));
+        Expect.Contains(RustLedgerTests.File(database, project), "async fn a_row_is_never_changed_or_deleted()");
+        var names = project.ImpliedPlanTemplates.ToList();
+        CollectionAssert.Contains(names, "PY_TestLedger");
+        CollectionAssert.Contains(names, "RS_TestLedger");
     }
 }

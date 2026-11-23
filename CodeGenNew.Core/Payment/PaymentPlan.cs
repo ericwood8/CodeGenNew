@@ -47,6 +47,10 @@ public static class PaymentWords
     public const string GatewayTaken = "A transaction with that gateway id is already recorded.";
     public const string KeyTaken = "A transaction with that idempotency key is already recorded.";
     public const string RefundOver = "The refund is more than the amount paid so far.";
+    public const string KeyReused = "That idempotency key was used for a different transaction.";
+    public const string CaptureOverType = ProblemTypes.Prefix + "capture-over-total";
+    public const string CaptureOverTitle = "Capture over the total";
+    public const string CaptureOver = "The capture would take what is paid above the total of the document.";
 }
 
 /// <summary> <c>BankAccountTables=Table[:IbanColumn[:AccountColumn[:RoutingColumn]]]</c>: a save is refused unless the row holds a valid IBAN or an account number with a valid routing number. </summary>

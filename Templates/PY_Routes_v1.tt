@@ -253,7 +253,7 @@
         foreach (string word in PythonPriceWriter.SqlAlchemyWords)
             if (!sqlalchemy.Contains(word))
                 sqlalchemy.Add(word);
-    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null || payNames?.HasRoute == true ? ["Query"] : []).Concat(log ? [] : ["Response"])));
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search || priceNames is not null || effNames is not null || contentNames is not null || rateNames is not null || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null || payNames?.HasRoute == true ? ["Query"] : []).Concat(log && payNames?.Kind != PythonPaymentWriter.Kind.Ledger ? [] : ["Response"])));
     if (tenantTable)
         Line("from pydantic import BaseModel, ConfigDict, Field");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");

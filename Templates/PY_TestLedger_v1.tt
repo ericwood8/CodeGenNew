@@ -1,0 +1,23 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestLedger_v1.tt
+    // Generates: tests/conftest.py and tests/test_ledger.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of what PY_Routes writes for LedgerTables. conftest.py is the one PY_TestApprovals writes (the application over a scratch database: a temporary copy of the SQLite file, or the URL
+    // in <PROJECT>_TEST_CONNECTION for PostgreSQL and MySQL; with none the tests are skipped with the reason). test_ledger.py records rows with POST record against a document of its own and plays the cases:
+    // the paid amount from the succeeded rows, a refund that is negative and never more than has been paid, a capture never more than the total, a retried call that answers with the stored row, a key or gateway id
+    // recorded once, and no change or delete (405). A ledger keeps its rows, so the tests leave them in the scratch database.
+    // The words are PaymentWords, as in the other stacks' tests.
+    // Written only for a project with PythonTests=true and a ledger the tests can fill (LedgerTestPlan); not for SQL Server.
+    // Run them with pytest from the API's folder (requirements.txt lists pytest and httpx with PythonTests=true).
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+    if (PythonLedgerTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/conftest.py@@@\n" + PythonLedgerTests.Conftest(Project, Database.Dialect));
+        Write("@@@FILE tests/test_ledger.py@@@\n" + PythonLedgerTests.File(Database, Project));
+    }
+#>

@@ -3,8 +3,8 @@
 python ledger_check.py <base url>
 
 The API is generated with LedgerTables=PayTransaction:PayDocumentId:PayDocument:Total (a ledger table is also a log table). The rules it plays: POST record stores a row and answers 201 with it;
-the kind and the status are written in lower case; a refund is a negative amount and any other kind a positive one; a gateway id and an idempotency key are each recorded once (409 ledger-duplicate);
-a succeeded refund cannot be more than what has been paid so far (400 refund-over-paid); a row is never changed or deleted (405); GET paid?document= answers the captured amount, the refunded amount,
+the kind and the status are written in lower case; a refund is a negative amount and any other kind a positive one; a gateway id is recorded once and an idempotency key answers with the stored row when it comes again with the same document, kind and amount (200) and is refused otherwise (409 ledger-duplicate);
+a succeeded refund cannot be more than what has been paid so far (400 refund-over-paid) and a succeeded capture cannot take what is paid above the total of the document (400 capture-over-total); a row is never changed or deleted (405); GET paid?document= answers the captured amount, the refunded amount,
 what is paid and what is left, counting only succeeded rows.
 With ApiAuth set API_USER and API_PASSWORD. The ledger keeps its rows, so use a scratch database."""
 import os
@@ -81,9 +81,13 @@ check("a document that does not exist is refused", problem(record(987654, "captu
 check("a blank gateway id is refused", problem(record(doc, "capture", 10, gateway=" "), 400, "payment-invalid"))
 
 check("a gateway id that is recorded is refused", problem(record(doc, "capture", 5, gateway=first.json()["gatewayId"]), 409, "ledger-duplicate"))
-retry = record(doc, "capture", 5, key=first.json()["idempotencyKey"])
-check("a retried call with the same idempotency key is refused and writes nothing", problem(retry, 409, "ledger-duplicate"))
-check("the retry changed nothing", paid(doc)[1][1] == 200.0)
+different = record(doc, "capture", 5, key=first.json()["idempotencyKey"])
+check("the idempotency key of a different transaction is refused and writes nothing", problem(different, 409, "ledger-duplicate"))
+check("the refused key changed nothing", paid(doc)[1][1] == 200.0)
+rows_before = paid(doc)[2].get("transactions")
+retry = record(doc, "Authorize", 300, key=first.json()["idempotencyKey"])
+check("a retried call answers with the row stored the first time (200)", retry.status_code == 200 and retry.json().get("payTransactionId") == first.json()["payTransactionId"], retry.text)
+check("a retried call with another gateway id writes nothing", retry.status_code == 200 and paid(doc)[2].get("transactions") == rows_before)
 
 changed = client.put(f"/api/paytransactions/{first.json()['payTransactionId']}", json=first.json())
 check("a row is never changed", changed.status_code == 405, changed.status_code)
@@ -95,6 +99,9 @@ check("the ledger is listed", listed.status_code == 200, listed.text)
 check("a paid answer needs the document", client.get("/api/paytransactions/paid").status_code == 400)
 check("a paid answer for a document that does not exist is refused", problem(client.get("/api/paytransactions/paid", params={"document": 987654}), 400, "payment-invalid"))
 check("a document paid in full is settled", record(doc, "capture", 300).status_code == 201 and paid(doc)[2].get("settled") is True)
+check("a capture above the total of the document is refused", problem(record(doc, "capture", 1), 400, "capture-over-total"))
+check("a capture that stays within the total is stored", record(doc, "refund", -100).status_code == 201 and record(doc, "capture", 100).status_code == 201)
+check("a pending capture above the total is not refused", record(doc, "capture", 999, status="pending").status_code == 201)
 
 print("ALL OK" if not failures else f"{len(failures)} FAILED")
 sys.exit(1 if failures else 0)

@@ -193,7 +193,7 @@
         Line("    response::Response,");
     }
     else if (ledger)
-        Line("    response::Response,");
+        Line("    response::{IntoResponse, Response},");
     bool usesPost = t.Clone is not null || treePlan is not null || softRoutes || contentPlan is not null || defNames is not null;
     bool usesDb = treePlan is not null || effNames is not null || contentPlan is not null || defNames is not null || idNames is not null || partyNames is not null || rateNames is not null || priceNames is not null || payNames?.HasRoute == true || taxNames?.Document is not null || allowNames?.Document is not null || totalsNames is not null;
     Line(log ? (ledger ? "    routing::{get, post}," : "    routing::get,") : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));

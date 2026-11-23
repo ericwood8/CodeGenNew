@@ -389,6 +389,7 @@ public partial class ProjectSettings
                 if (QueueTables.Length > 0) yield return "RS_TestQueue";
                 if (PartyTables.Length > 0) yield return "RS_TestParties";
                 if (RateTables.Length > 0) yield return "RS_TestRates";
+                if (LedgerTables.Length > 0) yield return "RS_TestLedger";
                 if (TaxLines.Length > 0) yield return "RS_TestTax";
                 if (AllowanceCharges.Length > 0) yield return "RS_TestAllowance";
                 if (DocumentTotals.Length > 0) yield return "RS_TestTotals";
@@ -402,6 +403,7 @@ public partial class ProjectSettings
             if (PythonTests && QueueTables.Length > 0) yield return "PY_TestQueue";
             if (PythonTests && PartyTables.Length > 0) yield return "PY_TestParties";
             if (PythonTests && RateTables.Length > 0) yield return "PY_TestRates";
+            if (PythonTests && LedgerTables.Length > 0) yield return "PY_TestLedger";
             if (PythonTests && TaxLines.Length > 0) yield return "PY_TestTax";
             if (PythonTests && AllowanceCharges.Length > 0) yield return "PY_TestAllowance";
             if (PythonTests && DocumentTotals.Length > 0) yield return "PY_TestTotals";

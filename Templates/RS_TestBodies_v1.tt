@@ -47,6 +47,8 @@
             modules.Add("party_routes");
         if (RustRateTests.Applies(Database, Project))
             modules.Add("rate_routes");
+        if (RustLedgerTests.Applies(Database, Project))
+            modules.Add("ledger_routes");
         if (RustRateDocumentTests.Applies(Database, Project))
             modules.Add("rate_document_routes");
         if (RustTaxTests.Applies(Database, Project))
@@ -119,6 +121,8 @@
                 }
                 if (RateDocumentPlan.IsCurrency(table, c, Project) && RateDocumentPlan.For(table, Project) is { } rateDocument)
                     return Json(rateDocument.BaseCurrency);   // a save looks the rate up and refuses a currency with none
+                if (PaymentPlan.BankSample(table, c, Project) is { } bankSample)
+                    return Json(bankSample);   // a bank account needs an IBAN or an account and routing number that pass the checks
                 if (RustTestBodies.IsFreeText(table, c, Project))
                     return $"unique({Json(ApiSampleValues.Text(c, Project, table.TableName))}, {Math.Max(c.CharacterLength, 0)})";
                 if (RustTestBodies.ParentKey(table, c, Project) is { } fk)
@@ -133,6 +137,8 @@
             var bodyColumns = ApiSampleValues.BodyColumns(table).ToList();
             if (TableShapes.For(table, Project).Effective is { } period && !bodyColumns.Any(c => c.Name.EqualsIgnoreCase(period.To.Name)))
                 bodyColumns = bodyColumns.Append(period.To).OrderBy(c => c.OrdinalPosition).ToList();   // an open end would overlap the periods of the other tests
+            if (PaymentPlan.BankFor(table, Project) is { } bankColumns)   // BankAccountTables: a new row also sends its IBAN, or its account and routing number
+                bodyColumns = bodyColumns.Concat(new[] { bankColumns.Iban, bankColumns.Account, bankColumns.Routing }.OfType<ColumnModel>().Where(c => !bodyColumns.Any(b => b.Name.EqualsIgnoreCase(c.Name)))).OrderBy(c => c.OrdinalPosition).ToList();
             var members = bodyColumns.Where(c => c != t.HashField?.Column).Select(c => (Name: Json(JsonNames.Camel(c.Name)), Value: Expression(c))).ToList();
 
             Line();

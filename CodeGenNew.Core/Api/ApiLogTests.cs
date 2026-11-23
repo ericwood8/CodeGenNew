@@ -117,6 +117,8 @@ public static class ApiLogTests
         }
         if (queue is not null)
             QueueMethods(L, plan, queue, project, absent);
+        if (Payment.LedgerTestPlan.ForTable(plan.Singular, project) is { } ledger)
+            o.Append(Payment.LedgerApiTests.Methods(ledger));
         L("}");
         return o.ToString();
     }
