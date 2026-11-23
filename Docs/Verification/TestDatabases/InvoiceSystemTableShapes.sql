@@ -809,10 +809,10 @@ GO
 IF OBJECT_ID('dbo.PaymentInstallment', 'U') IS NULL
 CREATE TABLE dbo.PaymentInstallment (
     PaymentInstallmentId INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PaymentInstallment PRIMARY KEY,
-    SalesOrderId INT NOT NULL CONSTRAINT FK_PaymentInstalment_Order REFERENCES dbo.SalesOrder (SalesOrderId),
-    SequenceNo INT NOT NULL CONSTRAINT CK_PaymentInstalment_Sequence CHECK (SequenceNo > 0),
+    SalesOrderId INT NOT NULL CONSTRAINT FK_PaymentInstallment_Order REFERENCES dbo.SalesOrder (SalesOrderId),
+    SequenceNo INT NOT NULL CONSTRAINT CK_PaymentInstallment_Sequence CHECK (SequenceNo > 0),
     DueDate DATE NOT NULL,
-    Amount DECIMAL(12,2) NOT NULL CONSTRAINT CK_PaymentInstalment_Amount CHECK (Amount > 0),
+    Amount DECIMAL(12,2) NOT NULL CONSTRAINT CK_PaymentInstallment_Amount CHECK (Amount > 0),
     PaidOn DATE NULL,
     CONSTRAINT UQ_PaymentInstallment UNIQUE (SalesOrderId, SequenceNo)
 );
